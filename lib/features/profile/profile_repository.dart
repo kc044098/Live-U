@@ -1,21 +1,22 @@
+// 從 UserLocalStorage 取得與儲存 UserModel
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'profile_model.dart';
+import '../../core/user_local_storage.dart';
+import '../../data/models/user_model.dart';
 
 final profileRepositoryProvider = Provider<ProfileRepository>((ref) {
   return ProfileRepository();
 });
 
 class ProfileRepository {
-  // 暫時存在記憶體，未來可改為 SharedPreferences 或 API
-  UserProfile? _cache;
-
-  UserProfile getProfile() {
-    return _cache ??
-        UserProfile(userId: '1', name: 'Guest', avatarUrl: '');
+  Future<UserModel?> loadUser() async {
+    return await UserLocalStorage.getUser();
   }
 
-  void saveProfile(UserProfile profile) {
-    _cache = profile;
-    // TODO: 可擴充為 local 儲存或 API 同步
+  Future<void> saveUser(UserModel user) async {
+    await UserLocalStorage.saveUser(user);
+  }
+
+  Future<void> clearUser() async {
+    await UserLocalStorage.clear();
   }
 }

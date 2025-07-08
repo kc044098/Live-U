@@ -1,24 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:provider/provider.dart';
 import '../../l10n/l10n.dart';
-import '../../locale_provider.dart';
+import 'google_auth_service.dart';
 
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'google_auth_service.dart'; // 改成實際路徑
-import '../../../l10n/l10n.dart'; // 根據你的 S.of(context) 的來源
-import '../../../locale_provider.dart';
-
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
   final GoogleAuthService _googleAuthService = GoogleAuthService();
@@ -34,10 +27,9 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _handleGoogleLogin() async {
     setState(() => _isLoading = true);
 
-    final user = await _googleAuthService.signInWithGoogle();
+    final user = await _googleAuthService.signInWithGoogle(ref);
 
     if (!mounted) return;
-
     setState(() => _isLoading = false);
 
     if (user != null) {
@@ -51,15 +43,17 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final localeProvider = Provider.of<LocaleProvider>(context, listen: false);
+    final l10n = S.of(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(S.of(context).appTitle),
+        title: Text(l10n.appTitle),
         actions: [
           IconButton(
             icon: const Icon(Icons.language),
-            onPressed: () => localeProvider.toggleLocale(),
+            onPressed: () {
+              // 如果你有 LocaleProvider，可放這裡切換語言
+            },
           ),
         ],
       ),
@@ -73,7 +67,7 @@ class _LoginScreenState extends State<LoginScreen> {
             TextField(
               controller: emailController,
               decoration: InputDecoration(
-                labelText: S.of(context).email,
+                labelText: l10n.email,
                 border: const OutlineInputBorder(),
               ),
             ),
@@ -82,7 +76,7 @@ class _LoginScreenState extends State<LoginScreen> {
               controller: passwordController,
               obscureText: true,
               decoration: InputDecoration(
-                labelText: S.of(context).password,
+                labelText: l10n.password,
                 border: const OutlineInputBorder(),
               ),
             ),
@@ -91,7 +85,7 @@ class _LoginScreenState extends State<LoginScreen> {
               onPressed: () {
                 Navigator.pushReplacementNamed(context, '/home');
               },
-              child: Text(S.of(context).login),
+              child: Text(l10n.login),
             ),
             const SizedBox(height: 16),
             const Divider(),
