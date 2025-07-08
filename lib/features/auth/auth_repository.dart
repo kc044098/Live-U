@@ -18,9 +18,9 @@ class AuthRepository {
 
     final data = response.data;
     return UserModel(
-      userId: data['userId'],
-      username: data['username'],
-      role: UserRole.host, // 這裡暫時寫死，等後端有 role 回傳後再擴充
+      uid: data['uid'],
+      displayName: data['username'],
+      email: data['email'], // 這裡暫時寫死，等後端有 role 回傳後再擴充
     );
   }
 }

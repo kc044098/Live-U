@@ -13,9 +13,17 @@ class MinePage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final profile = ref.watch(userProfileProvider);
+    final user = ref.watch(userProfileProvider);
     final controller = ref.read(userProfileProvider.notifier);
     final l10n = S.of(context);
+
+    if (user == null) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final nameController = TextEditingController(text: user.displayName);
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.mine)),
@@ -28,22 +36,28 @@ class MinePage extends ConsumerWidget {
                 final picker = ImagePicker();
                 final image = await picker.pickImage(source: ImageSource.gallery);
                 if (image != null) {
-                  controller.updateAvatar(image.path);
+                  controller.updateAvatar(image.path); // 可用路徑當 photoURL（若非 URL）
                 }
               },
               child: CircleAvatar(
                 radius: 40,
-                backgroundImage: profile.avatarUrl.isNotEmpty
-                    ? FileImage(File(profile.avatarUrl))
+                backgroundImage: user.photoURL != null && user.photoURL!.isNotEmpty
+                    ? (user.photoURL!.startsWith('http')
+                    ? NetworkImage(user.photoURL!)
+                    : FileImage(File(user.photoURL!)) as ImageProvider)
                     : null,
-                child: profile.avatarUrl.isEmpty ? const Icon(Icons.person) : null,
+                child: user.photoURL == null || user.photoURL!.isEmpty
+                    ? const Icon(Icons.person)
+                    : null,
               ),
             ),
             const SizedBox(height: 16),
             TextField(
-              controller: TextEditingController(text: profile.name),
+              controller: nameController,
               decoration: InputDecoration(labelText: l10n.name),
-              onSubmitted: controller.updateName,
+              onSubmitted: (value) {
+                controller.updateDisplayName(value);
+              },
             ),
           ],
         ),

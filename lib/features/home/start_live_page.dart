@@ -47,7 +47,7 @@ class _StartLivePageState extends ConsumerState<StartLivePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('直播主：${profile.name}', style: Theme.of(context).textTheme.titleMedium),
+            Text('直播主：${profile?.displayName}', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 16),
             TextField(
               controller: _titleController,
@@ -71,7 +71,7 @@ class _StartLivePageState extends ConsumerState<StartLivePage> {
                       'roomId': roomId,
                       'title': _titleController.text,
                       'desc': _descController.text,
-                      'hostName': profile.name,
+                      'hostName': profile?.displayName,
                     },
                   );
                 },
