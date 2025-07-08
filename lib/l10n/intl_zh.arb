@@ -1,0 +1,18 @@
+{
+  "@@locale": "zh",
+  "appTitle": "我的直播平台",
+  "login": "登入",
+  "rooms": "直播間",
+  "profile": "個人資訊",
+  "email": "電子郵件",
+  "password": "密碼",
+  "scene": "場景",
+  "ability": "能力",
+  "mine": "我的",
+  "name": "姓名",
+  "startLive": "開啟直播",
+  "home": "首頁",
+  "message": "訊息",
+  "live": "直播",
+  "me": "我的"
+}
