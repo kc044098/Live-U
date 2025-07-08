@@ -1,0 +1,19 @@
+{
+  "@@locale": "en",
+  "appTitle": "My Live App",
+  "login": "Login",
+  "rooms": "Rooms",
+  "profile": "Profile",
+  "email": "Email",
+  "password": "Password",
+  "scene": "Scene",
+  "ability": "Ability",
+  "mine": "Mine",
+  "name": "Name",
+  "startLive": "Start Live",
+  "home": "Home",
+  "message": "Messages",
+  "live": "Live",
+  "me": "Me"
+}
+
