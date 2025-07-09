@@ -10,7 +10,6 @@ class GoogleAuthService {
 
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: ['email'],
-    clientId: '你的 clientId',
   );
 
   Future<User?> trySilentSignIn(WidgetRef ref) async {
