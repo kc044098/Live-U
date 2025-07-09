@@ -64,7 +64,7 @@ class _VideoDetailsPageState extends State<VideoDetailsPage> {
         backgroundColor: Colors.grey.shade100,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(context, 'resume'),
         ),
         actions: [
           TextButton(
