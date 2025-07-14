@@ -4,4 +4,5 @@ class AppRoutes {
   static const audience = '/audience';
   static const broadcaster = '/broadcaster';
   static const videoRecorder = '/video_recorder';
+  static const live_video = '/live_video';
 }

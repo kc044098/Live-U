@@ -1,8 +1,10 @@
-// 主播動態播放頁面
+// 主播動態播放頁面 (主頁- 交友)
+
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import '../call/call_request_page.dart';
+import '../profile/view_profile_page.dart';
 
 class LiveVideoPage extends StatefulWidget {
   final Map<String, String> user;
@@ -46,11 +48,6 @@ class _LiveVideoPageState extends State<LiveVideoPage> {
     final broadcasterId = widget.user['broadcaster'] ?? '';
     final broadcasterName = widget.user['name'] ?? '主播';
     final broadcasterImage = widget.user['image'] ?? 'assets/default.jpg';
-
-    // 🔰 假設目前使用者為撥打方
-    const callerId = 'user_123';
-    const callerName = 'Alex';
-    const callerAvatar = 'assets/my_avatar.png';
 
     Navigator.push(
       context,
@@ -129,9 +126,19 @@ class _LiveVideoPageState extends State<LiveVideoPage> {
               ),
               child: Row(
                 children: [
-                  CircleAvatar(
-                    backgroundImage: AssetImage(image),
-                    radius: 20,
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ViewProfilePage(displayName: name),
+                        ),
+                      );
+                    },
+                    child: CircleAvatar(
+                      backgroundImage: AssetImage(image),
+                      radius: 20,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
