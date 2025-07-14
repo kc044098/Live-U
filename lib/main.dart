@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:provider/provider.dart' as legacy;
 import 'features/live/broadcaster_page.dart';
+import 'features/live/live_video_page.dart';
 import 'l10n/l10n.dart';
 import 'locale_provider.dart';
 import 'features/auth/login_screen.dart';

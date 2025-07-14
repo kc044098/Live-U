@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/svg.dart';
 
 import '../../l10n/l10n.dart';
 import 'google_auth_service.dart';
@@ -12,25 +13,15 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
-  final emailController = TextEditingController();
-  final passwordController = TextEditingController();
   final GoogleAuthService _googleAuthService = GoogleAuthService();
   bool _isLoading = false;
 
-  @override
-  void dispose() {
-    emailController.dispose();
-    passwordController.dispose();
-    super.dispose();
-  }
-
   Future<void> _handleGoogleLogin() async {
     setState(() => _isLoading = true);
-
     final user = await _googleAuthService.signInWithGoogle(ref);
+    setState(() => _isLoading = false);
 
     if (!mounted) return;
-    setState(() => _isLoading = false);
 
     if (user != null) {
       Navigator.pushReplacementNamed(context, '/home');
@@ -41,69 +32,142 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  void _fakeLogin() {
+    Navigator.pushReplacementNamed(context, '/home');
+  }
+
+  Widget _buildLoginButton({
+    required String label,
+    required String iconPath,
+    required VoidCallback onPressed,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: OutlinedButton(
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 0),
+          minimumSize: const Size(double.infinity, 32),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+          side: const BorderSide(color: Colors.black12),
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black87,
+        ),
+        onPressed: onPressed,
+        child: SizedBox(
+          width: double.infinity,
+          height: 32,
+          child: Stack(
+            children: [
+              // 文字
+              Positioned(
+                left: 120,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: Text(
+                    label,
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                ),
+              ),
+              // 圖示
+              Positioned(
+                left: 80,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: SvgPicture.asset(
+                    iconPath,
+                    height: 28,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = S.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.appTitle),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.language),
-            onPressed: () {
-              // 如果你有 LocaleProvider，可放這裡切換語言
-            },
-          ),
-        ],
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
+      backgroundColor: Colors.white,
+      body: SafeArea(
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
-            : Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            TextField(
-              controller: emailController,
-              decoration: InputDecoration(
-                labelText: l10n.email,
-                border: const OutlineInputBorder(),
+            : Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const SizedBox(height: 64),
+              SvgPicture.asset(
+                'assets/logo_placeholder.svg',
+                height: 80,
               ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: passwordController,
-              obscureText: true,
-              decoration: InputDecoration(
-                labelText: l10n.password,
-                border: const OutlineInputBorder(),
+              const SizedBox(height: 28),
+              const Text(
+                '欢迎您的登录',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
               ),
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pushReplacementNamed(context, '/home');
-              },
-              child: Text(l10n.login),
-            ),
-            const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.black87,
-                minimumSize: const Size(double.infinity, 48),
+              const SizedBox(height: 64),
+              _buildLoginButton(
+                label: '通过 Facebook 登录',
+                iconPath: 'assets/icon_facebook.svg',
+                onPressed: _fakeLogin,
               ),
-              icon: Image.asset(
-                'assets/icon_google.jpg',
-                height: 40,
+              _buildLoginButton(
+                label: '通过 Google 登录',
+                iconPath: 'assets/icon_google.svg',
+                onPressed: _handleGoogleLogin,
               ),
-              label: const Text('使用 Google 登入'),
-              onPressed: _handleGoogleLogin,
-            ),
-          ],
+              _buildLoginButton(
+                label: '通过 Apple 登录',
+                iconPath: 'assets/icon_apple.svg',
+                onPressed: _fakeLogin,
+              ),
+              _buildLoginButton(
+                label: '通过邮箱登录',
+                iconPath: 'assets/icon_email.svg',
+                onPressed: _fakeLogin,
+              ),
+              _buildLoginButton(
+                label: '通过账号密码登录',
+                iconPath: 'assets/icon_user.svg',
+                onPressed: _fakeLogin,
+              ),
+              const SizedBox(height: 24),
+              Text.rich(
+                TextSpan(
+                  text: '登录及代表您确认已满18岁，并同意我们的 ',
+                  children: [
+                    TextSpan(
+                      text: '《使用条款》',
+                      style: const TextStyle(color: Colors.deepPurple),
+                    ),
+                    const TextSpan(text: ' 和 '),
+                    TextSpan(
+                      text: '《主播协议》',
+                      style: const TextStyle(color: Colors.deepPurple),
+                    ),
+                    const TextSpan(text: ' 与 '),
+                    TextSpan(
+                      text: '《隐私政策》',
+                      style: const TextStyle(color: Colors.deepPurple),
+                    ),
+                  ],
+                ),
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
         ),
       ),
     );
