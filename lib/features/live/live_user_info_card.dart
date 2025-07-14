@@ -3,6 +3,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../profile/view_profile_page.dart';
+
 class LiveUserInfoCard extends StatefulWidget {
   final String name;
   final String avatarPath;
@@ -35,9 +37,19 @@ class _LiveUserInfoCardState extends State<LiveUserInfoCard> {
             // 頭像 + 綠點
             Stack(
               children: [
-                CircleAvatar(
-                  backgroundImage: AssetImage(widget.avatarPath),
-                  radius: 24,
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ViewProfilePage(displayName: widget.name),
+                      ),
+                    );
+                  },
+                  child: CircleAvatar(
+                    backgroundImage: AssetImage(widget.avatarPath),
+                    radius: 24,
+                  ),
                 ),
                 Positioned(
                   bottom: 3,

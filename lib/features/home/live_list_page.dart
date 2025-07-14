@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:video_player/video_player.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 import '../live/live_user_info_card.dart';
 import '../live/live_video_page.dart';
@@ -18,11 +19,6 @@ class LiveListPage extends StatefulWidget {
 class _LiveListPageState extends State<LiveListPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final PageController _pageController = PageController();
-  int _currentPage = 0;
-  final int _bufferSize = 2;
-  bool _initializedPageView = false;
-
   final List<Map<String, String>> mockUsers = List.generate(8, (index) {
     final imgIndex = (index % 4) + 1;
     return {
@@ -31,6 +27,8 @@ class _LiveListPageState extends State<LiveListPage>
       'image': 'assets/pic_girl$imgIndex.png',
     };
   });
+
+  late final HomeVideoTab _homeVideoTab;
 
   @override
   void initState() {
@@ -44,16 +42,16 @@ class _LiveListPageState extends State<LiveListPage>
         }
       });
 
+    _homeVideoTab = HomeVideoTab(usersList: mockUsers);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.onTabChanged?.call(_tabController.index);
     });
   }
 
-
   @override
   void dispose() {
     _tabController.dispose();
-    _pageController.dispose();
     super.dispose();
   }
 
@@ -63,7 +61,7 @@ class _LiveListPageState extends State<LiveListPage>
       body: Stack(
         children: [
           _tabController.index == 0
-              ? SafeArea(top: false, child: _buildHomePageView())
+              ? SafeArea(top: false, child: _homeVideoTab)
               : SafeArea(child: _buildFriendListView()),
           SafeArea(
             child: Container(
@@ -89,41 +87,6 @@ class _LiveListPageState extends State<LiveListPage>
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildHomePageView() {
-    final List<Map<String, String>> usersList = mockUsers.toList();
-
-    if (!_initializedPageView && _pageController.hasClients) {
-      final initialPage = 100 * usersList.length;
-      _pageController.jumpToPage(initialPage);
-      _currentPage = initialPage;
-      _initializedPageView = true;
-    }
-
-    return PageView.builder(
-      controller: _pageController,
-      scrollDirection: Axis.vertical,
-      onPageChanged: (index) {
-        setState(() {
-          _currentPage = index;
-        });
-      },
-      itemBuilder: (context, index) {
-        final actualIndex = index % usersList.length;
-        final user = usersList[actualIndex];
-
-        if ((index - _currentPage).abs() > _bufferSize) {
-          return const SizedBox();
-        }
-
-        return _LiveVideoItem(
-          videoPath: 'assets/demo_video.mp4',
-          name: user['name']!,
-          image: user['image']!,
-        );
-      },
     );
   }
 
@@ -203,48 +166,163 @@ class _LiveListPageState extends State<LiveListPage>
   }
 }
 
-class _LiveVideoItem extends StatefulWidget {
-  final String videoPath;
-  final String name;
-  final String image;
-
-  const _LiveVideoItem({
-    required this.videoPath,
-    required this.name,
-    required this.image,
-  });
+class HomeVideoTab extends StatefulWidget {
+  final List<Map<String, String>> usersList;
+  const HomeVideoTab({super.key, required this.usersList});
 
   @override
-  State<_LiveVideoItem> createState() => _LiveVideoItemState();
+  State<HomeVideoTab> createState() => _HomeVideoTabState();
 }
 
-class _LiveVideoItemState extends State<_LiveVideoItem> {
-  late VideoPlayerController _controller;
+class _HomeVideoTabState extends State<HomeVideoTab>
+    with AutomaticKeepAliveClientMixin {
+  final PageController _pageController = PageController();
+  int _initialPage = 5000;
+  int _currentPage = 5000;
+  final int _bufferSize = 2;
+  bool _initialized = false;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.asset(widget.videoPath);
-    _controller.initialize().then((_) {
-      if (mounted) {
-        setState(() {});
-        _controller.play();
-        _controller.setLooping(true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_initialized && _pageController.hasClients) {
+        _pageController.jumpToPage(_initialPage);
+        setState(() {
+          _currentPage = _initialPage;
+          _initialized = true;
+        });
       }
     });
   }
 
   @override
   void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification is ScrollEndNotification) {
+          final page = _pageController.page?.round();
+          if (page != null && page != _currentPage) {
+            setState(() {
+              _currentPage = page;
+            });
+          }
+        }
+        return false;
+      },
+      child: PageView.builder(
+        controller: _pageController,
+        scrollDirection: Axis.vertical,
+        itemBuilder: (context, index) {
+          final actualIndex = index % widget.usersList.length;
+          final user = widget.usersList[actualIndex];
+
+          if ((index - _currentPage).abs() > _bufferSize) {
+            return const SizedBox();
+          }
+
+          return _LiveVideoItem(
+            videoPath: 'assets/demo_video.mp4',
+            name: user['name']!,
+            image: user['image']!,
+            isActive: index == _currentPage,
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _LiveVideoItem extends StatefulWidget {
+  final String videoPath;
+  final String name;
+  final String image;
+  final bool isActive;
+
+  const _LiveVideoItem({
+    required this.videoPath,
+    required this.name,
+    required this.image,
+    required this.isActive,
+  });
+
+  @override
+  State<_LiveVideoItem> createState() => _LiveVideoItemState();
+}
+
+class _LiveVideoItemState extends State<_LiveVideoItem> with WidgetsBindingObserver {
+  late VideoPlayerController _controller;
+  bool _isVisible = true; // 控制頁面是否可見
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
+    _controller = VideoPlayerController.asset(widget.videoPath);
+    _controller.initialize().then((_) {
+      if (mounted) {
+        setState(() {});
+        _controller.setLooping(true);
+        if (widget.isActive && _isVisible) {
+          _controller.play();
+        }
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _LiveVideoItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.isActive && widget.isActive && _controller.value.isInitialized) {
+      _controller.play();
+    }
+    if (oldWidget.isActive && !widget.isActive && _controller.value.isInitialized) {
+      _controller.pause();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _controller.pause();
+    } else if (state == AppLifecycleState.resumed && widget.isActive) {
+      _controller.play();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {},
+    return VisibilityDetector(
+      key: ValueKey('LiveVideoItem-${widget.name}'),
+      onVisibilityChanged: (info) {
+        final visible = info.visibleFraction > 0.5;
+        if (_isVisible != visible) {
+          _isVisible = visible;
+          if (visible && widget.isActive && _controller.value.isInitialized) {
+            _controller.play();
+          } else {
+            _controller.pause();
+          }
+        }
+      },
       child: Stack(
         children: [
           Positioned.fill(
