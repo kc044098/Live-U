@@ -1,7 +1,10 @@
+
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import './providers/auth_repository_provider.dart';
 import '../../core/user_local_storage.dart';
 import '../../data/models/user_model.dart';
 import '../profile/profile_controller.dart';
@@ -29,7 +32,7 @@ class GoogleAuthService {
 
       if (user != null) {
         final idToken = await user.getIdToken();
-        final userModel = UserModel(
+        final tempModel = UserModel(
           uid: user.uid,
           email: user.email ?? '',
           displayName: user.displayName ?? '',
@@ -37,8 +40,15 @@ class GoogleAuthService {
           idToken: idToken,
         );
 
-        await UserLocalStorage.saveUser(userModel);
-        ref.read(userProfileProvider.notifier).setUser(userModel); // ✅ 更新 provider
+        final authRepository = ref.read(authRepositoryProvider);
+        final resultModel = await authRepository.loginWithGoogle(tempModel);
+        print('🔥 準備送出資料給後端');
+        print(tempModel.toJson());
+
+        await UserLocalStorage.saveUser(resultModel);
+        print('✅ 後端回傳成功: ${resultModel.toJson()}');
+
+        ref.read(userProfileProvider.notifier).setUser(resultModel);
       }
 
       return user;
@@ -64,7 +74,7 @@ class GoogleAuthService {
 
       if (user != null) {
         final idToken = await user.getIdToken();
-        final userModel = UserModel(
+        final tempModel = UserModel(
           uid: user.uid,
           email: user.email ?? '',
           displayName: user.displayName ?? '',
@@ -72,8 +82,21 @@ class GoogleAuthService {
           idToken: idToken,
         );
 
-        await UserLocalStorage.saveUser(userModel);
-        ref.read(userProfileProvider.notifier).setUser(userModel);
+        print('Firebase idToken: $idToken');
+        print('user.uid: ${user.uid}');
+        print('user.email: ${user.email}');
+        print('user.displayName: ${user.displayName}');
+        print('user.photoURL: ${user.photoURL}');
+
+        final authRepository = ref.read(authRepositoryProvider);
+        final resultModel = await authRepository.loginWithGoogle(tempModel);
+        print('🔥 準備送出登錄資料給後端');
+        print(tempModel.toJson());
+
+        await UserLocalStorage.saveUser(resultModel);
+        print('✅ 後端回傳登錄成功: ${resultModel.toJson()}');
+
+        ref.read(userProfileProvider.notifier).setUser(resultModel);
       }
 
       return user;

@@ -37,12 +37,16 @@ dependencies:
   video_thumbnail: ^0.5.3
   flutter_svg: ^2.0.7
   visibility_detector: ^0.3.3
+  json_annotation: ^4.8.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
   flutter_lints: ^6.0.0
+  build_runner: ^2.4.6
+  json_serializable: ^6.7.1
+
 flutter:
   uses-material-design: true
   generate: true

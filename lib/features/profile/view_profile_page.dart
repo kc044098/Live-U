@@ -13,8 +13,9 @@ import '../widgets/fullscreen_video_player_page.dart';
 
 class ViewProfilePage extends StatefulWidget {
   final String displayName;
+  final String avatarPath;
 
-  const ViewProfilePage({super.key, required this.displayName});
+  const ViewProfilePage({super.key, required this.displayName, required this.avatarPath});
 
   @override
   State<ViewProfilePage> createState() => _ViewProfilePageState();
@@ -414,7 +415,7 @@ class _ViewProfilePageState extends State<ViewProfilePage> {
               width: double.infinity,
               height: 240,
               child: Image.asset(
-                'assets/pic_girl1.png',
+                widget.avatarPath,
                 fit: BoxFit.cover,
                 alignment: Alignment.topCenter,
               ),

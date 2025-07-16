@@ -5,6 +5,7 @@ import '../data/models/user_model.dart';
 
 class UserLocalStorage {
   static const _keyUser = 'user';
+  static const _keyServerToken = 'serverToken';
 
   static Future<void> saveUser(UserModel user) async {
     final prefs = await SharedPreferences.getInstance();
@@ -22,5 +23,15 @@ class UserLocalStorage {
   static Future<void> clear() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyUser);
+  }
+
+  static Future<void> saveServerToken(String token) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyServerToken, token);
+  }
+
+  static Future<String?> getServerToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyServerToken);
   }
 }

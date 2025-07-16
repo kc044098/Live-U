@@ -1,9 +1,11 @@
 // # 第一個頁籤內容
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/svg.dart';
 
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
+import '../call/call_request_page.dart';
 import '../live/live_user_info_card.dart';
 import '../live/live_video_page.dart';
 
@@ -263,6 +265,7 @@ class _LiveVideoItem extends StatefulWidget {
 class _LiveVideoItemState extends State<_LiveVideoItem> with WidgetsBindingObserver {
   late VideoPlayerController _controller;
   bool _isVisible = true; // 控制頁面是否可見
+  bool _isControllerDisposed = false;
 
   @override
   void initState() {
@@ -284,25 +287,30 @@ class _LiveVideoItemState extends State<_LiveVideoItem> with WidgetsBindingObser
   @override
   void didUpdateWidget(covariant _LiveVideoItem oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!oldWidget.isActive && widget.isActive && _controller.value.isInitialized) {
-      _controller.play();
-    }
-    if (oldWidget.isActive && !widget.isActive && _controller.value.isInitialized) {
-      _controller.pause();
+    if (mounted && !_isControllerDisposed && _controller.value.isInitialized) {
+      if (!oldWidget.isActive && widget.isActive) {
+        _controller.play();
+      }
+      if (oldWidget.isActive && !widget.isActive) {
+        _controller.pause();
+      }
     }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
-      _controller.pause();
-    } else if (state == AppLifecycleState.resumed && widget.isActive) {
-      _controller.play();
+    if (mounted && !_isControllerDisposed && _controller.value.isInitialized) {
+      if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+        _controller.pause();
+      } else if (state == AppLifecycleState.resumed && widget.isActive) {
+        _controller.play();
+      }
     }
   }
 
   @override
   void dispose() {
+    _isControllerDisposed = true;
     WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     super.dispose();
@@ -316,10 +324,12 @@ class _LiveVideoItemState extends State<_LiveVideoItem> with WidgetsBindingObser
         final visible = info.visibleFraction > 0.5;
         if (_isVisible != visible) {
           _isVisible = visible;
-          if (visible && widget.isActive && _controller.value.isInitialized) {
-            _controller.play();
-          } else {
-            _controller.pause();
+          if (mounted && !_isControllerDisposed && _controller.value.isInitialized) {
+            if (visible && widget.isActive) {
+              _controller.play();
+            } else {
+              _controller.pause();
+            }
           }
         }
       },
@@ -338,6 +348,17 @@ class _LiveVideoItemState extends State<_LiveVideoItem> with WidgetsBindingObser
                 : const Center(child: CircularProgressIndicator()),
           ),
           Positioned(
+            left: 0,
+            right: 0,
+            bottom: 220,
+            child: GestureDetector(
+              onTap: _handleCallRequest,
+              child: SvgPicture.asset(
+                'assets/live_start_1.svg',
+              ),
+            ),
+          ),
+          Positioned(
             left: 16,
             right: 16,
             bottom: 96,
@@ -349,6 +370,23 @@ class _LiveVideoItemState extends State<_LiveVideoItem> with WidgetsBindingObser
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _handleCallRequest() {
+    final broadcasterId = widget.name ?? '';
+    final broadcasterName = widget.name ?? '主播';
+    final broadcasterImage = widget.image ?? 'assets/default.jpg';
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CallRequestPage(
+          broadcasterId: broadcasterId,
+          broadcasterName: broadcasterName,
+          broadcasterImage: broadcasterImage,
+        ),
       ),
     );
   }

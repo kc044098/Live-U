@@ -131,7 +131,7 @@ class _LiveVideoPageState extends State<LiveVideoPage> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => ViewProfilePage(displayName: name),
+                          builder: (_) => ViewProfilePage(displayName: name, avatarPath: image,),
                         ),
                       );
                     },
