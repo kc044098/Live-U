@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../config/app_config.dart';
 import 'auth_interceptor.dart';
@@ -7,7 +8,7 @@ import 'auth_interceptor.dart';
 class ApiClient {
   late final Dio _dio;
 
-  ApiClient(AppConfig config) {
+  ApiClient(AppConfig config, Ref ref) {
     _dio = Dio(BaseOptions(
       baseUrl: config.apiBaseUrl,
       connectTimeout: const Duration(seconds: 10),
@@ -16,7 +17,7 @@ class ApiClient {
 
     // 註冊攔截器
     _dio.interceptors.addAll([
-      AuthInterceptor(), // 負責處理 token 攔截
+      AuthInterceptor(ref), // 負責處理 token 攔截
       if (kDebugMode) LogInterceptor(requestBody: true, responseBody: true),
     ]);
   }

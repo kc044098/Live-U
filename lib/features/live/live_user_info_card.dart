@@ -42,7 +42,7 @@ class _LiveUserInfoCardState extends State<LiveUserInfoCard> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => ViewProfilePage(displayName: widget.name),
+                        builder: (_) => ViewProfilePage(displayName: widget.name, avatarPath: widget.avatarPath,),
                       ),
                     );
                   },
