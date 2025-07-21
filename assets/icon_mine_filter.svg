@@ -1,0 +1,15 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Iconly/Curved/Filter">
+<mask id="mask0_0_10195" style="mask-type:luminance" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+<path id="&#232;&#183;&#175;&#229;&#190;&#132;" fill-rule="evenodd" clip-rule="evenodd" d="M0 0H24V24H0V0Z" fill="white"/>
+</mask>
+<g mask="url(#mask0_0_10195)">
+<g id="Filter">
+<path id="Stroke 1" d="M10.358 16.2793H4.67114" stroke="#616161" stroke-width="1.5" stroke-linejoin="round"/>
+<path id="Stroke 3" fill-rule="evenodd" clip-rule="evenodd" d="M13.9263 16.2791C13.9263 18.073 14.5245 18.6705 16.3177 18.6705C18.1108 18.6705 18.709 18.073 18.709 16.2791C18.709 14.4851 18.1108 13.8877 16.3177 13.8877C14.5245 13.8877 13.9263 14.4851 13.9263 16.2791V16.2791Z" stroke="#616161" stroke-width="1.5" stroke-linejoin="round"/>
+<path id="Stroke 5" d="M13.0226 7.06348H18.7086" stroke="#616161" stroke-width="1.5" stroke-linejoin="round"/>
+<path id="Stroke 7" fill-rule="evenodd" clip-rule="evenodd" d="M9.45445 7.06228C9.45445 5.26914 8.85622 4.6709 7.06307 4.6709C5.26914 4.6709 4.6709 5.26914 4.6709 7.06228C4.6709 8.85622 5.26914 9.45367 7.06307 9.45367C8.85622 9.45367 9.45445 8.85622 9.45445 7.06228V7.06228Z" stroke="#616161" stroke-width="1.5" stroke-linejoin="round"/>
+</g>
+</g>
+</g>
+</svg>

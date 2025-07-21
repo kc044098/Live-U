@@ -1,0 +1,13 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Iconly/Curved/Heart&#229;&#164;&#135;&#228;&#187;&#189;">
+<mask id="mask0_0_10181" style="mask-type:luminance" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+<path id="&#232;&#183;&#175;&#229;&#190;&#132;" fill-rule="evenodd" clip-rule="evenodd" d="M0 0H24V24H0V0Z" fill="white"/>
+</mask>
+<g mask="url(#mask0_0_10181)">
+<g id="Heart">
+<path id="Stroke 1" fill-rule="evenodd" clip-rule="evenodd" d="M3.86313 12.0425C2.95941 9.22098 4.01642 5.71306 6.97858 4.75964C8.53672 4.25683 10.4596 4.67626 11.5519 6.18303C12.582 4.62067 14.5604 4.26019 16.1169 4.75964C19.0782 5.71306 20.1411 9.22098 19.2382 12.0425C17.8317 16.5148 12.9239 18.8444 11.5519 18.8444C10.1808 18.8444 5.31684 16.567 3.86313 12.0425V12.0425Z" stroke="#616161" stroke-width="1.5" stroke-linejoin="round"/>
+<path id="Stroke 3" d="M14.7001 7.93066C15.7167 8.0351 16.3525 8.84112 16.3146 9.97057" stroke="#616161" stroke-width="1.5" stroke-linejoin="round"/>
+</g>
+</g>
+</g>
+</svg>

@@ -100,7 +100,7 @@ class _LiveUserInfoCardState extends State<LiveUserInfoCard> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Image.asset(
-                          'assets/live_gold1.png',
+                          'assets/icon_gold1.png',
                           width: 24,
                           height: 24,
                         ),

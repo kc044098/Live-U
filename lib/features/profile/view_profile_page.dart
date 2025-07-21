@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/services.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 
+import '../call/call_request_page.dart';
 import '../widgets/fullscreen_image_page.dart';
 import '../widgets/fullscreen_video_player_page.dart';
 
@@ -122,11 +123,11 @@ class _ViewProfilePageState extends State<ViewProfilePage> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => FullscreenVideoPlayerPage(videoPath: 'assets/demo_video.mp4'),
+                      builder: (context) => FullscreenVideoPlayerPage(videoPath: 'assets/demo_video1.mp4'),
                     ),
                   );
                 },
-                child: _buildMediaCard(videoPath: 'assets/demo_video.mp4'),
+                child: _buildMediaCard(videoPath: 'assets/demo_video1.mp4'),
               ),
             ],
           ),
@@ -223,7 +224,7 @@ class _ViewProfilePageState extends State<ViewProfilePage> {
             itemBuilder: (context, index) {
               final isVideo = index % 3 == 0;
               final path = isVideo
-                  ? 'assets/demo_video.mp4'
+                  ? 'assets/demo_video1.mp4'
                   : (index % 2 == 0
                   ? 'assets/pic_girl2.png'
                   : 'assets/pic_girl3.png');
@@ -376,7 +377,7 @@ class _ViewProfilePageState extends State<ViewProfilePage> {
         children: [
           GestureDetector(
             onTap: () {
-              // 點擊事件
+              _handleCallRequest();
             },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 12),
@@ -394,6 +395,23 @@ class _ViewProfilePageState extends State<ViewProfilePage> {
         ],
       ),
     ],
+    );
+  }
+
+  void _handleCallRequest() {
+    final broadcasterId = widget.displayName ?? '';
+    final broadcasterName = widget.displayName ?? '主播';
+    final broadcasterImage = widget.avatarPath ?? 'assets/default.jpg';
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CallRequestPage(
+          broadcasterId: broadcasterId,
+          broadcasterName: broadcasterName,
+          broadcasterImage: broadcasterImage,
+        ),
+      ),
     );
   }
 

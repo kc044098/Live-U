@@ -4,6 +4,8 @@ class UserModel {
   final String displayName;
   final String? photoURL;
   final String? idToken;
+  final String? isBroadcaster;
+  bool? isVip;
 
   UserModel({
     required this.uid,
@@ -11,6 +13,8 @@ class UserModel {
     required this.displayName,
     this.photoURL,
     this.idToken,
+    this.isBroadcaster,
+    this.isVip,
   });
 
   Map<String, dynamic> toJson() {
@@ -20,6 +24,8 @@ class UserModel {
       'displayName': displayName,
       'photoURL': photoURL,
       'idToken': idToken,
+      'isBroadcaster': isBroadcaster,
+      'isVip': isVip,
     };
   }
 
@@ -28,8 +34,10 @@ class UserModel {
       uid: json['uid'] ?? '',
       email: json['email'] ?? '',
       displayName: json['displayName'] ?? '',
-      photoURL: json['photoURL'],
-      idToken: json['idToken'],
+      photoURL: json['photoURL'] ?? '',
+      idToken: json['idToken'] ?? '',
+      isBroadcaster: json['isBroadcaster'] ?? '1',
+      isVip: json['isVip'] ?? false,
     );
   }
 
@@ -39,6 +47,8 @@ class UserModel {
     String? displayName,
     String? photoURL,
     String? idToken,
+    String? isBroadcaster,
+    bool? isVip,
   }) {
     return UserModel(
       uid: uid ?? this.uid,
@@ -46,6 +56,8 @@ class UserModel {
       displayName: displayName ?? this.displayName,
       photoURL: photoURL ?? this.photoURL,
       idToken: idToken ?? this.idToken,
+      isBroadcaster: isBroadcaster ?? this.isBroadcaster,
+      isVip: isVip ?? this.isVip,
     );
   }
 }

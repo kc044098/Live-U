@@ -44,4 +44,5 @@ class UserProfileController extends StateNotifier<UserModel?> {
     await _repository.clearUser();
     state = null;
   }
+
 }

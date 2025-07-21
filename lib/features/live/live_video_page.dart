@@ -22,7 +22,7 @@ class _LiveVideoPageState extends State<LiveVideoPage> {
   void initState() {
     super.initState();
 
-    final videoPath = widget.user['videoPath'] ?? 'assets/demo_video.mp4';
+    final videoPath = widget.user['videoPath'] ?? 'assets/demo_video1.mp4';
     if (videoPath.startsWith('http')) {
       _controller = VideoPlayerController.network(videoPath);
     } else if (videoPath.startsWith('/')) {
