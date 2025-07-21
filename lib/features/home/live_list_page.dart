@@ -27,6 +27,7 @@ class _LiveListPageState extends State<LiveListPage>
       'broadcaster': 'broadcaster00$index',
       'name': 'Ariana Flores $index',
       'image': 'assets/pic_girl$imgIndex.png',
+      'videoPath': 'assets/demo_video$imgIndex.mp4',
     };
   });
 
@@ -233,8 +234,10 @@ class _HomeVideoTabState extends State<HomeVideoTab>
             return const SizedBox();
           }
 
+          final videoIndex = (index % 4) + 1;
+          final videoPath = 'assets/demo_video$videoIndex.mp4';
           return _LiveVideoItem(
-            videoPath: 'assets/demo_video.mp4',
+            videoPath: videoPath,
             name: user['name']!,
             image: user['image']!,
             isActive: index == _currentPage,

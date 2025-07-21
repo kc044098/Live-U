@@ -161,7 +161,7 @@ class _EditMinePageState extends State<EditMinePage> {
             itemBuilder: (context, index) {
               final isVideo = index % 3 == 0;
               final path = isVideo
-                  ? 'assets/demo_video.mp4'
+                  ? 'assets/demo_video1.mp4'
                   : (index % 2 == 0
                   ? 'assets/pic_girl2.png'
                   : 'assets/pic_girl3.png');

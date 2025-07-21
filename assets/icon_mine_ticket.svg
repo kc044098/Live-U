@@ -1,0 +1,15 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Iconly/Curved/Ticket">
+<mask id="mask0_0_10126" style="mask-type:luminance" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+<path id="&#232;&#183;&#175;&#229;&#190;&#132;" fill-rule="evenodd" clip-rule="evenodd" d="M0 0H24V24H0V0Z" fill="white"/>
+</mask>
+<g mask="url(#mask0_0_10126)">
+<g id="Ticket">
+<path id="Stroke 1" d="M13.1447 5.08398V7.31998" stroke="#616161" stroke-width="1.5" stroke-linejoin="round"/>
+<path id="Stroke 3" d="M13.1447 16.8262V18.6958" stroke="#616161" stroke-width="1.5" stroke-linejoin="round"/>
+<path id="Stroke 6" d="M13.1447 14.3003V9.84668" stroke="#616161" stroke-width="1.5" stroke-linejoin="round"/>
+<path id="Stroke 7" fill-rule="evenodd" clip-rule="evenodd" d="M20 13.8845C17.7341 13.8845 17.7341 10.4305 20 10.4305C20 6.4284 20 5 12 5C4 5 4 6.4284 4 10.4305C6.26589 10.4305 6.26589 13.8845 4 13.8845C4 17.8874 4 19.3158 12 19.3158C20 19.3158 20 17.8874 20 13.8845V13.8845Z" stroke="#616161" stroke-width="1.5" stroke-linejoin="round"/>
+</g>
+</g>
+</g>
+</svg>

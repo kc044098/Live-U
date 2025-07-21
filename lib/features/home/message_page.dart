@@ -1,15 +1,20 @@
 import 'dart:io';
 
+import 'package:djs_live_stream/features/wallet/my_wallet_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 
+import '../../data/models/user_model.dart';
 import '../message/message_chat_page.dart';
+import '../mine/show_like_alert_dialog.dart';
+import '../profile/profile_controller.dart';
 
-class MessagePage extends StatefulWidget {
+class MessagePage extends ConsumerStatefulWidget {
   const MessagePage({super.key});
 
   @override
-  State<MessagePage> createState() => _MessagePageState();
+  ConsumerState<MessagePage> createState() => _MessagePageState();
 }
 
 class _Message {
@@ -28,7 +33,7 @@ class _Message {
   });
 }
 
-class _MessagePageState extends State<MessagePage>
+class _MessagePageState extends ConsumerState<MessagePage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
@@ -70,25 +75,37 @@ class _MessagePageState extends State<MessagePage>
     Tab(text: '通話'),
   ];
 
-  // 假資料：index=0 是固定的誰喜歡我卡片，其餘為訊息列表
-  final List<_Message> _messages = List.generate(5, (index) {
-    if (index == 0) {
-      return _Message(
-        avatar: 'assets/message_like_1.svg',
-        name: '誰喜歡我',
-        message: '[漂亮的小姐姐]  剛喜歡你',
-        time: '',
-        unreadCount: 0,
+  List<_Message> getMessages(UserModel user) {
+    final List<_Message> list = [];
+
+    // 非 VIP 才加入「誰喜歡我」
+    if (user.isVip != true) {
+      list.add(
+        _Message(
+          avatar: 'assets/message_like_1.svg',
+          name: '誰喜歡我',
+          message: '[漂亮的小姐姐]  剛喜歡你',
+          time: '',
+          unreadCount: 0,
+        ),
       );
     }
-    return _Message(
-      avatar: 'assets/pic_girl$index.png',
-      name: '漂亮的小姐姐 $index',
-      message: '您好啊',
-      time: '一分鐘前',
-      unreadCount: 1,
-    );
-  });
+
+    // 加入其他假訊息
+    for (var i = 1; i <= 4; i++) {
+      list.add(
+        _Message(
+          avatar: 'assets/pic_girl$i.png',
+          name: '漂亮的小姐姐 $i',
+          message: '您好啊',
+          time: '一分鐘前',
+          unreadCount: 1,
+        ),
+      );
+    }
+
+    return list;
+  }
 
   final List<Map<String, String>> _callRecords = [
     {
@@ -131,6 +148,7 @@ class _MessagePageState extends State<MessagePage>
 
   @override
   Widget build(BuildContext context) {
+    final user = ref.watch(userProfileProvider);
     return Column(
       children: [
         const SizedBox(height: 40),
@@ -157,7 +175,7 @@ class _MessagePageState extends State<MessagePage>
           child: TabBarView(
             controller: _tabController,
             children: [
-              _buildMessageContent(),
+              _buildMessageContent( user),
               _buildCallContent(),
             ],
           ),
@@ -166,17 +184,18 @@ class _MessagePageState extends State<MessagePage>
     );
   }
 
-  Widget _buildMessageContent() {
+  Widget _buildMessageContent(UserModel? user) {
+    final messages = getMessages(user!);
     return Stack(
       children: [
         ListView.builder(
           padding: const EdgeInsets.only(bottom: 120),
-          itemCount: _messages.length,
+          itemCount: messages.length,
           itemBuilder: (context, index) {
-            final item = _messages[index];
+            final item = messages[index];
 
             Widget tile;
-            if (index == 0) {
+            if (index == 0 && user.isVip == false) {
               // 固定「誰喜歡我」卡片
               tile = ListTile(
                 leading: SvgPicture.asset(
@@ -192,7 +211,12 @@ class _MessagePageState extends State<MessagePage>
                   item.message,
                   style: const TextStyle(color: Colors.grey),
                 ),
-                onTap: _showLikeAlertDialog,
+                  onTap: () {
+                    showLikeAlertDialog(context, () {
+                      Navigator.pop(context); // 關閉彈窗
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const MyWalletPage()));
+                    });
+                  }
               );
             } else {
               // 普通訊息卡片
@@ -210,7 +234,7 @@ class _MessagePageState extends State<MessagePage>
                         width: 12,
                         height: 12,
                         decoration: BoxDecoration(
-                          color: _getStatusColor(index), // ✅ 根據狀態改顏色
+                          color: _getStatusColor(index),
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 2),
                         ),
@@ -360,80 +384,6 @@ class _MessagePageState extends State<MessagePage>
       default:
         return Colors.grey; // 離線
     }
-  }
-
-  void _showLikeAlertDialog() {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFFFFC3C3), Color(0xFFFFEFEF)],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Stack(
-              children: [
-                // 右上角圖片
-                Positioned(
-                  top: 0,
-                  right: 0,
-                  child: Image.asset(
-                    'assets/message_like_2.png',
-                    width: 60,
-                    height: 60,
-                  ),
-                ),
-                // 主內容
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      '誰喜歡我',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 20),
-                    const Align(
-                      alignment: Alignment.center,
-                      child: Text(
-                        '查看對你心動的Ta，立即聯繫不再等待',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 14, color: Color(0xfffb5d5d)),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    getSubscriptionPlan(),
-                    const SizedBox(height: 10),
-                    Center(
-                      child: SizedBox(
-                        width: 180,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.pink,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                          ),
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('去充值'),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
   }
 
   Widget getSubscriptionPlan() {

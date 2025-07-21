@@ -98,7 +98,6 @@ class GoogleAuthService {
 
         ref.read(userProfileProvider.notifier).setUser(resultModel);
       }
-
       return user;
     } catch (e) {
       print('Google Sign-In failed: $e');

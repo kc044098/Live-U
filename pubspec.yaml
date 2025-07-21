@@ -38,6 +38,7 @@ dependencies:
   flutter_svg: ^2.0.7
   visibility_detector: ^0.3.3
   json_annotation: ^4.8.1
+  web_socket_channel: ^2.4.0
 
 dev_dependencies:
   flutter_test:
@@ -52,5 +53,4 @@ flutter:
   generate: true
   assets:
     - assets/
-    - assets/demo_video.mp4
     - assets/demo_music.mp3
