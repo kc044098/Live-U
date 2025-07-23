@@ -67,8 +67,8 @@ void showLikeAlertDialog(BuildContext context, VoidCallback onConfirm, {
                               borderRadius: BorderRadius.circular(20),
                             ),
                           ),
-                          onPressed: onConfirm, // ✅ 可以自定義行為
-                          child: const Text('去充值'),
+                          onPressed: onConfirm,
+                          child: const  Text('購買VIP', style: TextStyle(color: Colors.white)),
                         ),
                       ),
                     ),

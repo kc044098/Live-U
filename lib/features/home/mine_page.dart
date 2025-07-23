@@ -8,14 +8,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../data/models/user_model.dart';
+import '../mine/invite_friend_page.dart';
 import '../mine/price_setting_page.dart';
-import '../mine/show_like_alert_dialog.dart';
 import '../mine/vip_privilege_page.dart';
 import '../mine/who_likes_me_page.dart';
 import '../profile/logout_confirm_dialog.dart';
 import '../profile/profile_controller.dart';
 import '../mine/edit_mine_page.dart';
-import '../../l10n/l10n.dart';
 import '../wallet/my_wallet_page.dart';
 
 class MinePage extends ConsumerStatefulWidget {
@@ -276,76 +275,85 @@ class _MinePageState extends ConsumerState<MinePage> {
 
                         // 右側卡片（未變動）
                         Expanded(
-                          child: Stack(
-                            children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: SvgPicture.asset(
-                                  'assets/mine_pic_2.svg',
-                                  width: double.infinity,
-                                  height: 94,
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                              Positioned.fill(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      const SizedBox(height: 8),
-                                      const Text('邀请好友',
-                                          style: TextStyle(
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.bold,
-                                              color: Color(0xFFFF4D67))),
-                                      const SizedBox(height: 8),
-                                      Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          const Text('赚取永久佣金',
-                                              style: TextStyle(
-                                                  fontSize: 14,
-                                                  color: Color(0xFFFF92A2))),
-                                          OutlinedButton(
-                                            onPressed: () {},
-                                            style: OutlinedButton.styleFrom(
-                                              side: const BorderSide(
-                                                  color: Color(0xFFFF4D67),
-                                                  width: 1),
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(20),
-                                              ),
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 10,
-                                                      vertical: 12),
-                                              minimumSize: Size.zero,
-                                              tapTargetSize:
-                                                  MaterialTapTargetSize
-                                                      .shrinkWrap,
-                                              visualDensity:
-                                                  VisualDensity.compact,
-                                            ),
-                                            child: const Text(
-                                              '立即邀请',
-                                              style: TextStyle(
-                                                  fontSize: 12,
-                                                  color: Color(0xFFFF4D67)),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const InviteFriendPage()),
+                              );
+                            },
+                            child: Stack(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: SvgPicture.asset(
+                                    'assets/mine_pic_2.svg',
+                                    width: double.infinity,
+                                    height: 94,
+                                    fit: BoxFit.cover,
                                   ),
                                 ),
-                              ),
-                            ],
+                                Positioned.fill(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const SizedBox(height: 8),
+                                        const Text(
+                                          '邀请好友',
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFFFF4D67),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            const Text(
+                                              '赚取永久佣金',
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                color: Color(0xFFFF92A2),
+                                              ),
+                                            ),
+                                            IgnorePointer(
+                                              child: OutlinedButton(
+                                                onPressed: () {},
+                                                style: OutlinedButton.styleFrom(
+                                                  side: const BorderSide(
+                                                      color: Color(0xFFFF4D67), width: 1),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius: BorderRadius.circular(20),
+                                                  ),
+                                                  padding: const EdgeInsets.symmetric(
+                                                      horizontal: 10, vertical: 12),
+                                                  minimumSize: Size.zero,
+                                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                                  visualDensity: VisualDensity.compact,
+                                                ),
+                                                child: const Text(
+                                                  '立即邀请',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Color(0xFFFF4D67),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
+
                       ],
                     ),
                   ),
@@ -452,13 +460,18 @@ class _MinePageState extends ConsumerState<MinePage> {
             const SizedBox(height: 12),
             // 主播的第二個列表
             _buildFunctionCard([
-              _buildMenuItem('assets/icon_mine_people.svg', '谁喜欢我', () {
-                Navigator.push(
+              _buildMenuItem('assets/icon_mine_people.svg', '谁喜欢我', () async {
+                final result =  await Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => WhoLikesMePage(),
+                    builder: (_) => const WhoLikesMePage(),
                   ),
                 );
+                var user = ref.read(userProfileProvider);
+                user!.isVip = true;
+                if (result == true) {
+                  setState(() {});
+                }
               }),
               _buildMenuItem('assets/icon_mine_like.svg', '我喜欢的', () {
                 Navigator.push(
@@ -481,13 +494,16 @@ class _MinePageState extends ConsumerState<MinePage> {
             // 普通用戶一個列表
             _buildFunctionCard([
               _buildMenuItem('assets/icon_mine_beauty.svg', '美颜设置', () {}),
-              _buildMenuItem('assets/icon_mine_people.svg', '谁喜欢我', () {
-                Navigator.push(
+              _buildMenuItem('assets/icon_mine_people.svg', '谁喜欢我', () async {
+                final result =  await Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => WhoLikesMePage(),
+                    builder: (_) => const WhoLikesMePage(),
                   ),
                 );
+                if (result == true) {
+                  setState(() {});
+                }
               }),
               _buildMenuItem('assets/icon_mine_like.svg', '我喜欢的', () {
                 Navigator.push(

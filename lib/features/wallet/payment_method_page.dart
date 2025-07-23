@@ -177,7 +177,7 @@ class _PaymentMethodPageState extends State<PaymentMethodPage> {
                   // 回來後提示並返回
                   if (context.mounted) {
                     Fluttertoast.showToast(msg: '支付成功');
-                    Navigator.pop(context);
+                    Navigator.pop(context, true);
                   }
 
                   setState(() => isPaying = false);

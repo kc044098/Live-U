@@ -133,10 +133,9 @@ class _LiveListPageState extends State<LiveListPage>
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      const CircleAvatar(
-                        radius: 10,
-                        backgroundColor: Colors.purple,
-                        child: Icon(Icons.person, size: 14, color: Colors.white),
+                      CircleAvatar(
+                        backgroundImage: AssetImage(user['image']!),
+                        radius: 12,
                       ),
                       const SizedBox(width: 6),
                       Expanded(
