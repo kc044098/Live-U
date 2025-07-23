@@ -6,9 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 
 import '../../data/models/user_model.dart';
+import '../call/call_request_page.dart';
 import '../message/message_chat_page.dart';
 import '../mine/show_like_alert_dialog.dart';
 import '../profile/profile_controller.dart';
+import '../wallet/payment_method_page.dart';
 
 class MessagePage extends ConsumerStatefulWidget {
   const MessagePage({super.key});
@@ -212,9 +214,14 @@ class _MessagePageState extends ConsumerState<MessagePage>
                   style: const TextStyle(color: Colors.grey),
                 ),
                   onTap: () {
-                    showLikeAlertDialog(context, () {
+                    showLikeAlertDialog(context, () async {
                       Navigator.pop(context); // 關閉彈窗
-                      Navigator.push(context, MaterialPageRoute(builder: (_) => const MyWalletPage()));
+                      var result = await Navigator.push(context, MaterialPageRoute(builder: (_) => const PaymentMethodPage(amount: 10.77)));
+                      if (result == true) {
+                        var user = ref.read(userProfileProvider);
+                        user?.isVip =true;
+                        setState(() {});
+                      }
                     });
                   }
               );
@@ -368,7 +375,17 @@ class _MessagePageState extends ConsumerState<MessagePage>
             height: 32,
           ),
           onTap: () {
-            // TODO: 點擊通話記錄
+            // 跳轉撥打電話頁面
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => CallRequestPage(
+                  broadcasterId: 'broadcaster00$index',
+                  broadcasterName: call['name']!,
+                  broadcasterImage: call['avatar']!,
+                ),
+              ),
+            );
           },
         );
       },

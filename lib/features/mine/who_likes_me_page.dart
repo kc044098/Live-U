@@ -10,6 +10,7 @@ import 'package:flutter_svg/svg.dart';
 import '../profile/profile_controller.dart';
 import '../profile/view_profile_page.dart';
 import '../wallet/my_wallet_page.dart';
+import '../wallet/payment_method_page.dart';
 class WhoLikesMePage extends ConsumerStatefulWidget {
   const WhoLikesMePage({super.key});
 
@@ -145,10 +146,12 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
                         borderRadius: BorderRadius.circular(20),
                       ),
                     ),
-                    onPressed: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (_) => const MyWalletPage()));
+                    onPressed: () async {
+                      await Navigator.push(context, MaterialPageRoute(builder: (_) => const PaymentMethodPage(amount: 10.77)));
+
+                      Navigator.pop(context, true);
                     },
-                    child: const Text('去充值'),
+                    child: const Text('購買VIP', style: TextStyle(color: Colors.white)),
                   ),
                 ),
               ],
