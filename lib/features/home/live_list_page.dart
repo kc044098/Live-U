@@ -366,7 +366,6 @@ class _LiveVideoItemState extends State<_LiveVideoItem> with WidgetsBindingObser
             bottom: 96,
             child: LiveUserInfoCard(
               name: widget.name,
-              avatarPath: widget.image,
               rateText: '100美元/分鐘',
               tags: ['女 19', '御姐', '高顏值', '運動'],
             ),

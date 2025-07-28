@@ -10,12 +10,17 @@ class AuthRepository {
   AuthRepository(this._api);
 
   Future<UserModel> loginWithGoogle(UserModel googleUser) async {
+    final primaryLogin = googleUser.primaryLogin;
+    if (primaryLogin == null) {
+      throw Exception("缺少主要登入方式");
+    }
+
     final payload = {
-      "flag": "google",
-      "verify_code": googleUser.idToken,
-      "o_auth_id": googleUser.uid,
+      "flag": primaryLogin.provider, // google/apple...
+      "verify_code": primaryLogin.token, // 改用 login.token
+      "o_auth_id": primaryLogin.identifier,
       "nick_name": googleUser.displayName,
-      "email": googleUser.email,
+      "email": primaryLogin.identifier.contains('@') ? primaryLogin.identifier : null,
       "avatar": googleUser.photoURL,
     };
 
@@ -25,19 +30,29 @@ class AuthRepository {
     if (raw is String) {
       raw = jsonDecode(raw);
     }
-
     if (raw is! Map || !raw.containsKey('data')) {
       throw Exception("後端回傳格式錯誤: $raw");
     }
 
     final data = raw['data'];
 
+    // 更新主要登入方式的 token（後端返回的 token）
+    final updatedLogins = googleUser.logins.map((login) {
+      if (login.provider == primaryLogin.provider &&
+          login.identifier == primaryLogin.identifier) {
+        return login.copyWith(token: data['token']);
+      }
+      return login;
+    }).toList();
+
     return googleUser.copyWith(
-      idToken: data['token'],
       uid: data['uid'].toString(),
-      email: data['email'],
       displayName: data['nick_name'],
       photoURL: data['avatar'],
+      isVip: data['is_vip'] ?? false,
+      isBroadcaster: data['is_broadcaster'] ?? false,
+      logins: updatedLogins,
     );
   }
 }
+

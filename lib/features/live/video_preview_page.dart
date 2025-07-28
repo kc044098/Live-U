@@ -10,10 +10,12 @@ final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
 class VideoPreviewPage extends StatefulWidget {
   final String videoPath;
   final bool musicAdded;
+  final String? thumbnailPath;
 
   const VideoPreviewPage({
     super.key,
     required this.videoPath,
+    this.thumbnailPath,
     required this.musicAdded,
   });
 
@@ -23,21 +25,23 @@ class VideoPreviewPage extends StatefulWidget {
 
 class _VideoPreviewPageState extends State<VideoPreviewPage>
     with RouteAware, WidgetsBindingObserver {
-  late VideoPlayerController _videoController;
+  VideoPlayerController? _videoController;
   ap.AudioPlayer? _audioPlayer;
   bool _isDisposed = false;
+  late final bool _isPhoto;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _initializeVideo();
 
-    // 延遲播放音樂，避免一開始搶走影片音訊焦點
-    Future.delayed(const Duration(milliseconds: 500), () {
-      _playMusic();
-    });
+    _isPhoto = widget.videoPath.toLowerCase().endsWith('.jpg') ||
+        widget.videoPath.toLowerCase().endsWith('.png');
 
+    if (!_isPhoto) {
+      _initializeVideo();
+      Future.delayed(const Duration(milliseconds: 500), () => _playMusic());
+    }
   }
 
   void _initializeVideo() {
@@ -45,36 +49,18 @@ class _VideoPreviewPageState extends State<VideoPreviewPage>
       ..initialize().then((_) async {
         if (!mounted || _isDisposed) return;
         setState(() {});
+        _videoController!.setLooping(false);
 
-        _videoController.setLooping(false);
+        await _videoController!.play();
 
-        if (_audioPlayer != null) {
-          await _audioPlayer!.stop();
-          await _audioPlayer!.dispose();
-          _audioPlayer = null;
-        }
-
-        await _videoController.play();
-
-        _videoController.addListener(() async {
-          final value = _videoController.value;
+        _videoController!.addListener(() async {
+          final value = _videoController!.value;
           final pos = value.position;
           final dur = value.duration;
 
-          if (dur != null &&
-              pos >= dur &&
-              !value.isPlaying &&
-              !_isDisposed) {
-            await _videoController.seekTo(Duration.zero);
-
-            if (_audioPlayer != null) {
-              await _audioPlayer!.stop();
-              await _audioPlayer!.dispose();
-              _audioPlayer = null;
-            }
-
-            await _videoController.play();
-
+          if (dur != null && pos >= dur && !value.isPlaying && !_isDisposed) {
+            await _videoController!.seekTo(Duration.zero);
+            await _videoController!.play();
             _playMusic();
           }
         });
@@ -82,17 +68,14 @@ class _VideoPreviewPageState extends State<VideoPreviewPage>
   }
 
   Future<void> _playMusic() async {
-    if (_isDisposed || !mounted || !widget.musicAdded) return;
+    if (_isDisposed || !mounted || !widget.musicAdded || _isPhoto) return;
 
     try {
-      // 如果之前有音樂，先關掉
       await _audioPlayer?.stop();
       await _audioPlayer?.dispose();
       _audioPlayer = null;
 
-      // 🔐 確保新建後再使用
       final newPlayer = ap.AudioPlayer();
-
       await newPlayer.setAudioContext(ap.AudioContext(
         android: ap.AudioContextAndroid(
           isSpeakerphoneOn: true,
@@ -112,9 +95,9 @@ class _VideoPreviewPageState extends State<VideoPreviewPage>
   }
 
   void _stopAll({bool disposeController = false}) {
-    _videoController.pause();
+    _videoController?.pause();
     if (disposeController) {
-      _videoController.dispose();
+      _videoController?.dispose();
     }
     _audioPlayer?.stop();
     _audioPlayer?.dispose();
@@ -132,7 +115,7 @@ class _VideoPreviewPageState extends State<VideoPreviewPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (_isDisposed) return;
+    if (_isDisposed || _isPhoto) return;
 
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached ||
@@ -141,9 +124,10 @@ class _VideoPreviewPageState extends State<VideoPreviewPage>
     }
 
     if (state == AppLifecycleState.resumed) {
-      _videoController.play();
+      _videoController?.play();
       if (widget.musicAdded &&
-          (_audioPlayer == null || _audioPlayer?.state != ap.PlayerState.playing)) {
+          (_audioPlayer == null ||
+              _audioPlayer?.state != ap.PlayerState.playing)) {
         _playMusic();
       }
     }
@@ -167,62 +151,82 @@ class _VideoPreviewPageState extends State<VideoPreviewPage>
         return false;
       },
       child: Scaffold(
-        appBar: AppBar(title: const Text('动态預覽')),
-        body: Column(
+        backgroundColor: Colors.black,
+        body: Stack(
           children: [
-            if (_videoController.value.isInitialized)
-              Flexible(
-                child: AspectRatio(
-                  aspectRatio: _videoController.value.aspectRatio,
-                  child: VideoPlayer(_videoController),
+            Positioned.fill(
+              child: _isPhoto
+                  ? Image.file(
+                File(widget.videoPath),
+                fit: BoxFit.cover,
+              )
+                  : (_videoController?.value.isInitialized ?? false
+                  ? FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: _videoController!.value.size.width,
+                  height: _videoController!.value.size.height,
+                  child: VideoPlayer(_videoController!),
                 ),
               )
-            else
-              const Padding(
-                padding: EdgeInsets.all(32),
-                child: CircularProgressIndicator(),
-              ),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () {
-                        _stopAll();
-                        Navigator.pop(context, false);
-                      },
-                      child: const Text('重新錄製'),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () async {
-                        _stopAll();
-                        final result = await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                VideoDetailsPage(videoPath: widget.videoPath),
-                          ),
-                        );
+                  : const Center(child: CircularProgressIndicator())),
+            ),
 
-                        if (result == 'resume') {
-                          _videoController.play();
-                          if (widget.musicAdded) {
-                            _playMusic();
-                          }
-                        }
-                      },
-                      child: const Text('下一步'),
-                    ),
-                  ),
-                ],
+            // 左上角返回
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 50,
+              left: 24,
+              child: GestureDetector(
+                onTap: () {
+                  _stopAll();
+                  Navigator.pop(context, false);
+                },
+                child: const Icon(Icons.close, color: Colors.white, size: 20),
               ),
             ),
-            const SizedBox(height: 24),
+
+            // 底部下一步
+            Positioned(
+              bottom: 48,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: GestureDetector(
+                  onTap: () async {
+                    _stopAll();
+                    final result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => VideoDetailsPage(
+                          videoPath: widget.videoPath,
+                          thumbnailPath: widget.thumbnailPath,
+                        ),
+                      ),
+                    );
+                    if (result == 'resume' && !_isPhoto) {
+                      _videoController?.play();
+                      if (widget.musicAdded) _playMusic();
+                    }
+                  },
+                  child: Container(
+                    width: 288,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFFFB56B), Color(0xFFDF65F8)],
+                      ),
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    child: const Center(
+                      child: Text(
+                        '下一步',
+                        style: TextStyle(color: Colors.white, fontSize: 16),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),

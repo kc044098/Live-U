@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 
 import '../../l10n/l10n.dart';
 import 'google_auth_service.dart';
@@ -26,9 +27,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (user != null) {
       Navigator.pushReplacementNamed(context, '/home');
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Google 登入失敗')),
-      );
+      Fluttertoast.showToast(msg: 'Google 登入失敗');
     }
   }
 

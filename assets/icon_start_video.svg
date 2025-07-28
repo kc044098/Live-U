@@ -1,0 +1,13 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Iconly/Curved/Send">
+<mask id="mask0_0_2550" style="mask-type:luminance" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+<path id="&#232;&#183;&#175;&#229;&#190;&#132;" fill-rule="evenodd" clip-rule="evenodd" d="M0 0H24V24H0V0Z" fill="white"/>
+</mask>
+<g mask="url(#mask0_0_2550)">
+<g id="Send">
+<path id="Stroke 1" fill-rule="evenodd" clip-rule="evenodd" d="M11.4933 12.438C11.4933 12.438 -0.483351 9.96037 3.6786 7.55782C7.19075 5.53052 19.2947 2.04497 20.9857 2.94557C21.8863 4.63657 18.4007 16.7405 16.3734 20.2527C13.9709 24.4146 11.4933 12.438 11.4933 12.438V12.438Z" stroke="white" stroke-width="1.5" stroke-linejoin="round"/>
+<path id="Stroke 3" d="M11.4932 12.4377L20.9856 2.94531" stroke="white" stroke-width="1.5" stroke-linejoin="round"/>
+</g>
+</g>
+</g>
+</svg>

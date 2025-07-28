@@ -9,8 +9,8 @@ import 'package:flutter/services.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 
 import '../call/call_request_page.dart';
-import '../widgets/fullscreen_image_page.dart';
-import '../widgets/fullscreen_video_player_page.dart';
+import '../widgets/edit_profile_fullscreen_image_page.dart';
+import '../widgets/edit_profile_fullscreen_video_player_page.dart';
 
 class ViewProfilePage extends StatefulWidget {
   final String displayName;

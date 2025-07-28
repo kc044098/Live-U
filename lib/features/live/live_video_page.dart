@@ -136,8 +136,15 @@ class _LiveVideoPageState extends State<LiveVideoPage> {
                       );
                     },
                     child: CircleAvatar(
-                      backgroundImage: AssetImage(image),
                       radius: 20,
+                      backgroundImage: (() {
+                        final localAvatar = widget.user['localAvatar'];
+                        if (localAvatar != null && localAvatar.isNotEmpty) {
+                          return FileImage(File(localAvatar)) as ImageProvider;
+                        } else {
+                          return const AssetImage('assets/my_icon_defult.jpeg') as ImageProvider;
+                        }
+                      })(),
                     ),
                   ),
                   const SizedBox(width: 12),

@@ -1,63 +1,80 @@
+import '../../features/auth/LoginMethod.dart';
+
 class UserModel {
   final String uid;
-  final String email;
-  final String displayName;
-  final String? photoURL;
-  final String? idToken;
-  final String? isBroadcaster;
-  bool? isVip;
+  String? displayName;
+  String? photoURL;
+  bool isVip;
+  final bool isBroadcaster;
+
+  /// 多登入方式
+  final List<LoginMethod> logins;
+
+  /// 其他擴展欄位
+  final Map<String, dynamic>? extra;
 
   UserModel({
     required this.uid,
-    required this.email,
-    required this.displayName,
-    this.photoURL,
-    this.idToken,
-    this.isBroadcaster,
-    this.isVip,
+    this.displayName = '',
+    this.photoURL = '',
+    this.isVip = false,
+    this.isBroadcaster = false,
+    this.logins = const [],
+    this.extra,
   });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'uid': uid,
-      'email': email,
-      'displayName': displayName,
-      'photoURL': photoURL,
-      'idToken': idToken,
-      'isBroadcaster': isBroadcaster,
-      'isVip': isVip,
-    };
-  }
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
       uid: json['uid'] ?? '',
-      email: json['email'] ?? '',
-      displayName: json['displayName'] ?? '',
-      photoURL: json['photoURL'] ?? '',
-      idToken: json['idToken'] ?? '',
-      isBroadcaster: json['isBroadcaster'] ?? '1',
+      displayName: json['displayName'],
+      photoURL: json['photoURL'],
       isVip: json['isVip'] ?? false,
+      isBroadcaster: json['isBroadcaster'] ?? false,
+      logins: (json['logins'] as List? ?? [])
+          .map((e) => LoginMethod.fromJson(e))
+          .toList(),
+      extra: json['extra'],
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'uid': uid,
+      'displayName': displayName,
+      'photoURL': photoURL,
+      'isVip': isVip,
+      'isBroadcaster': isBroadcaster,
+      'logins': logins.map((e) => e.toJson()).toList(),
+      'extra': extra,
+    };
   }
 
   UserModel copyWith({
     String? uid,
-    String? email,
     String? displayName,
     String? photoURL,
-    String? idToken,
-    String? isBroadcaster,
     bool? isVip,
+    bool? isBroadcaster,
+    List<LoginMethod>? logins,
+    Map<String, dynamic>? extra,
   }) {
     return UserModel(
       uid: uid ?? this.uid,
-      email: email ?? this.email,
       displayName: displayName ?? this.displayName,
       photoURL: photoURL ?? this.photoURL,
-      idToken: idToken ?? this.idToken,
-      isBroadcaster: isBroadcaster ?? this.isBroadcaster,
       isVip: isVip ?? this.isVip,
+      isBroadcaster: isBroadcaster ?? this.isBroadcaster,
+      logins: logins ?? this.logins,
+      extra: extra ?? this.extra,
+    );
+  }
+
+  /// 快捷方法：取得主登入帳號
+  LoginMethod? get primaryLogin {
+    if (logins.isEmpty) return null;
+    return logins.firstWhere(
+          (e) => e.isPrimary,
+      orElse: () => logins.first,
     );
   }
 }
