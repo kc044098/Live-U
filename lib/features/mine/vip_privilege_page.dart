@@ -299,6 +299,7 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                         builder: (_) => PaymentMethodPage(amount: amount),
                       ),
                     );
+                    user?.isVip = true;
                     setState(() {});
                   },
                   style: ElevatedButton.styleFrom(

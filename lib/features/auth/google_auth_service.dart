@@ -8,6 +8,7 @@ import './providers/auth_repository_provider.dart';
 import '../../core/user_local_storage.dart';
 import '../../data/models/user_model.dart';
 import '../profile/profile_controller.dart';
+import 'LoginMethod.dart';
 
 class GoogleAuthService {
   final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
@@ -32,16 +33,28 @@ class GoogleAuthService {
 
       if (user != null) {
         final idToken = await user.getIdToken();
+
+        // 使用新 UserModel 結構
         final tempModel = UserModel(
-          uid: user.uid,
-          email: user.email ?? '',
-          displayName: user.displayName ?? '',
+          uid: user.uid, // Firebase 的暫時 uid，後端會返回正式 uid
+          displayName: user.displayName,
           photoURL: user.photoURL,
-          idToken: idToken,
+          logins: [
+            LoginMethod(
+              provider: 'google',
+              identifier: user.email ?? user.uid,
+              isPrimary: true,
+              token: idToken, // 這次登入的憑證
+            ),
+          ],
+          extra: {
+            'email': user.email,
+          },
         );
 
         final authRepository = ref.read(authRepositoryProvider);
         final resultModel = await authRepository.loginWithGoogle(tempModel);
+
         print('🔥 準備送出資料給後端');
         print(tempModel.toJson());
 
@@ -74,12 +87,23 @@ class GoogleAuthService {
 
       if (user != null) {
         final idToken = await user.getIdToken();
+
+        // 使用新的 UserModel 結構
         final tempModel = UserModel(
-          uid: user.uid,
-          email: user.email ?? '',
-          displayName: user.displayName ?? '',
+          uid: user.uid, // Firebase 的暫時 uid
+          displayName: user.displayName,
           photoURL: user.photoURL,
-          idToken: idToken,
+          logins: [
+            LoginMethod(
+              provider: 'google',
+              identifier: user.email ?? user.uid,
+              isPrimary: true,
+              token: idToken, // 登入憑證
+            ),
+          ],
+          extra: {
+            'email': user.email,
+          },
         );
 
         print('Firebase idToken: $idToken');
@@ -90,6 +114,7 @@ class GoogleAuthService {
 
         final authRepository = ref.read(authRepositoryProvider);
         final resultModel = await authRepository.loginWithGoogle(tempModel);
+
         print('🔥 準備送出登錄資料給後端');
         print(tempModel.toJson());
 

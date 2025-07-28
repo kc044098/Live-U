@@ -8,11 +8,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../data/models/user_model.dart';
+import '../mine/account_manage_page.dart';
 import '../mine/invite_friend_page.dart';
 import '../mine/price_setting_page.dart';
 import '../mine/vip_privilege_page.dart';
 import '../mine/who_likes_me_page.dart';
-import '../profile/logout_confirm_dialog.dart';
+import '../mine/logout_confirm_dialog.dart';
 import '../profile/profile_controller.dart';
 import '../mine/edit_mine_page.dart';
 import '../wallet/my_wallet_page.dart';
@@ -61,26 +62,24 @@ class _MinePageState extends ConsumerState<MinePage> {
                         // Avatar
                         GestureDetector(
                           onTap: () async {
+                            /*
                             final picker = ImagePicker();
                             final image = await picker.pickImage(
                                 source: ImageSource.gallery);
                             if (image != null) {
                               controller.updateAvatar(image.path);
-                            }
+                            }*/
                           },
                           child: CircleAvatar(
                             radius: 32,
-                            backgroundImage: user.photoURL != null &&
-                                    user.photoURL!.isNotEmpty
-                                ? (user.photoURL!.startsWith('http')
-                                    ? NetworkImage(user.photoURL!)
-                                    : FileImage(File(user.photoURL!))
-                                        as ImageProvider)
-                                : null,
-                            child:
-                                user.photoURL == null || user.photoURL!.isEmpty
-                                    ? const Icon(Icons.person, size: 32)
-                                    : null,
+                            backgroundImage: (() {
+                              final localAvatar = user.extra?['localAvatar'] as String?;
+                              if (localAvatar != null && localAvatar.isNotEmpty) {
+                                return FileImage(File(localAvatar)) as ImageProvider;
+                              } else {
+                                return const AssetImage('assets/my_icon_defult.jpeg') as ImageProvider;
+                              }
+                            })(),
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -133,8 +132,7 @@ class _MinePageState extends ConsumerState<MinePage> {
                                       Navigator.push(
                                         context,
                                         MaterialPageRoute(
-                                          builder: (_) => EditMinePage(
-                                              displayName: user.displayName),
+                                          builder: (_) => const EditMinePage(),
                                         ),
                                       );
                                     },
@@ -477,11 +475,18 @@ class _MinePageState extends ConsumerState<MinePage> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => LikedUsersPage(),
+                    builder: (_) => const LikedUsersPage(),
                   ),
                 );
               }),
-              _buildMenuItem('assets/icon_mine_filter.svg', '账号管理', () {}),
+              _buildMenuItem('assets/icon_mine_filter.svg', '账号管理', () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const AccountManagePage(),
+                  ),
+                );
+              }),
               _buildMenuItem('assets/icon_mine_logout.svg', '退出登陆', () {
                 showDialog(
                   context: context,
@@ -509,11 +514,18 @@ class _MinePageState extends ConsumerState<MinePage> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => LikedUsersPage(),
+                    builder: (_) => const LikedUsersPage(),
                   ),
                 );
               }),
-              _buildMenuItem('assets/icon_mine_filter.svg', '账号管理', () {}),
+              _buildMenuItem('assets/icon_mine_filter.svg', '账号管理', () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const AccountManagePage(),
+                  ),
+                );
+              }),
               _buildMenuItem('assets/icon_mine_logout.svg', '退出登陆', () {
                 showDialog(
                   context: context,

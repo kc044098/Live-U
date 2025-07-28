@@ -1,33 +1,38 @@
 // 首頁 - 首頁 主播資訊的部分元件
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../profile/profile_controller.dart';
 import '../profile/view_profile_page.dart';
 
-class LiveUserInfoCard extends StatefulWidget {
+class LiveUserInfoCard extends ConsumerStatefulWidget {
   final String name;
-  final String avatarPath;
   final String rateText;
   final List<String> tags;
 
   const LiveUserInfoCard({
     super.key,
     required this.name,
-    required this.avatarPath,
     required this.rateText,
     required this.tags,
   });
 
   @override
-  State<LiveUserInfoCard> createState() => _LiveUserInfoCardState();
+  ConsumerState<LiveUserInfoCard> createState() => _LiveUserInfoCardState();
 }
 
-class _LiveUserInfoCardState extends State<LiveUserInfoCard> {
+class _LiveUserInfoCardState extends ConsumerState<LiveUserInfoCard> {
   bool isLiked = false;
 
   @override
   Widget build(BuildContext context) {
+    final user = ref.watch(userProfileProvider);
+    final localAvatar = (user?.extra?['localAvatar'] as String?) ?? '';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -42,13 +47,19 @@ class _LiveUserInfoCardState extends State<LiveUserInfoCard> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => ViewProfilePage(displayName: widget.name, avatarPath: widget.avatarPath,),
+                        builder: (_) => ViewProfilePage(
+                          displayName: widget.name,
+                          avatarPath: localAvatar,
+                        ),
                       ),
                     );
                   },
                   child: CircleAvatar(
-                    backgroundImage: AssetImage(widget.avatarPath),
-                    radius: 24,
+                    radius: 20,
+                    backgroundImage: localAvatar.isNotEmpty
+                        ? FileImage(File(localAvatar))
+                        : const AssetImage('assets/my_icon_defult.jpeg')
+                    as ImageProvider,
                   ),
                 ),
                 Positioned(
@@ -146,7 +157,8 @@ class _LiveUserInfoCardState extends State<LiveUserInfoCard> {
                   children: widget.tags.map((tag) {
                     return Container(
                       margin: const EdgeInsets.only(right: 6),
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
                         color: Colors.black54,
                         borderRadius: BorderRadius.circular(5),

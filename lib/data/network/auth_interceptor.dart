@@ -2,7 +2,6 @@ import 'package:dio/dio.dart';
 
 import '../../core/user_local_storage.dart';
 
-import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../locale_provider.dart';
@@ -15,7 +14,7 @@ class AuthInterceptor extends Interceptor {
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) async {
     final user = await UserLocalStorage.getUser();
-    final token = user?.idToken;
+    final token = user?.primaryLogin?.token;
     if (token != null && token.isNotEmpty) {
       options.headers['Authorization'] = 'Bearer $token';
     }

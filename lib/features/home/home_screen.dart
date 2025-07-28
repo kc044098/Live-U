@@ -7,14 +7,23 @@ import 'mine_page.dart';
 import 'message_page.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-class HomeScreen extends StatefulWidget {
+import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../profile/update_my_info.dart';
+import 'live_list_page.dart';
+import 'message_page.dart';
+import 'mine_page.dart';
+import '../profile/profile_controller.dart';
+
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _selectedIndex = 0;
   int _liveTabIndex = 0;
 
@@ -36,6 +45,21 @@ class _HomeScreenState extends State<HomeScreen> {
       const MessagePage(),
       const MinePage(),
     ];
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkUserGender();
+    });
+  }
+
+  void _checkUserGender() {
+    final user = ref.read(userProfileProvider);
+    final gender = user?.extra?['gender'];
+
+    if (user!.uid.isNotEmpty && (gender == null || gender.toString().isEmpty)) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const UpdateMyInfoPage()),
+      );
+    }
   }
 
   void _onItemTapped(int index) {
@@ -61,13 +85,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 這裡其實就可以監聽 user 狀態
+    final user = ref.watch(userProfileProvider);
+
     return Scaffold(
       extendBody: true,
       body: Stack(
         children: [
           _pages[_selectedIndex],
-
-          // 🔽 自訂底部導航欄
           Positioned(
             left: 0,
             right: 0,
@@ -81,7 +106,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: List.generate(3, (index) {
                   final isSelected = _selectedIndex == index;
-
                   return GestureDetector(
                     onTap: () => _onItemTapped(index),
                     behavior: HitTestBehavior.translucent,

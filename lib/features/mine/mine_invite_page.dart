@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../profile/profile_controller.dart';
@@ -69,15 +71,18 @@ class _MyInvitePageState extends ConsumerState<MyInvitePage>
                             border: Border.all(color: Colors.red, width: 2),
                           ),
                           child: CircleAvatar(
-                            radius: 23,
-                            backgroundImage: user?.photoURL != null
-                                ? NetworkImage(user!.photoURL!)
-                                : null,
-                            child: user?.photoURL == null
-                                ? const Icon(Icons.person, size: 28)
-                                : null,
-                          ),
+                          radius: 23,
+                          backgroundImage: (() {
+                            final localAvatar = user?.extra?['localAvatar'] as String?;
+                            if (localAvatar != null && localAvatar.isNotEmpty) {
+                              return FileImage(File(localAvatar)) as ImageProvider;
+                            } else {
+                              return const AssetImage('assets/my_icon_defult.jpeg') as ImageProvider;
+                            }
+                          })(),
                         ),
+
+                ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(

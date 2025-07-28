@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
+import '../../data/models/user_model.dart';
 import '../profile/profile_controller.dart';
 
 class MyWalletPage extends ConsumerStatefulWidget {
@@ -37,8 +38,7 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final String nickname = user.displayName ?? '未知';
-    final String? avatarUrl = user.photoURL;
+    // final String nickname = user.displayName ?? '未知';
     final int coinAmount = 1000; // TODO: 後續從 user 資料取得
 
     return Scaffold(
@@ -67,7 +67,7 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildHeader(nickname, avatarUrl, coinAmount),
+            _buildHeader(user, coinAmount),
             _buildRechargeGrid(),
             if (selectedIndex == rechargeOptions.length - 1) _buildCustomAmountInput(),
           ],
@@ -106,7 +106,7 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
     );
   }
 
-  Widget _buildHeader(String nickname, String? avatarUrl, int coinAmount) {
+  Widget _buildHeader(UserModel user, int coinAmount) {
     return Container(
       height: 180,
       margin: const EdgeInsets.all(16),
@@ -122,21 +122,19 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
         children: [
           Row(
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(32),
-                child: avatarUrl != null && avatarUrl.isNotEmpty
-                    ? (avatarUrl.startsWith('http')
-                    ? Image.network(avatarUrl, width: 48, height: 48, fit: BoxFit.cover)
-                    : Image.file(File(avatarUrl), width: 48, height: 48, fit: BoxFit.cover))
-                    : Container(
-                  width: 48,
-                  height: 48,
-                  color: Colors.grey[300],
-                  child: const Icon(Icons.person),
-                ),
+              CircleAvatar(
+                radius: 24,
+                backgroundImage: (() {
+                  final localAvatar = user.extra?['localAvatar'] as String?;
+                  if (localAvatar != null && localAvatar.isNotEmpty) {
+                    return FileImage(File(localAvatar)) as ImageProvider;
+                  } else {
+                    return const AssetImage('assets/my_icon_defult.jpeg') as ImageProvider;
+                  }
+                })(),
               ),
               const SizedBox(width: 12),
-              Text(nickname, style: const TextStyle(color: Colors.white, fontSize: 16)),
+              Text(user.displayName?? '未知', style: const TextStyle(color: Colors.white, fontSize: 16)),
             ],
           ),
           Positioned(
