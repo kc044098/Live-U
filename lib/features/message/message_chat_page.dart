@@ -1,7 +1,15 @@
+import 'dart:async';
+
+import 'package:djs_live_stream/features/message/voice_bubble.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:fluttertoast/fluttertoast.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
+import '../call/call_request_page.dart';
 import '../profile/profile_controller.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'chat_message.dart';
 
 class MessageChatPage extends ConsumerStatefulWidget {
   final String partnerName;
@@ -26,60 +34,130 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  late stt.SpeechToText _speech;
-  bool _isListening = false;
+  final AudioRecorder _recorder = AudioRecorder();
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
+  bool _isVoiceMode = false;
+  bool _isRecording = false;
+  int _recordDuration = 0;
+  int _sendCount = 0;
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    _speech = stt.SpeechToText();
-
     _messages.addAll([
-      ChatMessage(type: MessageType.system, text: '07/25 10:00'),
       ChatMessage(
-          type: MessageType.other,
-          text: '今天有什麼安排？求帶上',
-          avatar: widget.partnerAvatar),
-      ChatMessage(type: MessageType.self, text: '好呀'),
+        type: MessageType.system,
+        contentType: ChatContentType.system,
+        text: '07/25 10:00',
+      ),
+      ChatMessage(
+        type: MessageType.other,
+        contentType: ChatContentType.text,
+        text: '今天有什麼安排？求帶上',
+        avatar: widget.partnerAvatar,
+      ),
+      ChatMessage(
+        type: MessageType.self,
+        contentType: ChatContentType.text,
+        text: '好呀',
+      ),
     ]);
   }
 
-  Future<void> _listen() async {
-    if (!_isListening) {
-      bool available = await _speech.initialize(
-        onStatus: (status) => debugPrint('Speech status: $status'),
-        onError: (error) => debugPrint('Speech error: $error'),
-      );
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _recorder.dispose();
+    _audioPlayer.dispose();
+    super.dispose();
+  }
 
-      if (available) {
-        setState(() => _isListening = true);
-        _speech.listen(
-          localeId: 'zh-TW', // 或 'zh-CN', 'en-US'
-          onResult: (result) {
-            setState(() {
-              _textController.text = result.recognizedWords;
-              _textController.selection = TextSelection.fromPosition(
-                TextPosition(offset: _textController.text.length),
-              );
-            });
-          },
-        );
-      }
-    } else {
-      setState(() => _isListening = false);
-      _speech.stop();
+  Future<String> _getNewAudioPath() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+  }
+
+  Future<void> _startRecording() async {
+
+    // 發送次數超過限制
+    if (_sendCount >= 10) {
+      _showLimitDialog();
+      return;
+    }
+
+    if (await _recorder.hasPermission()) {
+      final filePath = await _getNewAudioPath();
+      await _recorder.start(const RecordConfig(), path: filePath);
+
+      setState(() {
+        _isRecording = true;
+        _recordDuration = 0;
+      });
+
+      _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        setState(() => _recordDuration++);
+      });
     }
   }
 
-  void _sendMessage() {
-    final text = _textController.text.trim();
-    if (text.isEmpty) return;
+  Future<void> _stopRecording() async {
+    final path = await _recorder.stop();
+    _timer?.cancel();
 
     setState(() {
-      _messages.add(ChatMessage(type: MessageType.self, text: text));
+      _isRecording = false;
     });
 
-    _textController.clear();
+    if (path != null) {
+      final duration = _recordDuration;
+      setState(() {
+        _messages.add(ChatMessage(
+          type: MessageType.self,
+          contentType: ChatContentType.voice,
+          audioPath: path,
+          duration: duration,
+        ));
+      });
+      _scrollToBottom();
+    }
+  }
+
+  Future<void> _playAudio(ChatMessage message) async {
+    if (message.audioPath == null) return;
+
+    // 停止其他播放
+    for (var m in _messages) {
+      m.isPlaying = false;
+      m.currentPosition = 0;
+    }
+    setState(() => message.isPlaying = true);
+
+    await _audioPlayer.setFilePath(message.audioPath!);
+    _audioPlayer.play();
+
+    // 監聽進度
+    _audioPlayer.positionStream.listen((position) {
+      if (message.isPlaying) {
+        setState(() {
+          message.currentPosition = position.inSeconds;
+        });
+      }
+    });
+
+    // 播放完成時
+    _audioPlayer.playerStateStream.listen((state) {
+      if (state.processingState == ProcessingState.completed) {
+        setState(() {
+          message.isPlaying = false;
+          message.currentPosition = 0;
+        });
+      }
+    });
+  }
+
+  void _scrollToBottom() {
     Future.delayed(const Duration(milliseconds: 100), () {
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
@@ -87,6 +165,139 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
         curve: Curves.easeOut,
       );
     });
+  }
+
+  void _sendMessage() {
+
+    // 10 次時觸發彈窗
+    if (_sendCount >= 10) {
+      _textController.clear();
+      _showLimitDialog();
+      return;
+    }
+
+    final text = _textController.text.trim();
+    if (text.isEmpty) return;
+
+    setState(() {
+      _messages.add(ChatMessage(
+        type: MessageType.self,
+        contentType: ChatContentType.text,
+        text: text,
+      ));
+      _sendCount++;
+    });
+
+    _textController.clear();
+    _scrollToBottom();
+  }
+
+  void _showLimitDialog() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    await showDialog(
+      context: context,
+      barrierDismissible: false, // 點擊背景不關閉
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 上方圖示
+                Image.asset('assets/icon_logout_warning.png', width: 100, height: 100),
+
+                const SizedBox(height: 24),
+
+                // 提示文字
+                const Text(
+                  '當天私信次數已用完，\n您可和她直接視頻通話哦！',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 16, color: Colors.black87),
+                ),
+
+                const SizedBox(height: 32),
+
+                // 按鈕 Row
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // 取消按鈕
+                    Expanded(
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(24),
+                        onTap: () => Navigator.pop(context),
+                        child: Ink(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey.shade300),
+                            borderRadius: BorderRadius.circular(24),
+                            color: Colors.white,
+                          ),
+                          child: const Center(
+                            child: Text(
+                              '取消',
+                              style: TextStyle(fontSize: 16, color: Colors.black87),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    // 視頻通話按鈕（漸層）
+                    Expanded(
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(24),
+                        onTap: () {
+                          Navigator.pop(context);
+                          // 觸發視頻通話
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => CallRequestPage(
+                                broadcasterId: 'broadcaster001',
+                                broadcasterName: widget.partnerName,
+                                broadcasterImage: widget.partnerAvatar,
+                              ),
+                            ),
+                          );
+                        },
+                        child: Ink(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(24),
+                            gradient: const LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [Color(0xFFFFA770), Color(0xFFD247FE)],
+                            ),
+                          ),
+                          child: const Center(
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.videocam, color: Colors.white, size: 20),
+                                SizedBox(width: 6),
+                                Text(
+                                  '視頻通話',
+                                  style: TextStyle(fontSize: 16, color: Colors.white),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -136,7 +347,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
                       margin: const EdgeInsets.only(left: 4),
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [Colors.orange, Colors.purple]),
+                        gradient: const LinearGradient(colors: [Color(0xFFFFA770), Color(0xFFD247FE)]),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: const Text('VIP', style: TextStyle(fontSize: 10, color: Colors.white)),
@@ -151,6 +362,72 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
     );
   }
 
+  Widget _buildMessageItem(ChatMessage message, String selfAvatar) {
+    if (message.contentType == ChatContentType.system) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Center(
+          child: Text(message.text ?? '', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+        ),
+      );
+    }
+
+    bool isSelf = message.type == MessageType.self;
+    return Row(
+      mainAxisAlignment: isSelf ? MainAxisAlignment.end : MainAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (!isSelf)
+          CircleAvatar(
+            backgroundImage: AssetImage(message.avatar ?? ''),
+            radius: 16,
+          ),
+        if (!isSelf) const SizedBox(width: 8),
+        _buildBubble(message),
+        if (isSelf) const SizedBox(width: 8),
+        if (isSelf)
+          CircleAvatar(
+            backgroundImage: selfAvatar.startsWith('http')
+                ? NetworkImage(selfAvatar)
+                : AssetImage(selfAvatar) as ImageProvider,
+            radius: 16,
+          ),
+      ],
+    );
+  }
+
+  Widget _buildBubble(ChatMessage message) {
+    switch (message.contentType) {
+      case ChatContentType.text:
+        return _buildTextBubble(message.text ?? '');
+      case ChatContentType.voice:
+        return _buildVoiceBubble(message);
+      case ChatContentType.call:
+        return _buildTextBubble('📞 ${message.text}');
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  Widget _buildTextBubble(String text) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      constraints: const BoxConstraints(maxWidth: 240),
+      decoration: BoxDecoration(color: const Color(0xFFF5F5F5), borderRadius: BorderRadius.circular(8)),
+      child: Text(text, style: const TextStyle(fontSize: 14, color: Colors.black)),
+    );
+  }
+
+  Widget _buildVoiceBubble(ChatMessage message) {
+    return VoiceBubble(
+      key: ValueKey('${message.hashCode}-${message.isPlaying}'),
+      message: message,
+      onPlay: () => _playAudio(message),
+    );
+  }
+
+
   Widget _buildInputBar() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -162,19 +439,90 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
       child: Row(
         children: [
           IconButton(
-            icon: Icon(_isListening ? Icons.mic : Icons.mic_none, color: Colors.grey),
-            onPressed: _listen,
+            icon: Icon(
+              _isVoiceMode ? Icons.keyboard_alt_outlined : Icons.mic,
+              color: Colors.grey,
+            ),
+            onPressed: () {
+              setState(() {
+                _isVoiceMode = !_isVoiceMode;
+              });
+            },
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 4),
           Expanded(
-            child: TextField(
-              controller: _textController,
-              decoration: const InputDecoration(
-                hintText: '請輸入消息…',
-                border: InputBorder.none,
+            child: _isVoiceMode
+                ? GestureDetector(
+              onLongPressStart: (_) => _startRecording(),
+              onLongPressEnd: (_) => _stopRecording(),
+              child: Container(
+                height: 40,
+                decoration: BoxDecoration(
+                  color: _isRecording
+                      ? const Color(0xFF4285F4)
+                      : const Color(0xFFF5F5F5),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: _isRecording
+                    ? Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Row(
+                        children: List.generate(
+                          ((_recordDuration - 1) % 5) + 1,
+                              (index) => Container(
+                            margin: const EdgeInsets.only(right: 4),
+                            width: 6,
+                            height: 6,
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(right: 12),
+                      child: Text(
+                        '${_recordDuration}"',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+                    : const Center(
+                  child: Text(
+                    "按住說話",
+                    style: TextStyle(color: Colors.black54, fontSize: 14),
+                  ),
+                ),
+              ),
+            )
+                : Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF5F5F5),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: TextField(
+                controller: _textController,
+                maxLines: null, // 自動換行
+                decoration: const InputDecoration(
+                  hintText: '請輸入消息…',
+                  hintStyle: TextStyle(color: Colors.black54, fontSize: 14),
+                  border: InputBorder.none,
+                  isCollapsed: true,
+                ),
               ),
             ),
           ),
+          const SizedBox(width: 8),
           GestureDetector(
             onTap: _sendMessage,
             child: Container(
@@ -190,88 +538,4 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
       ),
     );
   }
-
-  Widget _buildMessageItem(ChatMessage message, String selfAvatar) {
-    switch (message.type) {
-      case MessageType.system:
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Center(
-            child: Text(
-              message.text,
-              style: const TextStyle(color: Colors.grey, fontSize: 12),
-            ),
-          ),
-        );
-
-      case MessageType.other:
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CircleAvatar(
-              backgroundImage: AssetImage(message.avatar ?? ''),
-              radius: 16,
-            ),
-            const SizedBox(width: 8),
-            _buildBubble(message),
-          ],
-        );
-
-      case MessageType.self:
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildBubble(message),
-            const SizedBox(width: 8),
-            CircleAvatar(
-              backgroundImage: selfAvatar.startsWith('http')
-                  ? NetworkImage(selfAvatar)
-                  : AssetImage(selfAvatar) as ImageProvider,
-              radius: 16,
-            ),
-          ],
-        );
-    }
-  }
-
-  Widget _buildBubble(ChatMessage message) {
-    return Container(
-      padding: const EdgeInsets.all(10),
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      constraints: const BoxConstraints(maxWidth: 240),
-      decoration: BoxDecoration(
-        color: message.isCallMessage ? Colors.grey[200] : const Color(0xFFF5F5F5),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        message.text,
-        style: TextStyle(
-          fontSize: 14,
-          color: message.isCallMessage ? Colors.black87 : Colors.black,
-        ),
-      ),
-    );
-  }
-
-}
-
-enum MessageType {
-  self,    // 自己發送
-  other,   // 對方發送
-  system,  // 系統訊息
-}
-
-class ChatMessage {
-  final MessageType type;
-  final String text;
-  final String? avatar;  // 只有 user 類型消息才會有頭像
-  final bool isCallMessage;
-
-  ChatMessage({
-    required this.type,
-    required this.text,
-    this.avatar,
-    this.isCallMessage = false,
-  });
 }

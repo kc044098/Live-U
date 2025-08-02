@@ -3,7 +3,7 @@ name: djs_live_stream
 description: "djs_live_stream Flutter project."
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 0.0.1+1
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -47,6 +47,8 @@ dependencies:
   carousel_slider: ^5.0.0
   smooth_page_indicator: ^1.1.0
   speech_to_text: ^7.2.0
+  record: ^6.0.0
+  package_info_plus: ^8.3.0
 
 dev_dependencies:
   flutter_test:

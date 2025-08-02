@@ -1,83 +1,46 @@
 import 'package:djs_live_stream/features/profile/profile_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../home/home_screen.dart';
-import 'update_my_info2.dart';
+import 'update_my_info4.dart';
 
-class UpdateMyInfoPage extends ConsumerStatefulWidget {
-  const UpdateMyInfoPage({super.key});
+class UpdateMyInfoPage3 extends ConsumerStatefulWidget {
+  const UpdateMyInfoPage3({super.key});
 
   @override
-  ConsumerState<UpdateMyInfoPage> createState() => _UpdateMyInfoPageState();
+  ConsumerState<UpdateMyInfoPage3> createState() => _UpdateMyInfoPage3State();
 }
 
-class _UpdateMyInfoPageState extends ConsumerState<UpdateMyInfoPage> {
-  String? _selectedGender; // "female" or "male"
+class _UpdateMyInfoPage3State extends ConsumerState<UpdateMyInfoPage3> {
+  final TextEditingController _nicknameController = TextEditingController();
 
   void _onNext() {
-    if (_selectedGender == null) {
-      Fluttertoast.showToast(msg: "請先選擇性別");
+    final nickname = _nicknameController.text.trim();
+    if (nickname.isEmpty) {
+      Fluttertoast.showToast(msg: "請輸入你的暱稱");
       return;
     }
 
-    // 更新 gender
-    ref.read(userProfileProvider.notifier)
-        .updateExtraField('gender', _selectedGender);
+    // 更新暱稱
+    ref.read(userProfileProvider.notifier).updateDisplayName(nickname);
 
-    if (_selectedGender == 'male') {
-      // 男生 → 回首頁並清空路由
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-            (route) => false,
-      );
-    } else {
-      // 女生 → 進入第二步
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const UpdateMyInfoPage2()),
-      );
-    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const UpdateMyInfoPage4()),
+    );
   }
 
   void _onSkip() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const UpdateMyInfoPage2()),
-    );
-  }
-
-  Widget _buildGenderCard({
-    required String gender,
-    required String bgImage,
-  }) {
-    final isSelected = _selectedGender == gender;
-
-    return GestureDetector(
-      onTap: () => setState(() => _selectedGender = gender),
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 12),
-        height: 170,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? Colors.red : Colors.transparent,
-            width: 2,
-          ),
-          image: DecorationImage(
-            image: AssetImage(bgImage),
-            fit: BoxFit.cover,
-          ),
-        ),
-      ),
+      MaterialPageRoute(builder: (_) => const UpdateMyInfoPage4()),
     );
   }
 
   Widget _buildProgressIndicator() {
     const totalSteps = 4;
-    const currentStep = 1;
+    const currentStep = 3;
     return Row(
       children: List.generate(totalSteps, (index) {
         final isActive = index < currentStep;
@@ -100,11 +63,11 @@ class _UpdateMyInfoPageState extends ConsumerState<UpdateMyInfoPage> {
     return WillPopScope(
       onWillPop: () async {
         Fluttertoast.showToast(msg: "請先設定個人資料");
-        return false; // 阻止返回鍵
+        return false;
       },
       child: Scaffold(
         appBar: AppBar(
-          automaticallyImplyLeading: false, // 不顯示返回按鈕
+          automaticallyImplyLeading: false,
           backgroundColor: Colors.transparent,
           elevation: 0,
         ),
@@ -116,23 +79,36 @@ class _UpdateMyInfoPageState extends ConsumerState<UpdateMyInfoPage> {
               _buildProgressIndicator(),
               const SizedBox(height: 20),
               const Text(
-                "請選擇",
+                "請填寫",
                 style: TextStyle(fontSize: 14, color: Colors.black),
               ),
               const SizedBox(height: 8),
               const Text(
-                "你的性別",
+                "你的暱稱",
                 style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 4),
               const Text(
-                "性別一旦設置，不可更改",
+                "給自己起個暱稱吧，讓大家認識你",
                 style: TextStyle(fontSize: 14, color: Colors.grey),
               ),
               const SizedBox(height: 30),
 
-              _buildGenderCard(gender: "female", bgImage: "assets/pic_girl.png"),
-              _buildGenderCard(gender: "male", bgImage: "assets/pic_boy.png"),
+              // 暱稱輸入框
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: TextField(
+                  controller: _nicknameController,
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    hintText: "請輸入你的暱稱",
+                  ),
+                ),
+              ),
 
               const Spacer(),
 
@@ -160,7 +136,6 @@ class _UpdateMyInfoPageState extends ConsumerState<UpdateMyInfoPage> {
                 ),
               ),
               const SizedBox(height: 8),
-
               Center(
                 child: TextButton(
                   onPressed: _onSkip,

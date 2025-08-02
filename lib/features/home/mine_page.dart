@@ -6,6 +6,7 @@ import 'package:djs_live_stream/features/mine/liked_users_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../data/models/user_model.dart';
 import '../mine/account_manage_page.dart';
@@ -438,12 +439,14 @@ class _MinePageState extends ConsumerState<MinePage> {
   }
 
   Widget _buildFunctionList(BuildContext context, UserModel user) {
+    final isMale = user.extra?['gender'] == 'male'; // 新增性別判斷
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
         children: [
-          if (user.isBroadcaster == '1') ...[
-            // 主播的第一個列表
+          if (!isMale) ...[
+            // 不是男生 → 使用原本主播的兩段列表
             _buildFunctionCard([
               _buildMenuItem('assets/icon_mine_ticket.svg', '价格设置', () {
                 Navigator.push(
@@ -453,20 +456,21 @@ class _MinePageState extends ConsumerState<MinePage> {
                   ),
                 );
               }),
-              _buildMenuItem('assets/icon_mine_beauty.svg', '美颜设置', () {}),
+              _buildMenuItem('assets/icon_mine_beauty.svg', '美颜设置', () {
+                Fluttertoast.showToast(msg: "尚未實現美顏功能");
+              }),
             ]),
             const SizedBox(height: 12),
-            // 主播的第二個列表
             _buildFunctionCard([
               _buildMenuItem('assets/icon_mine_people.svg', '谁喜欢我', () async {
-                final result =  await Navigator.push(
+                final result = await Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (_) => const WhoLikesMePage(),
                   ),
                 );
-                var user = ref.read(userProfileProvider);
-                user!.isVip = true;
+                var u = ref.read(userProfileProvider);
+                u!.isVip = true;
                 if (result == true) {
                   setState(() {});
                 }
@@ -496,11 +500,13 @@ class _MinePageState extends ConsumerState<MinePage> {
               }),
             ]),
           ] else
-            // 普通用戶一個列表
+          // 男生 → 使用原本普通用戶列表
             _buildFunctionCard([
-              _buildMenuItem('assets/icon_mine_beauty.svg', '美颜设置', () {}),
+              _buildMenuItem('assets/icon_mine_beauty.svg', '美颜设置', () {
+                Fluttertoast.showToast(msg: "尚未實現美顏功能");
+              }),
               _buildMenuItem('assets/icon_mine_people.svg', '谁喜欢我', () async {
-                final result =  await Navigator.push(
+                final result = await Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (_) => const WhoLikesMePage(),

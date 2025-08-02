@@ -7,12 +7,17 @@ import 'package:visibility_detector/visibility_detector.dart';
 
 import '../call/call_request_page.dart';
 import '../live/live_user_info_card.dart';
-import '../live/live_video_page.dart';
+import '../profile/view_profile_page.dart';
 
 class LiveListPage extends StatefulWidget {
   final ValueChanged<int>? onTabChanged;
+  final bool isMale;
 
-  const LiveListPage({super.key, this.onTabChanged});
+  const LiveListPage({
+    super.key,
+    this.onTabChanged,
+    required this.isMale
+  });
 
   @override
   State<LiveListPage> createState() => _LiveListPageState();
@@ -33,33 +38,46 @@ class _LiveListPageState extends State<LiveListPage>
 
   late final HomeVideoTab _homeVideoTab;
 
+
   @override
   void initState() {
     super.initState();
 
-    _tabController = TabController(length: 2, vsync: this)
-      ..addListener(() {
-        if (!_tabController.indexIsChanging) {
-          widget.onTabChanged?.call(_tabController.index);
-          setState(() {});
-        }
-      });
-
     _homeVideoTab = HomeVideoTab(usersList: mockUsers);
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      widget.onTabChanged?.call(_tabController.index);
-    });
+    // 如果不是男生，才初始化 TabController
+    if (!widget.isMale) {
+      _tabController = TabController(length: 2, vsync: this)
+        ..addListener(() {
+          if (!_tabController.indexIsChanging) {
+            widget.onTabChanged?.call(_tabController.index);
+            setState(() {});
+          }
+        });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.onTabChanged?.call(_tabController.index);
+      });
+    }
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
+    if (!widget.isMale) {
+      _tabController.dispose();
+    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (widget.isMale) {
+      // 只顯示首頁內容
+      return Scaffold(
+        body: SafeArea(top: false, child: _homeVideoTab),
+      );
+    }
+
+    // 保持原本兩個 tab 的邏輯
     return Scaffold(
       body: Stack(
         children: [
@@ -73,10 +91,13 @@ class _LiveListPageState extends State<LiveListPage>
                 controller: _tabController,
                 isScrollable: true,
                 labelColor: _tabController.index == 0 ? Colors.white : Colors.black,
-                unselectedLabelColor: _tabController.index == 0 ? Colors.white70 : Colors.grey,
-                labelStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                unselectedLabelColor:
+                _tabController.index == 0 ? Colors.white70 : Colors.grey,
+                labelStyle:
+                const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 unselectedLabelStyle: const TextStyle(fontSize: 18),
-                indicatorColor: _tabController.index == 0 ? Colors.white : Colors.black,
+                indicatorColor:
+                _tabController.index == 0 ? Colors.white : Colors.black,
                 indicatorWeight: 2,
                 indicatorSize: TabBarIndicatorSize.label,
                 dividerColor: Colors.transparent,
@@ -114,7 +135,10 @@ class _LiveListPageState extends State<LiveListPage>
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => LiveVideoPage(user: user),
+                    builder: (_) => ViewProfilePage(
+                      displayName: user['name']!,
+                      avatarPath: user['image']!,
+                    ),
                   ),
                 );
               },
@@ -146,16 +170,7 @@ class _LiveListPageState extends State<LiveListPage>
                         ),
                       ),
                       const SizedBox(width: 4),
-                      Container(
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Colors.orangeAccent, Colors.purpleAccent],
-                          ),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        padding: const EdgeInsets.all(4),
-                        child: const Icon(Icons.videocam, size: 14, color: Colors.white),
-                      ),
+                      SvgPicture.asset('assets/logo_placeholder2.svg', height: 24,width: 24,),
                     ],
                   ),
                 ],
@@ -366,6 +381,7 @@ class _LiveVideoItemState extends State<_LiveVideoItem> with WidgetsBindingObser
             bottom: 96,
             child: LiveUserInfoCard(
               name: widget.name,
+              avatarPath: widget.image,
               rateText: '100美元/分鐘',
               tags: ['女 19', '御姐', '高顏值', '運動'],
             ),

@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../l10n/l10n.dart';
+import 'account_login_screen.dart';
+import 'email_login_screen.dart';
 import 'google_auth_service.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -16,6 +19,13 @@ class LoginScreen extends ConsumerStatefulWidget {
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final GoogleAuthService _googleAuthService = GoogleAuthService();
   bool _isLoading = false;
+  String _appVersion = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
 
   Future<void> _handleGoogleLogin() async {
     setState(() => _isLoading = true);
@@ -92,83 +102,123 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = S.of(context);
-
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const SizedBox(height: 64),
-              SvgPicture.asset(
-                'assets/logo_placeholder.svg',
-                height: 80,
-              ),
-              const SizedBox(height: 28),
-              const Text(
-                '欢迎您的登录',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 64),
-              _buildLoginButton(
-                label: '通过 Facebook 登录',
-                iconPath: 'assets/icon_facebook.svg',
-                onPressed: _fakeLogin,
-              ),
-              _buildLoginButton(
-                label: '通过 Google 登录',
-                iconPath: 'assets/icon_google.svg',
-                onPressed: _handleGoogleLogin,
-              ),
-              _buildLoginButton(
-                label: '通过 Apple 登录',
-                iconPath: 'assets/icon_apple.svg',
-                onPressed: _fakeLogin,
-              ),
-              _buildLoginButton(
-                label: '通过邮箱登录',
-                iconPath: 'assets/icon_email.svg',
-                onPressed: _fakeLogin,
-              ),
-              _buildLoginButton(
-                label: '通过账号密码登录',
-                iconPath: 'assets/icon_user.svg',
-                onPressed: _fakeLogin,
-              ),
-              const SizedBox(height: 24),
-              Text.rich(
-                TextSpan(
-                  text: '登录及代表您确认已满18岁，并同意我们的 ',
-                  children: [
+        child: Stack(
+          children: [
+            // 原本內容
+            _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const SizedBox(height: 64),
+                  SvgPicture.asset(
+                    'assets/logo_placeholder.svg',
+                    height: 80,
+                  ),
+                  const SizedBox(height: 28),
+                  const Text(
+                    '欢迎您的登录',
+                    style: TextStyle(
+                        fontSize: 22, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 64),
+                  _buildLoginButton(
+                    label: '通过 Facebook 登录',
+                    iconPath: 'assets/icon_facebook.svg',
+                    onPressed: _fakeLogin,
+                  ),
+                  _buildLoginButton(
+                    label: '通过 Google 登录',
+                    iconPath: 'assets/icon_google.svg',
+                    onPressed: _handleGoogleLogin,
+                  ),
+                  _buildLoginButton(
+                    label: '通过 Apple 登录',
+                    iconPath: 'assets/icon_apple.svg',
+                    onPressed: _fakeLogin,
+                  ),
+                  _buildLoginButton(
+                    label: '通过邮箱登录',
+                    iconPath: 'assets/icon_email.svg',
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const EmailLoginScreen()),
+                      );
+                    },
+                  ),
+                  _buildLoginButton(
+                    label: '通过账号密码登录',
+                    iconPath: 'assets/icon_user.svg',
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const AccountLoginScreen()),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 24),
+                  Text.rich(
                     TextSpan(
-                      text: '《使用条款》',
-                      style: const TextStyle(color: Colors.deepPurple),
+                      text: '登录及代表您确认已满18岁，并同意我们的 ',
+                      children: [
+                        TextSpan(
+                          text: '《使用条款》',
+                          style:
+                          const TextStyle(color: Color(0xFFFF4D67)),
+                        ),
+                        const TextSpan(text: ' 和 '),
+                        TextSpan(
+                          text: '《主播协议》',
+                          style:
+                          const TextStyle(color: Color(0xFFFF4D67)),
+                        ),
+                        const TextSpan(text: ' 与 '),
+                        TextSpan(
+                          text: '《隐私政策》',
+                          style:
+                          const TextStyle(color: Color(0xFFFF4D67)),
+                        ),
+                      ],
                     ),
-                    const TextSpan(text: ' 和 '),
-                    TextSpan(
-                      text: '《主播协议》',
-                      style: const TextStyle(color: Colors.deepPurple),
-                    ),
-                    const TextSpan(text: ' 与 '),
-                    TextSpan(
-                      text: '《隐私政策》',
-                      style: const TextStyle(color: Colors.deepPurple),
-                    ),
-                  ],
+                    textAlign: TextAlign.center,
+                    style:
+                    const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            ),
+
+            // 右下角版本號
+            Positioned(
+              right: 16,
+              bottom: 16,
+              child: Text(
+                _appVersion,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.grey,
                 ),
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
               ),
-              const SizedBox(height: 16),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
+  }
+
+  Future<void> _loadVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    setState(() {
+      _appVersion = 'v ${info.version}';
+    });
   }
 }
