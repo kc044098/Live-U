@@ -1,16 +1,20 @@
 // 檢視其他人的個人資料
 import 'dart:io';
 
+import 'package:carousel_slider/carousel_slider.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/svg.dart';
 
 import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/services.dart';
+import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 
 import '../call/call_request_page.dart';
-import '../widgets/edit_profile_fullscreen_image_page.dart';
-import '../widgets/edit_profile_fullscreen_video_player_page.dart';
+import '../message/message_chat_page.dart';
+import '../widgets/view_other_image_page.dart';
+import '../widgets/view_other_video_page.dart';
 
 class ViewProfilePage extends StatefulWidget {
   final String displayName;
@@ -24,7 +28,17 @@ class ViewProfilePage extends StatefulWidget {
 
 class _ViewProfilePageState extends State<ViewProfilePage> {
 
-  final ValueNotifier<bool> isFavorite = ValueNotifier(false);
+  final CarouselSliderController _carouselController = CarouselSliderController();
+  final ValueNotifier<int> _currentIndexNotifier = ValueNotifier(0);
+
+  final ValueNotifier<bool> isLikedNotifier = ValueNotifier(false);
+  final ValueNotifier<double> scaleNotifier = ValueNotifier(1.0);
+
+  final List<String> demoImages = [
+    'assets/pic_girl1.png',
+    'assets/pic_girl2.png',
+    'assets/pic_girl3.png',
+  ];
 
   Future<Uint8List?> _getVideoThumbnail(String assetPath) async {
     try {
@@ -101,7 +115,7 @@ class _ViewProfilePageState extends State<ViewProfilePage> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => FullscreenImagePage(imagePath: 'assets/pic_girl2.png'),
+                      builder: (context) => ViewOtherImagePage(imagePath: 'assets/pic_girl2.png', displayName: widget.displayName, avatarPath: widget.avatarPath),
                     ),
                   );
                 },
@@ -112,7 +126,7 @@ class _ViewProfilePageState extends State<ViewProfilePage> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => FullscreenImagePage(imagePath: 'assets/pic_girl3.png'),
+                      builder: (context) => ViewOtherImagePage(imagePath: 'assets/pic_girl3.png', displayName: widget.displayName, avatarPath: widget.avatarPath),
                     ),
                   );
                 },
@@ -123,7 +137,7 @@ class _ViewProfilePageState extends State<ViewProfilePage> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => FullscreenVideoPlayerPage(videoPath: 'assets/demo_video1.mp4'),
+                      builder: (context) => ViewOtherVideoPage(videoPath: 'assets/demo_video1.mp4', displayName: widget.displayName, avatarPath: widget.avatarPath),
                     ),
                   );
                 },
@@ -235,14 +249,14 @@ class _ViewProfilePageState extends State<ViewProfilePage> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => FullscreenVideoPlayerPage(videoPath: path),
+                        builder: (context) => ViewOtherVideoPage(videoPath: path, displayName: widget.displayName, avatarPath: widget.avatarPath),
                       ),
                     );
                   } else {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => FullscreenImagePage(imagePath: path),
+                        builder: (context) => ViewOtherImagePage(imagePath: path, displayName: widget.displayName, avatarPath: widget.avatarPath),
                       ),
                     );
                   }
@@ -339,63 +353,95 @@ class _ViewProfilePageState extends State<ViewProfilePage> {
 
   Widget buildButtonView() {
     return Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-    children: [
-      Column(
-        children: [
-          ValueListenableBuilder<bool>(
-            valueListenable: isFavorite,
-            builder: (context, value, _) {
-              return IconButton(
-                icon: Icon(
-                  value ? Icons.favorite_rounded : Icons.favorite_border,
-                  color: value ? Colors.pink : Colors.grey,
-                  size: 40,
-                ),
-                onPressed: () {
-                  isFavorite.value = !value; // 只更新圖示，不重建其他內容
-                },
-              );
-            },
-          ),
-          SizedBox(height: 2),
-        ],
-      ),
-      OutlinedButton(
-        style: OutlinedButton.styleFrom(
-          side: const BorderSide(color: Colors.pink),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        ),
-        onPressed: () {},
-        child: const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          child: Text('私信TA', style: TextStyle(color: Colors.pink)),
-        ),
-      ),
-      Column(
-        children: [
-          GestureDetector(
-            onTap: () {
-              _handleCallRequest();
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 12),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFFFB56B), Color(0xFFDF65F8)],
-                ),
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: const Text('发起视频', style: TextStyle(color: Colors.white, fontSize: 14)),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        Column(
+          children: [
+            ValueListenableBuilder<bool>(
+              valueListenable: isLikedNotifier,
+              builder: (_, isLiked, __) {
+                return ValueListenableBuilder<double>(
+                  valueListenable: scaleNotifier,
+                  builder: (_, scale, __) {
+                    return GestureDetector(
+                      onTap: _onLikePressed,
+                      child: AnimatedScale(
+                        scale: scale,
+                        duration: const Duration(milliseconds: 150),
+                        child: SvgPicture.asset(
+                          isLiked
+                              ? 'assets/live_heart_filled.svg'
+                              : 'assets/live_heart2.svg',
+                          width: 40,
+                          height: 40,
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
             ),
+            const SizedBox(height: 2),
+          ],
+        ),
+        OutlinedButton(
+          style: OutlinedButton.styleFrom(
+            side: const BorderSide(color: Colors.pink),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           ),
-          const SizedBox(height: 4),
-          const Text('1美元/分钟', style: TextStyle(color: Colors.grey, fontSize: 10)),
-        ],
-      ),
-    ],
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => MessageChatPage(
+                  partnerName: widget.displayName,
+                  partnerAvatar: widget.avatarPath,
+                  isVip: true, // 假設全部是 VIP，用條件決定也可
+                  statusText: '當前在線', // 可依需要傳不同文字
+                ),
+              ),
+            );
+          },
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            child: Text('私信TA', style: TextStyle(color: Colors.pink)),
+          ),
+        ),
+        Column(
+          children: [
+            GestureDetector(
+              onTap: () {
+                _handleCallRequest();
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 12),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFFB56B), Color(0xFFDF65F8)],
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: const Text('发起视频', style: TextStyle(color: Colors.white, fontSize: 14)),
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text('1美元/分钟', style: TextStyle(color: Colors.grey, fontSize: 10)),
+          ],
+        ),
+      ],
     );
+  }
+
+  void _onLikePressed() {
+    isLikedNotifier.value = !isLikedNotifier.value;
+    scaleNotifier.value = 3.0; // 放大
+
+    Future.delayed(const Duration(milliseconds: 150), () {
+      if (mounted) {
+        scaleNotifier.value = 1.0; // 縮回
+      }
+    });
   }
 
   void _handleCallRequest() {
@@ -429,14 +475,52 @@ class _ViewProfilePageState extends State<ViewProfilePage> {
         body: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              width: double.infinity,
-              height: 240,
-              child: Image.asset(
-                widget.avatarPath,
-                fit: BoxFit.cover,
-                alignment: Alignment.topCenter,
-              ),
+            Stack(
+              alignment: Alignment.bottomCenter,
+              children: [
+                CarouselSlider.builder(
+                  carouselController: _carouselController,
+                  itemCount: demoImages.length,
+                  options: CarouselOptions(
+                    height: 240,
+                    viewportFraction: 1.0,
+                    autoPlay: true,
+                    onPageChanged: (index, reason) {
+                      _currentIndexNotifier.value = index;
+                    },
+                  ),
+                  itemBuilder: (context, index, realIndex) {
+                    return Image.asset(
+                      demoImages[index],
+                      width: double.infinity,
+                      height: 240,
+                      fit: BoxFit.cover,
+                      alignment: Alignment.topCenter,
+                    );
+                  },
+                ),
+                Positioned(
+                  bottom: 12,
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: _currentIndexNotifier,
+                    builder: (context, currentIndex, _) {
+                      return AnimatedSmoothIndicator(
+                        activeIndex: currentIndex,
+                        count: demoImages.length,
+                        effect: const ExpandingDotsEffect(
+                          activeDotColor: Colors.white,
+                          dotColor: Colors.white54,
+                          dotHeight: 8,
+                          dotWidth: 8,
+                          spacing: 6,
+                        ),
+                        onDotClicked: (index) =>
+                            _carouselController.animateToPage(index),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             Padding(
@@ -535,9 +619,11 @@ class _ViewProfilePageState extends State<ViewProfilePage> {
 
   @override
   void dispose() {
-    isFavorite.dispose();
+    isLikedNotifier.dispose();
+    scaleNotifier.dispose();
     super.dispose();
   }
+
 }
 
 class _InfoRow extends StatelessWidget {

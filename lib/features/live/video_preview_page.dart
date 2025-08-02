@@ -69,14 +69,12 @@ class _VideoPreviewPageState extends State<VideoPreviewPage>
 
   Future<void> _playMusic() async {
     if (_isDisposed || !mounted || !widget.musicAdded || _isPhoto) return;
-
     try {
       await _audioPlayer?.stop();
       await _audioPlayer?.dispose();
-      _audioPlayer = null;
 
-      final newPlayer = ap.AudioPlayer();
-      await newPlayer.setAudioContext(ap.AudioContext(
+      _audioPlayer = ap.AudioPlayer();
+      await _audioPlayer?.setAudioContext(ap.AudioContext(
         android: ap.AudioContextAndroid(
           isSpeakerphoneOn: true,
           stayAwake: false,
@@ -85,10 +83,9 @@ class _VideoPreviewPageState extends State<VideoPreviewPage>
           audioFocus: ap.AndroidAudioFocus.none,
         ),
       ));
-      await newPlayer.setVolume(0.5);
-      await newPlayer.play(ap.AssetSource('demo_music.mp3'));
+      await _audioPlayer?.setVolume(0.5);
+      await _audioPlayer?.play(ap.AssetSource('demo_music.mp3'));
 
-      _audioPlayer = newPlayer;
     } catch (e) {
       debugPrint('音樂重播失敗: $e');
     }

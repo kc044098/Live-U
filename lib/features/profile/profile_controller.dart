@@ -28,9 +28,11 @@ class UserProfileController extends StateNotifier<UserModel?> {
     }
   }
 
-  void updateAvatar(String photoUrl) {
+  void updateExtraField(String key, dynamic value) {
     if (state != null) {
-      final updated = state!.copyWith(photoURL: photoUrl);
+      final extra = Map<String, dynamic>.from(state!.extra ?? {});
+      extra[key] = value;
+      final updated = state!.copyWith(extra: extra);
       state = updated;
       _repository.saveUser(updated);
     }

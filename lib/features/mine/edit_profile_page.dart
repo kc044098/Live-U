@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'dart:typed_data';
@@ -32,9 +33,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     final allowedExtensions = ['jpg', 'jpeg', 'png'];
     final ext = file.path.split('.').last.toLowerCase();
     if (!allowedExtensions.contains(ext)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('只允許上傳 JPG / JPEG / PNG 圖片')),
-      );
+      Fluttertoast.showToast(msg: "只允許上傳 JPG / JPEG / PNG 圖片");
       return;
     }
 
@@ -97,15 +96,15 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
       }
     }
     final profileItems = [
-      {'label': '昵称', 'value': ref.watch(userProfileProvider)?.displayName ?? ''},
-      {'label': '性别', 'value': extra['gender'] ?? '女'},
-      {'label': '生日', 'value': extra['birthdayAge'] ?? ''},
-      {'label': '身高', 'value': extra['height'] ?? ''},
-      {'label': '体重', 'value': extra['weight'] ?? ''},
+      {'label': '昵称', 'value': (ref.watch(userProfileProvider)?.displayName ?? '').toString()},
+      {'label': '性别', 'value': (extra['gender'] ?? '女').toString()},
+      {'label': '生日', 'value': (extra['age'] ?? '').toString()},
+      {'label': '身高', 'value': (extra['height'] ?? '').toString()},
+      {'label': '体重', 'value': (extra['weight'] ?? '').toString()},
       {'label': '三围', 'value': displayBody.isNotEmpty ? displayBody : '胸围 0 腰围 0 臀围 0'},
-      {'label': '城市', 'value': extra['city'] ?? '武汉'},
-      {'label': '工作', 'value': extra['job'] ?? '人事'},
-      {'label': '个人标签', 'value': extra['tags'] ?? '立即添加'},
+      {'label': '城市', 'value': (extra['city'] ?? '武汉').toString()},
+      {'label': '工作', 'value': (extra['job'] ?? '人事').toString()},
+      {'label': '个人标签', 'value': (extra['tags'] ?? '立即添加').toString()},
     ];
 
     return Scaffold(
@@ -596,7 +595,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                                       now.day < tempDate.day)) {
                                 age--;
                               }
-                              _updateExtra('birthdayAge', '$age岁');
+                              _updateExtra('age', '$age岁');
                               _selectedDate = tempDate;
                             });
                             Navigator.pop(context);

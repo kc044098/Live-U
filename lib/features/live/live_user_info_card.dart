@@ -11,12 +11,14 @@ import '../profile/view_profile_page.dart';
 
 class LiveUserInfoCard extends ConsumerStatefulWidget {
   final String name;
+  final String avatarPath;
   final String rateText;
   final List<String> tags;
 
   const LiveUserInfoCard({
     super.key,
     required this.name,
+    required this.avatarPath,
     required this.rateText,
     required this.tags,
   });
@@ -27,11 +29,26 @@ class LiveUserInfoCard extends ConsumerStatefulWidget {
 
 class _LiveUserInfoCardState extends ConsumerState<LiveUserInfoCard> {
   bool isLiked = false;
+  double _scale = 1.0;
+
+  void _onLikePressed() {
+    setState(() {
+      isLiked = !isLiked;
+      _scale = 3.0; // 放大
+    });
+
+    Future.delayed(const Duration(milliseconds: 150), () {
+      if (mounted) {
+        setState(() {
+          _scale = 1.0; // 縮回
+        });
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(userProfileProvider);
-    final localAvatar = (user?.extra?['localAvatar'] as String?) ?? '';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -49,17 +66,14 @@ class _LiveUserInfoCardState extends ConsumerState<LiveUserInfoCard> {
                       MaterialPageRoute(
                         builder: (_) => ViewProfilePage(
                           displayName: widget.name,
-                          avatarPath: localAvatar,
+                          avatarPath: widget.avatarPath,
                         ),
                       ),
                     );
                   },
                   child: CircleAvatar(
-                    radius: 20,
-                    backgroundImage: localAvatar.isNotEmpty
-                        ? FileImage(File(localAvatar))
-                        : const AssetImage('assets/my_icon_defult.jpeg')
-                    as ImageProvider,
+                    backgroundImage: AssetImage(widget.avatarPath),
+                    radius: 24,
                   ),
                 ),
                 Positioned(
@@ -84,7 +98,7 @@ class _LiveUserInfoCardState extends ConsumerState<LiveUserInfoCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 名字 + VIP
+                    // 名字
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
@@ -95,13 +109,6 @@ class _LiveUserInfoCardState extends ConsumerState<LiveUserInfoCard> {
                             fontSize: 15,
                             fontWeight: FontWeight.bold,
                           ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(width: 6),
-                        SvgPicture.asset(
-                          'assets/live_vip1.svg',
-                          width: 36,
-                          height: 16,
                         ),
                       ],
                     ),
@@ -124,20 +131,19 @@ class _LiveUserInfoCardState extends ConsumerState<LiveUserInfoCard> {
                           ),
                         ),
                         const Spacer(),
-                        IconButton(
-                          padding: EdgeInsets.zero,
-                          icon: SvgPicture.asset(
-                            isLiked
-                                ? 'assets/live_heart_filled.svg'
-                                : 'assets/live_heart.svg',
-                            width: 32,
-                            height: 32,
+                        GestureDetector(
+                          onTap: _onLikePressed,
+                          child: AnimatedScale(
+                            scale: _scale,
+                            duration: const Duration(milliseconds: 150),
+                            child: SvgPicture.asset(
+                              isLiked
+                                  ? 'assets/live_heart_filled.svg'
+                                  : 'assets/live_heart.svg',
+                              width: 40,
+                              height: 40,
+                            ),
                           ),
-                          onPressed: () {
-                            setState(() {
-                              isLiked = !isLiked;
-                            });
-                          },
                         ),
                       ],
                     ),
