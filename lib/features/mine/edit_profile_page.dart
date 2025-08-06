@@ -7,7 +7,6 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'dart:typed_data';
-
 import '../profile/profile_controller.dart';
 
 class EditProfilePage extends ConsumerStatefulWidget {
@@ -21,7 +20,6 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   final List<XFile?> _mediaFiles = [null, null, null];
   final List<Uint8List?> _thumbnails = [null, null, null];
   DateTime _selectedDate = DateTime(2005, 6, 17);
-
 
   Future<void> _pickMedia(int tappedIndex) async {
     final XFile? file = await _picker.pickImage(
@@ -37,26 +35,49 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
       return;
     }
 
-    // 讀取縮圖
-    final bytes = await file.readAsBytes();
-    final base64Thumb = base64Encode(bytes);
-
     setState(() {
       _mediaFiles[tappedIndex] = file;
-      _thumbnails[tappedIndex] = bytes;
     });
 
-    // 圖片存到 extra（如 photo1、photo2、photo3）
-    final key = 'photo${tappedIndex + 1}';
-    _updateExtra(key, base64Thumb);
-
-
-    // 如果是第一張圖片，設定為預設頭像
-    if (tappedIndex == 0) {
-      _updateExtra('localAvatar', file.path);
-    }
+    _updatePhoto(tappedIndex, file.path);
   }
 
+  /// 新增或更新圖片
+  void _updatePhoto(int index, String filePath) {
+    final user = ref.read(userProfileProvider);
+    final currentList = List<String>.from(user?.photoURL ?? []);
+
+    if (index < currentList.length) {
+      currentList[index] = filePath;
+    } else {
+      while (currentList.length < index) {
+        currentList.add('');
+      }
+      currentList.add(filePath);
+    }
+
+    _savePhotoList(currentList);
+  }
+
+  /// 刪除照片並自動前移
+  void _deletePhoto(int index) {
+    final user = ref.read(userProfileProvider);
+    final currentList = List<String>.from(user?.photoURL ?? []);
+    if (index < currentList.length) {
+      currentList.removeAt(index);
+    }
+    _savePhotoList(currentList);
+  }
+
+  /// 同步更新到 user model
+  void _savePhotoList(List<String> list) {
+    list.removeWhere((e) => e.isEmpty);
+
+    list = List<String>.from(list);
+
+    final updatedUser = ref.read(userProfileProvider)?.copyWith(photoURL: list);
+    ref.read(userProfileProvider.notifier).state = updatedUser!;
+  }
 
   bool _isVideo(XFile file) {
     final path = file.path.toLowerCase();
@@ -67,26 +88,16 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   void initState() {
     super.initState();
     final user = ref.read(userProfileProvider);
-    final extra = user?.extra ?? {};
-
-    for (int i = 0; i < 3; i++) {
-      final key = 'photo${i + 1}';
-      final base64Image = extra[key] as String?;
-      if (base64Image != null && base64Image.isNotEmpty) {
-        try {
-          final bytes = base64Decode(base64Image);
-          _thumbnails[i] = bytes;
-          _mediaFiles[i] = null;
-        } catch (e) {
-          debugPrint('解碼 $key 失敗: $e');
-        }
+    final photos = user?.photoURL ?? [];
+    for (int i = 0; i < photos.length && i < 3; i++) {
+      if (photos[i].isNotEmpty) {
+        _mediaFiles[i] = XFile(photos[i]);
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-
     final extra = ref.watch(userProfileProvider)?.extra ?? {};
     String displayBody = '';
     if (extra['body'] != null && extra['body']!.toString().contains('-')) {
@@ -120,12 +131,11 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         children: [
-          // 📸 照片 / 影片 區域
           Row(
             children: List.generate(3, (index) {
               final file = _mediaFiles[index];
               final isVideo = file != null && _isVideo(file);
-              final thumbnail = _thumbnails[index];
+
               return Expanded(
                 child: GestureDetector(
                   onTap: () => _pickMedia(index),
@@ -134,33 +144,25 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                     height: 100,
                     child: Stack(
                       children: [
-                        // 背景圖片
                         Container(
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(color: Colors.grey.shade300),
-                            image: (file != null && !isVideo)
+                            image: (file != null && !isVideo && File(file.path).existsSync())
                                 ? DecorationImage(
                               image: FileImage(File(file.path)),
                               fit: BoxFit.cover,
                             )
-                                : (_thumbnails[index] != null
-                                ? DecorationImage(
-                              image: MemoryImage(_thumbnails[index]!),
-                              fit: BoxFit.cover,
-                            )
-                                : null),
+                                : null,
                           ),
-                          child: (file == null && _thumbnails[index] == null)
+                          child: file == null
                               ? const Center(
                             child: Icon(Icons.add, size: 32, color: Colors.grey),
                           )
                               : null,
                         ),
-
-                        // 刪除按鈕（file 或縮圖有值時才出現）
-                        if (file != null || _thumbnails[index] != null)
+                        if (file != null)
                           Positioned(
                             top: 4,
                             right: 4,
@@ -168,11 +170,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                               onTap: () {
                                 setState(() {
                                   _mediaFiles[index] = null;
-                                  _thumbnails[index] = null;
-
-                                  // 清除 extra 中對應的圖片
-                                  _updateExtra('photo${index + 1}', '');
-                                  if (index == 0) _updateExtra('localAvatar', '');
+                                  _deletePhoto(index); // 這裡重點
                                 });
                               },
                               child: Container(
@@ -193,71 +191,69 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
             }),
           ),
           const SizedBox(height: 16),
+          _buildProfileInfo(profileItems),
+        ],
+      ),
+    );
+  }
 
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Column(
-              children: List.generate(profileItems.length, (index) {
-                final item = profileItems[index];
-                return Column(
-                  children: [
-                    ListTile(
-                      title: Text(item['label']!, style: const TextStyle(fontSize: 14)),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            item['value']!,
-                            style: const TextStyle(fontSize: 14, color: Colors.black87),
-                          ),
-                          const SizedBox(width: 8),
-                          const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
-                        ],
-                      ),
-                      onTap: () {
-                        switch (item['label']) {
-                          case '昵称':
-                            _showNicknameSheet();
-                            break;
-                          case '身高':
-                            _showHeightSheet();
-                            break;
-                          case '体重':
-                            _showWeightSheet();
-                            break;
-                          case '生日':
-                            _showBirthdayPicker();
-                            break;
-                          case '三围':
-                            _showBodySheet();
-                            break;
-                          case '工作':
-                            _showJobSheet();
-                            break;
-                          default:
-                          // 其他欄位後續再做
-                            break;
-                        }
-                      },
-                    ),
-                    if (index != profileItems.length - 1)
-                      const Divider(height: 1, indent: 16, endIndent: 16, color: Color(0xFFF5F5F5)),
-                  ],
-                );
-              }),
-            ),
+  Widget _buildProfileInfo(List<Map<String, String>> profileItems) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
           ),
         ],
+      ),
+      child: Column(
+        children: List.generate(profileItems.length, (index) {
+          final item = profileItems[index];
+          return Column(
+            children: [
+              ListTile(
+                title: Text(item['label']!, style: const TextStyle(fontSize: 14)),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(item['value']!,
+                        style: const TextStyle(fontSize: 14, color: Colors.black87)),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+                  ],
+                ),
+                onTap: () {
+                  switch (item['label']) {
+                    case '昵称':
+                      _showNicknameSheet();
+                      break;
+                    case '身高':
+                      _showHeightSheet();
+                      break;
+                    case '体重':
+                      _showWeightSheet();
+                      break;
+                    case '生日':
+                      _showBirthdayPicker();
+                      break;
+                    case '三围':
+                      _showBodySheet();
+                      break;
+                    case '工作':
+                      _showJobSheet();
+                      break;
+                  }
+                },
+              ),
+              if (index != profileItems.length - 1)
+                const Divider(height: 1, indent: 16, endIndent: 16, color: Color(0xFFF5F5F5)),
+            ],
+          );
+        }),
       ),
     );
   }

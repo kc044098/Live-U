@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 
 import 'chat_message.dart';
-import 'message_chat_page.dart';
 
 class VoiceBubble extends StatefulWidget {
   final ChatMessage message;

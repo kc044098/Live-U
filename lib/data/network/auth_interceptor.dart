@@ -19,6 +19,12 @@ class AuthInterceptor extends Interceptor {
       options.headers['Authorization'] = 'Bearer $token';
     }
 
+    // UID
+    final uid = user?.uid;
+    if (uid != null && uid.isNotEmpty) {
+      options.headers['X-UID'] = uid;
+    }
+
     final locale = ref.read(localeProvider); // ✅ 語系 provider
     options.headers['Accept-Language'] = locale.languageCode;
 

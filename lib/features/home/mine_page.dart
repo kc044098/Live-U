@@ -63,24 +63,10 @@ class _MinePageState extends ConsumerState<MinePage> {
                         // Avatar
                         GestureDetector(
                           onTap: () async {
-                            /*
-                            final picker = ImagePicker();
-                            final image = await picker.pickImage(
-                                source: ImageSource.gallery);
-                            if (image != null) {
-                              controller.updateAvatar(image.path);
-                            }*/
                           },
                           child: CircleAvatar(
                             radius: 32,
-                            backgroundImage: (() {
-                              final localAvatar = user.extra?['localAvatar'] as String?;
-                              if (localAvatar != null && localAvatar.isNotEmpty) {
-                                return FileImage(File(localAvatar)) as ImageProvider;
-                              } else {
-                                return const AssetImage('assets/my_icon_defult.jpeg') as ImageProvider;
-                              }
-                            })(),
+                            backgroundImage: user.avatarImage,
                           ),
                         ),
                         const SizedBox(width: 16),

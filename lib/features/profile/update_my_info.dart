@@ -108,70 +108,62 @@ class _UpdateMyInfoPageState extends ConsumerState<UpdateMyInfoPage> {
           backgroundColor: Colors.transparent,
           elevation: 0,
         ),
-        body: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildProgressIndicator(),
-              const SizedBox(height: 20),
-              const Text(
-                "請選擇",
-                style: TextStyle(fontSize: 14, color: Colors.black),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                "你的性別",
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                "性別一旦設置，不可更改",
-                style: TextStyle(fontSize: 14, color: Colors.grey),
-              ),
-              const SizedBox(height: 30),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: MediaQuery.of(context).size.height -
+                      kToolbarHeight -
+                      MediaQuery.of(context).padding.top,
+                ),
+                child: IntrinsicHeight(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildProgressIndicator(),
+                      const SizedBox(height: 20),
+                      const Text("請選擇", style: TextStyle(fontSize: 14, color: Colors.black)),
+                      const SizedBox(height: 8),
+                      const Text("你的性別", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 4),
+                      const Text("性別一旦設置，不可更改", style: TextStyle(fontSize: 14, color: Colors.grey)),
+                      const SizedBox(height: 30),
 
-              _buildGenderCard(gender: "female", bgImage: "assets/pic_girl.png"),
-              _buildGenderCard(gender: "male", bgImage: "assets/pic_boy.png"),
+                      _buildGenderCard(gender: "female", bgImage: "assets/pic_girl.png"),
+                      _buildGenderCard(gender: "male", bgImage: "assets/pic_boy.png"),
 
-              const Spacer(),
-
-              InkWell(
-                borderRadius: BorderRadius.circular(22),
-                onTap: _onNext,
-                child: Ink(
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFFFA770), Color(0xFFD247FE)],
-                    ),
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  height: 48,
-                  child: const Center(
-                    child: Text(
-                      '下一步',
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
+                      const Spacer(), // 保持底部按鈕推到底部
+                      InkWell(
+                        borderRadius: BorderRadius.circular(22),
+                        onTap: _onNext,
+                        child: Ink(
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFFFA770), Color(0xFFD247FE)],
+                            ),
+                            borderRadius: BorderRadius.circular(22),
+                          ),
+                          height: 48,
+                          child: const Center(
+                            child: Text('下一步', style: TextStyle(fontSize: 15, color: Colors.white, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 8),
+                      Center(
+                        child: TextButton(
+                          onPressed: _onSkip,
+                          child: const Text("跳過", style: TextStyle(color: Color(0xFFFF4D67), fontSize: 16)),
+                        ),
+                      ),
+                      const SizedBox(height: 40),
+                    ],
                   ),
                 ),
               ),
-              const SizedBox(height: 8),
-
-              Center(
-                child: TextButton(
-                  onPressed: _onSkip,
-                  child: const Text(
-                    "跳過",
-                    style: TextStyle(color: Color(0xFFFF4D67), fontSize: 16),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 40),
-            ],
+            ),
           ),
         ),
       ),

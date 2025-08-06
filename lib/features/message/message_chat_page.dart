@@ -3,10 +3,10 @@ import 'dart:async';
 import 'package:djs_live_stream/features/message/voice_bubble.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:fluttertoast/fluttertoast.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+import '../../data/models/user_model.dart';
 import '../call/call_request_page.dart';
 import '../profile/profile_controller.dart';
 import 'chat_message.dart';
@@ -105,6 +105,8 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
   Future<void> _stopRecording() async {
     final path = await _recorder.stop();
     _timer?.cancel();
+
+    _sendCount++;
 
     setState(() {
       _isRecording = false;
@@ -315,7 +317,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
               itemCount: _messages.length,
               itemBuilder: (context, index) {
                 final msg = _messages[index];
-                return _buildMessageItem(msg, user?.photoURL ?? '');
+                return _buildMessageItem(msg, user);
               },
             ),
           ),
@@ -362,7 +364,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
     );
   }
 
-  Widget _buildMessageItem(ChatMessage message, String selfAvatar) {
+  Widget _buildMessageItem(ChatMessage message, UserModel? user) {
     if (message.contentType == ChatContentType.system) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
@@ -372,25 +374,30 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
       );
     }
 
-    bool isSelf = message.type == MessageType.self;
+    final bool isSelf = message.type == MessageType.self;
+
     return Row(
       mainAxisAlignment: isSelf ? MainAxisAlignment.end : MainAxisAlignment.start,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // 對方頭像
         if (!isSelf)
           CircleAvatar(
-            backgroundImage: AssetImage(message.avatar ?? ''),
             radius: 16,
+            backgroundImage: widget.partnerAvatar.startsWith('http')
+                ? NetworkImage(widget.partnerAvatar)
+                : AssetImage(widget.partnerAvatar) as ImageProvider,
           ),
         if (!isSelf) const SizedBox(width: 8),
+
         _buildBubble(message),
+
         if (isSelf) const SizedBox(width: 8),
+        // 自己頭像（直接用 UserModel 的 avatarImage）
         if (isSelf)
           CircleAvatar(
-            backgroundImage: selfAvatar.startsWith('http')
-                ? NetworkImage(selfAvatar)
-                : AssetImage(selfAvatar) as ImageProvider,
             radius: 16,
+            backgroundImage: user?.avatarImage ?? const AssetImage('assets/my_icon_defult.jpeg'),
           ),
       ],
     );
