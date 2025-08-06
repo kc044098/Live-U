@@ -124,14 +124,7 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
             children: [
               CircleAvatar(
                 radius: 24,
-                backgroundImage: (() {
-                  final localAvatar = user.extra?['localAvatar'] as String?;
-                  if (localAvatar != null && localAvatar.isNotEmpty) {
-                    return FileImage(File(localAvatar)) as ImageProvider;
-                  } else {
-                    return const AssetImage('assets/my_icon_defult.jpeg') as ImageProvider;
-                  }
-                })(),
+                backgroundImage: user.avatarImage,
               ),
               const SizedBox(width: 12),
               Text(user.displayName?? '未知', style: const TextStyle(color: Colors.white, fontSize: 16)),

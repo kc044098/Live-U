@@ -84,9 +84,12 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                       children: [
                         ClipRRect(
                           borderRadius: BorderRadius.circular(24),
-                          child: (user?.photoURL ?? '').startsWith('http')
-                              ? Image.network(user!.photoURL!, width: 30, height: 30, fit: BoxFit.cover)
-                              : Image.asset('assets/default_avatar.png', width: 30, height: 30, fit: BoxFit.cover),
+                          child: Image(
+                            image: user?.avatarImage ?? const AssetImage('assets/my_icon_defult.jpeg'),
+                            width: 30,
+                            height: 30,
+                            fit: BoxFit.cover,
+                          ),
                         ),
                         const SizedBox(width: 8),
                         Text(user?.displayName ?? '',

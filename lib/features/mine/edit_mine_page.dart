@@ -51,16 +51,7 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
   }
 
   Widget _buildProfileHeader(UserModel? user) {
-    final extra = user?.extra ?? {};
-    final photos = <String>[];
-
-    for (int i = 1; i <= 3; i++) {
-      final key = 'photo$i';
-      final base64Image = extra[key];
-      if (base64Image != null && base64Image.isNotEmpty) {
-        photos.add(base64Image);
-      }
-    }
+    final photos = user?.photoURL ?? [];
 
     if (photos.isEmpty) {
       return SizedBox(
@@ -85,20 +76,12 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
             viewportFraction: 1.0,
             autoPlay: true,
             onPageChanged: (index, reason) {
-              _currentIndexNotifier.value = index;  // 🔹 不用 setState
+              _currentIndexNotifier.value = index;
             },
           ),
           itemBuilder: (context, index, realIndex) {
-            try {
-              final bytes = base64Decode(photos[index]);
-              return Image.memory(
-                bytes,
-                width: double.infinity,
-                height: 288,
-                fit: BoxFit.cover,
-                alignment: Alignment.topCenter,
-              );
-            } catch (_) {
+            final path = photos[index];
+            if (path.isEmpty) {
               return Image.asset(
                 'assets/my_photo_defult.jpeg',
                 width: double.infinity,
@@ -106,6 +89,47 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
                 fit: BoxFit.cover,
                 alignment: Alignment.topCenter,
               );
+            }
+
+            // 判斷 Base64 或 本地路徑
+            if (path.startsWith('data:image') || path.length > 200) {
+              try {
+                final bytes = base64Decode(path);
+                return Image.memory(
+                  bytes,
+                  width: double.infinity,
+                  height: 288,
+                  fit: BoxFit.cover,
+                  alignment: Alignment.topCenter,
+                );
+              } catch (_) {
+                return Image.asset(
+                  'assets/my_photo_defult.jpeg',
+                  width: double.infinity,
+                  height: 288,
+                  fit: BoxFit.cover,
+                  alignment: Alignment.topCenter,
+                );
+              }
+            } else {
+              final file = File(path);
+              if (file.existsSync()) {
+                return Image.file(
+                  file,
+                  width: double.infinity,
+                  height: 288,
+                  fit: BoxFit.cover,
+                  alignment: Alignment.topCenter,
+                );
+              } else {
+                return Image.asset(
+                  'assets/my_photo_defult.jpeg',
+                  width: double.infinity,
+                  height: 288,
+                  fit: BoxFit.cover,
+                  alignment: Alignment.topCenter,
+                );
+              }
             }
           },
         ),

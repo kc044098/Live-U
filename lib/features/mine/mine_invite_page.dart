@@ -72,14 +72,7 @@ class _MyInvitePageState extends ConsumerState<MyInvitePage>
                           ),
                           child: CircleAvatar(
                           radius: 23,
-                          backgroundImage: (() {
-                            final localAvatar = user?.extra?['localAvatar'] as String?;
-                            if (localAvatar != null && localAvatar.isNotEmpty) {
-                              return FileImage(File(localAvatar)) as ImageProvider;
-                            } else {
-                              return const AssetImage('assets/my_icon_defult.jpeg') as ImageProvider;
-                            }
-                          })(),
+                          backgroundImage: user?.avatarImage,
                         ),
 
                 ),

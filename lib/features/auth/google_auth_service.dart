@@ -1,5 +1,3 @@
-
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -36,15 +34,15 @@ class GoogleAuthService {
 
         // 使用新 UserModel 結構
         final tempModel = UserModel(
-          uid: user.uid, // Firebase 的暫時 uid，後端會返回正式 uid
+          uid: user.uid,
           displayName: user.displayName,
-          photoURL: user.photoURL,
+          photoURL: user.photoURL != null ? [user.photoURL!] : [],
           logins: [
             LoginMethod(
               provider: 'google',
               identifier: user.email ?? user.uid,
               isPrimary: true,
-              token: idToken, // 這次登入的憑證
+              token: idToken,
             ),
           ],
           extra: {
@@ -90,15 +88,15 @@ class GoogleAuthService {
 
         // 使用新的 UserModel 結構
         final tempModel = UserModel(
-          uid: user.uid, // Firebase 的暫時 uid
+          uid: user.uid,
           displayName: user.displayName,
-          photoURL: user.photoURL,
+          photoURL: user.photoURL != null ? [user.photoURL!] : [],  // <-- 修改
           logins: [
             LoginMethod(
               provider: 'google',
               identifier: user.email ?? user.uid,
               isPrimary: true,
-              token: idToken, // 登入憑證
+              token: idToken,
             ),
           ],
           extra: {

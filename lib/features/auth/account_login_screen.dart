@@ -1,8 +1,11 @@
+import 'package:djs_live_stream/features/auth/providers/auth_repository_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
+import '../../core/user_local_storage.dart';
+import '../profile/profile_controller.dart';
 import 'google_auth_service.dart';
 
 class AccountLoginScreen extends ConsumerStatefulWidget {
@@ -21,8 +24,38 @@ class _AccountLoginScreenState extends ConsumerState<AccountLoginScreen> {
   final GoogleAuthService _googleAuthService = GoogleAuthService();
   bool _isLoading = false;
 
-  void _onLoginPressed() {
-    Fluttertoast.showToast(msg: '登錄成功（假數據）');
+  Future<void> _onLoginPressed() async {
+    final account = _accountController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (account.isEmpty) {
+      Fluttertoast.showToast(msg: '請輸入帳號');
+      return;
+    }
+    if (password.isEmpty) {
+      Fluttertoast.showToast(msg: '請輸入密碼');
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+    setState(() => _isLoading = true);
+    try {
+      final authRepo = ref.read(authRepositoryProvider);
+      final user = await authRepo.loginWithAccountPassword(
+        account: account,
+        password: password,
+      );
+
+      await UserLocalStorage.saveUser(user);
+      ref.read(userProfileProvider.notifier).setUser(user);
+
+      Fluttertoast.showToast(msg: '登錄成功');
+      Navigator.pushReplacementNamed(context, '/home');
+    } catch (e) {
+      Fluttertoast.showToast(msg: '登錄失敗: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Widget _buildSocialIcon(String assetPath, {VoidCallback? onTap}) {

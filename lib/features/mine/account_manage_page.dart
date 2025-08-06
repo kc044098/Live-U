@@ -20,6 +20,7 @@ class AccountManagePage extends ConsumerWidget {
     final googleStatus = _getBindStatus(user, 'google');
     final facebookStatus = _getBindStatus(user, 'facebook');
     final appleStatus = _getBindStatus(user, 'apple');
+    final isMale = user?.extra?['gender'] == 'male';
 
     return Scaffold(
       appBar: AppBar(
@@ -37,34 +38,42 @@ class AccountManagePage extends ConsumerWidget {
         padding: const EdgeInsets.all(16),
         children: [
           // ===== 帳號欄位 =====
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: ListTile(
-              leading: SvgPicture.asset('assets/icon_account.svg', width: 24, height: 24),
-              title: const Text('賬號'),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    user?.displayName ?? '',
-                    style: const TextStyle(fontSize: 14, color: Colors.black54),
-                  ),
-                  const Icon(Icons.chevron_right, color: Colors.black38, size: 20),
-                ],
+          if (!isMale) ...[
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
               ),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => AccountInfoPage(avatarUrl: user?.photoURL ?? '', modifyType: 'account',)),
-                );
-              },
+              child: ListTile(
+                leading: SvgPicture.asset('assets/icon_account.svg',
+                    width: 24, height: 24),
+                title: const Text('賬號'),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      user?.displayName ?? '',
+                      style:
+                          const TextStyle(fontSize: 14, color: Colors.black54),
+                    ),
+                    const Icon(Icons.chevron_right,
+                        color: Colors.black38, size: 20),
+                  ],
+                ),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => AccountInfoPage(
+                              avatarUrl: user?.avatarUrl ?? '',
+                              modifyType: 'account',
+                            )),
+                  );
+                },
+              ),
             ),
-          ),
-          const SizedBox(height: 20),
-
+            const SizedBox(height: 20),
+          ],
           // ===== 郵箱欄位 + 提示 =====
           Stack(
             clipBehavior: Clip.none,
@@ -130,7 +139,7 @@ class AccountManagePage extends ConsumerWidget {
                     } else {
                       await Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => AccountInfoPage(avatarUrl: user!.photoURL ?? '', modifyType: 'email')),
+                        MaterialPageRoute(builder: (_) => AccountInfoPage(avatarUrl: user!.avatarUrl ?? '', modifyType: 'email')),
                       );
                     }
                   },
