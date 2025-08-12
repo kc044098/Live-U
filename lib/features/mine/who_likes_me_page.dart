@@ -74,8 +74,7 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
                     context,
                     MaterialPageRoute(
                       builder: (_) => ViewProfilePage(
-                        displayName: user['name']!,
-                        avatarPath: user['image']!,
+                        userId: 1,
                       ),
                     ),
                   );

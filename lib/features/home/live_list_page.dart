@@ -136,8 +136,7 @@ class _LiveListPageState extends State<LiveListPage>
                   context,
                   MaterialPageRoute(
                     builder: (_) => ViewProfilePage(
-                      displayName: user['name']!,
-                      avatarPath: user['image']!,
+                      userId: 1,
                     ),
                   ),
                 );

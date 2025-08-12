@@ -1,13 +1,24 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:video_player/video_player.dart';
 
-class ViewOtherVideoPage extends StatefulWidget {
+import '../../data/network/avatar_cache.dart';
+import '../mine/user_repository_provider.dart';
+
+class ViewOtherVideoPage extends ConsumerStatefulWidget {
   final String videoPath;
-  final String displayName;
+  final String? displayName;
   final String avatarPath;
   final String message;
   final bool isVip;
+
+  // ✅ 新增：按讚狀態 + 影片 id
+  final bool isLike;
+  final int videoId;
 
   const ViewOtherVideoPage({
     super.key,
@@ -16,13 +27,15 @@ class ViewOtherVideoPage extends StatefulWidget {
     required this.avatarPath,
     this.message = '別睡了, 起來嗨',
     this.isVip = false,
+    required this.isLike,
+    required this.videoId,
   });
 
   @override
-  State<ViewOtherVideoPage> createState() => _ViewOtherVideoPageState();
+  ConsumerState<ViewOtherVideoPage> createState() => _ViewOtherVideoPageState();
 }
 
-class _ViewOtherVideoPageState extends State<ViewOtherVideoPage>
+class _ViewOtherVideoPageState extends ConsumerState<ViewOtherVideoPage>
     with SingleTickerProviderStateMixin {
   late VideoPlayerController _controller;
   bool isLiked = false;
@@ -31,12 +44,26 @@ class _ViewOtherVideoPageState extends State<ViewOtherVideoPage>
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.asset(widget.videoPath)
-      ..initialize().then((_) {
-        setState(() {});
-        _controller.setLooping(true);
-        _controller.play();
-      });
+    isLiked = widget.isLike;
+
+    // ✅ 自動判斷來源（network / file / asset）
+    final p = widget.videoPath;
+    if (p.startsWith('http')) {
+      _controller = VideoPlayerController.networkUrl(Uri.parse(p));
+    } else if (p.startsWith('file://') || File(p).existsSync()) {
+      _controller = VideoPlayerController.file(
+        File(p.startsWith('file://') ? Uri.parse(p).toFilePath() : p),
+      );
+    } else {
+      _controller = VideoPlayerController.asset(p);
+    }
+
+    _controller.initialize().then((_) {
+      if (!mounted) return;
+      setState(() {});           // 顯示第一幀
+      _controller.setLooping(true);
+      _controller.play();        // 自動播放，無暫停手勢
+    });
   }
 
   @override
@@ -46,19 +73,25 @@ class _ViewOtherVideoPageState extends State<ViewOtherVideoPage>
   }
 
   void _onLikePressed() {
+    // 1) 動效 + 樂觀切換
     setState(() {
       isLiked = !isLiked;
-      _scale = 3.0; // 放大
+      _scale = 3.0;
+    });
+    Future.delayed(const Duration(milliseconds: 150), () {
+      if (mounted) setState(() => _scale = 1.0);
     });
 
-    // 動畫結束後回到原始大小
-    Future.delayed(const Duration(milliseconds: 150), () {
-      if (mounted) {
+    // 2) 背景打 API（失敗還原）
+    final svc = ref.read(backgroundApiServiceProvider);
+    unawaited(
+      svc.likeVideoAndRefresh(videoId: widget.videoId).catchError((e, st) {
+        if (!mounted) return;
         setState(() {
-          _scale = 1.0;
+          isLiked = !isLiked; // 還原
         });
-      }
-    });
+      }),
+    );
   }
 
   @override
@@ -71,7 +104,7 @@ class _ViewOtherVideoPageState extends State<ViewOtherVideoPage>
           if (_controller.value.isInitialized)
             SizedBox.expand(
               child: FittedBox(
-                fit: BoxFit.cover,
+                fit: BoxFit.cover, // 維持比例鋪滿，裁切不變形
                 child: SizedBox(
                   width: _controller.value.size.width,
                   height: _controller.value.size.height,
@@ -104,9 +137,11 @@ class _ViewOtherVideoPageState extends State<ViewOtherVideoPage>
                       children: [
                         CircleAvatar(
                           radius: 24,
-                          backgroundImage: widget.avatarPath.isNotEmpty
-                              ? AssetImage(widget.avatarPath)
-                              : const AssetImage('assets/my_icon_defult.jpeg'),
+                          backgroundImage: buildAvatarProvider(
+                            avatarUrl: widget.avatarPath,
+                            context: context,
+                            logicalSize: 48,
+                          ),
                         ),
                         Positioned(
                           right: 2,
@@ -127,7 +162,7 @@ class _ViewOtherVideoPageState extends State<ViewOtherVideoPage>
                     Row(
                       children: [
                         Text(
-                          widget.displayName,
+                          widget.displayName ?? '',
                           style: const TextStyle(
                             fontSize: 16,
                             color: Colors.white,
@@ -137,8 +172,7 @@ class _ViewOtherVideoPageState extends State<ViewOtherVideoPage>
                         const SizedBox(width: 8),
                         if (widget.isVip)
                           Container(
-                            padding:
-                            const EdgeInsets.symmetric(horizontal: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(6),
                               gradient: const LinearGradient(
@@ -160,23 +194,21 @@ class _ViewOtherVideoPageState extends State<ViewOtherVideoPage>
                 const SizedBox(height: 10),
                 if (widget.message.isNotEmpty)
                   Container(
-                    padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
                       color: Colors.black.withOpacity(0.4),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
                       widget.message,
-                      style:
-                      const TextStyle(color: Colors.white, fontSize: 14),
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
                     ),
                   ),
               ],
             ),
           ),
 
-          /// **右下角愛心按鈕 + 動畫**
+          /// **右下角愛心按鈕 + 動畫（樂觀切換 + 背景送讚）**
           Positioned(
             bottom: 120,
             right: 20,

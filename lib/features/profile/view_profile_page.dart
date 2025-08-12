@@ -1,8 +1,13 @@
 // 檢視其他人的個人資料
+import 'dart:async';
 import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:carousel_slider/carousel_slider.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 
 import 'dart:typed_data';
@@ -10,28 +15,30 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/services.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:http/http.dart' as http;
 
+import '../../data/models/user_model.dart';
+import '../../routes/app_routes.dart';
 import '../call/call_request_page.dart';
+import '../live/member_video_feed_state.dart';
 import '../message/message_chat_page.dart';
+import '../mine/user_repository_provider.dart';
 import '../widgets/view_other_image_page.dart';
 import '../widgets/view_other_video_page.dart';
 
-class ViewProfilePage extends StatefulWidget {
-  final String displayName;
-  final String avatarPath;
-
-  const ViewProfilePage({super.key, required this.displayName, required this.avatarPath});
+class ViewProfilePage extends ConsumerStatefulWidget {
+  final int userId;
+  const ViewProfilePage({super.key, required this.userId});
 
   @override
-  State<ViewProfilePage> createState() => _ViewProfilePageState();
+  ConsumerState<ViewProfilePage> createState() => _ViewProfilePageState();
 }
 
-class _ViewProfilePageState extends State<ViewProfilePage> {
+class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
 
   final CarouselSliderController _carouselController = CarouselSliderController();
+  final ScrollController _feedScroll = ScrollController();
   final ValueNotifier<int> _currentIndexNotifier = ValueNotifier(0);
-
-  final ValueNotifier<bool> isLikedNotifier = ValueNotifier(false);
   final ValueNotifier<double> scaleNotifier = ValueNotifier(1.0);
 
   final List<String> demoImages = [
@@ -39,114 +46,89 @@ class _ViewProfilePageState extends State<ViewProfilePage> {
     'assets/pic_girl2.png',
     'assets/pic_girl3.png',
   ];
+  final Map<String, Future<Uint8List?>> _thumbFutureCache = {};
+  UserModel? _userOverride; // 本頁暫存修改後的 user
 
-  Future<Uint8List?> _getVideoThumbnail(String assetPath) async {
-    try {
-      final byteData = await rootBundle.load(assetPath);
-      final tempDir = await getTemporaryDirectory();
-      final tempFile = File('${tempDir.path}/temp_video.mp4');
-      await tempFile.writeAsBytes(byteData.buffer.asUint8List());
+  final CacheManager _headerCache = CacheManager(
+    Config('other_profile_header', stalePeriod: Duration(days: 14), maxNrOfCacheObjects: 200),
+  );
+  bool _headerPrecached = false;
 
-      final thumbnail = await VideoThumbnail.thumbnailData(
-        video: tempFile.path,
-        imageFormat: ImageFormat.PNG,
-        maxWidth: 128,
-        quality: 75,
-      );
-      return thumbnail;
-    } catch (e) {
-      debugPrint("\uD83C\uDFAC Failed to generate video thumbnail: $e");
-      return null;
+
+  @override
+  void initState() {
+    super.initState();
+    // ✅ 首次載入指定用戶的動態
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(memberFeedByUserProvider(widget.userId).notifier).loadFirstPage();
+    });
+
+    // ✅ 監聽滑到底自動載入下一頁
+    _feedScroll.addListener(() {
+      if (!_feedScroll.hasClients) return;
+      final position = _feedScroll.position;
+      if (position.pixels > position.maxScrollExtent - 400) {
+        ref.read(memberFeedByUserProvider(widget.userId).notifier).loadNextPage();
+      }
+    });
+  }
+
+  Future<Uint8List?> _getNetworkVideoThumbnail(String videoUrl) {
+    // 避免同一個 URL 重複計算
+    if (_thumbFutureCache.containsKey(videoUrl)) return _thumbFutureCache[videoUrl]!;
+
+    final future = (() async {
+      try {
+        final tmpDir = await getTemporaryDirectory();
+        final fileName = videoUrl.split('/').last;
+        final localPath = '${tmpDir.path}/thumb_src_$fileName';
+        final f = File(localPath);
+
+        if (!await f.exists()) {
+          final resp = await Dio().get<List<int>>(videoUrl,
+              options: Options(responseType: ResponseType.bytes));
+          await f.writeAsBytes(resp.data as List<int>);
+        }
+
+        return await VideoThumbnail.thumbnailData(
+          video: f.path,
+          imageFormat: ImageFormat.PNG,
+          maxWidth: 256, // 比 128 再清楚一些
+          quality: 75,
+        );
+      } catch (e) {
+        debugPrint('🎬 Failed to gen network thumbnail: $e');
+        return null;
+      }
+    })();
+
+    _thumbFutureCache[videoUrl] = future;
+    return future;
+  }
+
+  Widget buildMyProfileTab(UserModel? user) {
+    // 從 user.extra 中讀取擴展資料（假設後端返回了身高、體重等資訊）
+    String height = user?.extra?['height'] ?? '未知';
+    String weight = user?.extra?['weight'] ?? '未知';
+    final body = user?.extra?['body'] ?? '未知';
+    final city = user?.extra?['city'] ?? '未知';
+    final job = user?.extra?['job'] ?? '未知';
+
+    // 🔹 若數字沒有單位則補上
+    if (height != '未知' && !height.contains('cm')) {
+      height = '$height cm';
     }
-  }
+    if (weight != '未知' && !weight.contains('磅') && !weight.contains('kg')) {
+      weight = '$weight 磅';
+    }
 
-  Widget _buildMediaCard({String? imagePath, String? videoPath}) {
-    return SizedBox(
-      width: 100,
-      height: 120,
-      child: Stack(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: imagePath != null
-                ? Image.asset(imagePath, width: 100, height: 140, fit: BoxFit.cover)
-                : videoPath != null
-                ? FutureBuilder<Uint8List?>(
-              future: _getVideoThumbnail(videoPath),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.done && snapshot.hasData) {
-                  return Image.memory(snapshot.data!, width: 100, height: 140, fit: BoxFit.cover);
-                } else {
-                  return Container(
-                    width: 100,
-                    height: 140,
-                    color: Colors.grey[300],
-                    child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                  );
-                }
-              },
-            )
-                : const SizedBox.shrink(),
-          ),
-          if (videoPath != null)
-            const Positioned.fill(
-              child: Center(
-                child: Icon(Icons.play_circle_fill, size: 36, color: Colors.white),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget buildMyProfileTab() {
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('精选', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ViewOtherImagePage(imagePath: 'assets/pic_girl2.png', displayName: widget.displayName, avatarPath: widget.avatarPath),
-                    ),
-                  );
-                },
-                child: _buildMediaCard(imagePath: 'assets/pic_girl2.png'),
-              ),
-              GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ViewOtherImagePage(imagePath: 'assets/pic_girl3.png', displayName: widget.displayName, avatarPath: widget.avatarPath),
-                    ),
-                  );
-                },
-                child: _buildMediaCard(imagePath: 'assets/pic_girl3.png'),
-              ),
-              GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ViewOtherVideoPage(videoPath: 'assets/demo_video1.mp4', displayName: widget.displayName, avatarPath: widget.avatarPath),
-                    ),
-                  );
-                },
-                child: _buildMediaCard(videoPath: 'assets/demo_video1.mp4'),
-              ),
-            ],
-          ),
           const SizedBox(height: 12),
-          const Text('关于我', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const Text('關於我', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.all(12),
@@ -157,234 +139,82 @@ class _ViewProfilePageState extends State<ViewProfilePage> {
             child: Column(
               children: [
                 Row(
-                  children: const [
-                    Expanded(child: _InfoRow(label: '身高', value: '155cm')),
-                    Expanded(child: _InfoRow(label: '体重', value: '100磅')),
-                  ],
-                ),
-                SizedBox(height: 4),
-                Row(
-                  children: const [
-                    Expanded(child: _InfoRow(label: '三围', value: '90–60–70')),
-                    Expanded(child: _InfoRow(label: '城市', value: '武汉')),
-                  ],
-                ),
-                SizedBox(height: 4),
-                const Row(
                   children: [
-                    Expanded(child: _InfoRow(label: '工作', value: '人事')),
-                    Expanded(child: SizedBox()),
+                    Expanded(child: _InfoRow(label: '身高', value: height)),
+                    Expanded(child: _InfoRow(label: '體重', value: weight)),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Expanded(child: _InfoRow(label: '三圍', value: body)),
+                    Expanded(child: _InfoRow(label: '城市', value: city)),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Expanded(child: _InfoRow(label: '工作', value: job)),
+                    const Expanded(child: SizedBox()),
                   ],
                 ),
               ],
             ),
           ),
           const SizedBox(height: 16),
-          const Text('我的标签', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: const [
-              _TagChip(label: '#吃货'),
-              _TagChip(label: '#实在'),
-              _TagChip(label: '#气质'),
-              _TagChip(label: '#幽默风趣'),
-              _TagChip(label: '#独立'),
-              _TagChip(label: '#宠物'),
-              _TagChip(label: '#安静'),
-              _TagChip(label: '#气质'),
-              _TagChip(label: '#小女人'),
-            ],
-          ),
-          const SizedBox(height: 16),
-          const Text('我的礼物', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: List.generate(13, (index) {
-              return _GiftItem(
-                imagePath: 'assets/gift1.png',
-                label: '礼物${index + 1}',
-              );
-            }),
-          ),
-          const SizedBox(height: 24),
-          buildButtonView(),
-          const SizedBox(height: 24),
-        ],
-      ),
-    );
-  }
-
-  Widget buildMyVedioTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(), // 禁止 GridView 滾動
-            itemCount: 12,
-            padding: EdgeInsets.zero,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childAspectRatio: 9 / 12,
+          if ((user?.tags ?? []).isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Text('我的標籤', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: user!.tags!.map((tag) => _TagChip(label: '#$tag')).toList(),
             ),
-            itemBuilder: (context, index) {
-              final isVideo = index % 3 == 0;
-              final path = isVideo
-                  ? 'assets/demo_video1.mp4'
-                  : (index % 2 == 0
-                  ? 'assets/pic_girl2.png'
-                  : 'assets/pic_girl3.png');
-
-              return GestureDetector(
-                onTap: () {
-                  if (isVideo) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => ViewOtherVideoPage(videoPath: path, displayName: widget.displayName, avatarPath: widget.avatarPath),
-                      ),
-                    );
-                  } else {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => ViewOtherImagePage(imagePath: path, displayName: widget.displayName, avatarPath: widget.avatarPath),
-                      ),
-                    );
-                  }
-                },
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      height: 220,
-                      child: Stack(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: isVideo
-                                ? FutureBuilder<Uint8List?>(
-                              future: _getVideoThumbnail(path),
-                              builder: (context, snapshot) {
-                                if (snapshot.connectionState == ConnectionState.done &&
-                                    snapshot.hasData) {
-                                  return Image.memory(snapshot.data!,
-                                      width: double.infinity,
-                                      height: double.infinity,
-                                      fit: BoxFit.cover);
-                                } else {
-                                  return Container(
-                                    color: Colors.grey[300],
-                                    child: const Center(
-                                      child: CircularProgressIndicator(strokeWidth: 2),
-                                    ),
-                                  );
-                                }
-                              },
-                            )
-                                : Image.asset(
-                              path,
-                              width: double.infinity,
-                              height: double.infinity,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                          if (isVideo)
-                            const Positioned.fill(
-                              child: Center(
-                                child: Icon(Icons.play_circle_fill,
-                                    size: 36, color: Colors.white),
-                              ),
-                            ),
-                          Positioned(
-                            bottom: 6,
-                            left: 6,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.pink,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: const Text('精选',
-                                  style: TextStyle(color: Colors.white, fontSize: 10)),
-                            ),
-                          ),
-                          const Positioned(
-                            bottom: 6,
-                            right: 6,
-                            child: Row(
-                              children: [
-                                Icon(Icons.visibility, color: Colors.white, size: 14),
-                                SizedBox(width: 2),
-                                Text('1.1K',
-                                    style: TextStyle(color: Colors.white, fontSize: 10)),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text('别看文案，看我啦…',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 13)),
-                  ],
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 18),
-          // 發布按鈕
-          buildButtonView(),
+          ],
+          const SizedBox(height: 50),
+          buildButtonView(user),
           const SizedBox(height: 24),
         ],
       ),
     );
   }
 
-  Widget buildButtonView() {
+
+  Widget buildButtonView(UserModel? u) {
+    if (u == null) return const SizedBox.shrink();
+    final liked = (u.isLike == 1);
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
+        // 愛心
         Column(
           children: [
-            ValueListenableBuilder<bool>(
-              valueListenable: isLikedNotifier,
-              builder: (_, isLiked, __) {
-                return ValueListenableBuilder<double>(
-                  valueListenable: scaleNotifier,
-                  builder: (_, scale, __) {
-                    return GestureDetector(
-                      onTap: _onLikePressed,
-                      child: AnimatedScale(
-                        scale: scale,
-                        duration: const Duration(milliseconds: 150),
-                        child: SvgPicture.asset(
-                          isLiked
-                              ? 'assets/live_heart_filled.svg'
-                              : 'assets/live_heart2.svg',
-                          width: 40,
-                          height: 40,
-                        ),
-                      ),
-                    );
-                  },
+            ValueListenableBuilder<double>(
+              valueListenable: scaleNotifier,
+              builder: (_, scale, __) {
+                return GestureDetector(
+                  onTap: () => _toggleLike(u),
+                  child: AnimatedScale(
+                    scale: scale,
+                    duration: const Duration(milliseconds: 150),
+                    child: SvgPicture.asset(
+                      liked ? 'assets/live_heart_filled2.svg'
+                          : 'assets/live_heart2.svg',
+                      width: 40,
+                      height: 40,
+                    ),
+                  ),
                 );
               },
             ),
             const SizedBox(height: 2),
           ],
         ),
+
+        // 私信
         OutlinedButton(
           style: OutlinedButton.styleFrom(
             side: const BorderSide(color: Colors.pink),
@@ -395,10 +225,10 @@ class _ViewProfilePageState extends State<ViewProfilePage> {
               context,
               MaterialPageRoute(
                 builder: (context) => MessageChatPage(
-                  partnerName: widget.displayName,
-                  partnerAvatar: widget.avatarPath,
-                  isVip: true, // 假設全部是 VIP，用條件決定也可
-                  statusText: '當前在線', // 可依需要傳不同文字
+                  partnerName: u.displayName ?? '',
+                  partnerAvatar: u.avatarUrl,
+                  isVip: u.isVip,
+                  statusText: '當前在線',
                 ),
               ),
             );
@@ -408,12 +238,12 @@ class _ViewProfilePageState extends State<ViewProfilePage> {
             child: Text('私信TA', style: TextStyle(color: Colors.pink)),
           ),
         ),
+
+        // 發起視頻
         Column(
           children: [
             GestureDetector(
-              onTap: () {
-                _handleCallRequest();
-              },
+              onTap: () => _handleCallRequest(u),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 12),
                 decoration: BoxDecoration(
@@ -433,21 +263,39 @@ class _ViewProfilePageState extends State<ViewProfilePage> {
     );
   }
 
-  void _onLikePressed() {
-    isLikedNotifier.value = !isLikedNotifier.value;
-    scaleNotifier.value = 3.0; // 放大
-
+  void _toggleLike(UserModel current) {
+    // 動效
+    scaleNotifier.value = 3.0;
     Future.delayed(const Duration(milliseconds: 150), () {
-      if (mounted) {
-        scaleNotifier.value = 1.0; // 縮回
-      }
+      if (mounted) scaleNotifier.value = 1.0;
     });
+
+    final wasLiked   = (current.isLike == 1);
+    final prevFans   = current.fans ?? 0;
+    final newIsLike  = wasLiked ? 0 : 1;
+    final newFans    = (wasLiked ? (prevFans - 1) : (prevFans + 1)).clamp(0, 0x7fffffff);
+
+    // 樂觀更新
+    setState(() {
+      _userOverride = current.copyWith(isLike: newIsLike, fans: newFans);
+    });
+
+    // 背景執行：不在 callback 中使用 ref / setState
+    final svc = ref.read(backgroundApiServiceProvider);
+    unawaited(
+        svc.likeUserAndRefresh(targetUid: current.uid).catchError((e, st) {
+          if (!mounted) return;
+          setState(() {
+            _userOverride = current.copyWith(isLike: wasLiked ? 1 : 0, fans: prevFans);
+          });
+        })
+    );
   }
 
-  void _handleCallRequest() {
-    final broadcasterId = widget.displayName ?? '';
-    final broadcasterName = widget.displayName ?? '主播';
-    final broadcasterImage = widget.avatarPath ?? 'assets/default.jpg';
+  void _handleCallRequest(UserModel u) {
+    final broadcasterId = u.displayName ?? '';
+    final broadcasterName = u.displayName ?? '主播';
+    final broadcasterImage = u.avatarUrl;
 
     Navigator.push(
       context,
@@ -461,165 +309,438 @@ class _ViewProfilePageState extends State<ViewProfilePage> {
     );
   }
 
+  Widget _buildTopMedia(List<String> avatars) {
+    const aspect = 16 / 9;
+
+    Widget _img(String url) {
+      return url.startsWith('http')
+          ? CachedNetworkImage(imageUrl: url, fit: BoxFit.cover)
+          : Image.asset(url, fit: BoxFit.cover);
+    }
+
+    if (avatars.isEmpty) {
+      return AspectRatio(aspectRatio: aspect,
+        child: _img('assets/my_photo_defult.jpeg'),
+      );
+    }
+
+    if (avatars.length == 1) {
+      return AspectRatio(aspectRatio: aspect,
+        child: _img(avatars.first),
+      );
+    }
+
+    return AspectRatio(
+      aspectRatio: aspect,
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          // 輪播本體
+          CarouselSlider.builder(
+            carouselController: _carouselController,
+            itemCount: avatars.length,
+            options: CarouselOptions(
+              viewportFraction: 1,
+              autoPlay: true,
+              onPageChanged: (index, reason) {
+                _currentIndexNotifier.value = index; // ✅ 讓白點會動
+              },
+            ),
+            itemBuilder: (_, i, __) => _img(avatars[i]),
+          ),
+
+          // 小白點（2 張以上才顯示）+ 半透明底
+          if (avatars.length > 1)
+            Positioned(
+              bottom: 12,
+              child: ValueListenableBuilder<int>(
+                valueListenable: _currentIndexNotifier,
+                builder: (context, currentIndex, _) {
+                  return AnimatedSmoothIndicator(
+                    activeIndex: currentIndex,
+                    count: avatars.length,
+                    effect: const ExpandingDotsEffect(
+                      activeDotColor: Colors.white,
+                      dotColor: Colors.white54,
+                      dotHeight: 8,
+                      dotWidth: 8,
+                      spacing: 6,
+                    ),
+                    onDotClicked: (index) =>
+                        _carouselController.animateToPage(index),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildMyVideoTab(UserModel u) {
+    final feed = ref.watch(memberFeedByUserProvider(widget.userId));
+
+    // ✅ 下拉重刷
+    Widget bodyByState() {
+      // 初次載入中
+      if (feed.items.isEmpty && feed.isLoading) {
+        return const Center(child: Padding(
+          padding: EdgeInsets.only(top: 40),
+          child: CircularProgressIndicator(),
+        ));
+      }
+
+      // 空狀態
+      if (feed.items.isEmpty) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 80),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.photo_library_outlined, size: 48, color: Colors.grey),
+                const SizedBox(height: 8),
+                Text('還沒有內容', style: TextStyle(color: Colors.grey[600])),
+              ],
+            ),
+          ),
+        );
+      }
+
+      // 有資料 ➜ 網格
+      // 有資料 ➜ 網格 + 底部按鈕
+      return CustomScrollView(
+        controller: _feedScroll,
+        cacheExtent: 3000,
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 9 / 12,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                  final item = feed.items[index];
+                  final isVideo = item.isVideo;
+                  final cover = item.coverUrl;
+                  final title = (item.title.isNotEmpty ? item.title : ' ');
+
+                  // ↓ 你的 media 建構邏輯原封不動（略） ↓
+                  Widget media;
+                  if (!isVideo && cover != null && cover.isNotEmpty) {
+                    media = ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: CachedNetworkImage(
+                        imageUrl: cover,
+                        width: double.infinity,
+                        height: double.infinity,
+                        fit: BoxFit.cover,
+                        errorWidget: (_, __, ___) => _fallbackBox(),
+                        placeholder: (_, __) => _loadingBox(),
+                      ),
+                    );
+                  } else if (isVideo) {
+                    media = ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: FutureBuilder<Uint8List?>(
+                        future: _getNetworkVideoThumbnail(item.videoUrl),
+                        builder: (context, snap) {
+                          if (snap.connectionState == ConnectionState.done && snap.data != null) {
+                            return Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                Image.memory(snap.data!, fit: BoxFit.cover),
+                                const Center(child: Icon(Icons.play_circle_fill, size: 36, color: Colors.white)),
+                              ],
+                            );
+                          }
+                          return _loadingBox();
+                        },
+                      ),
+                    );
+                  } else {
+                    media = ClipRRect(borderRadius: BorderRadius.circular(12), child: _fallbackBox());
+                  }
+
+                  return GestureDetector(
+                    onTap: () {
+                      if (isVideo) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ViewOtherVideoPage(
+                              videoPath: item.videoUrl,
+                              displayName: u.displayName,
+                              avatarPath: u.avatarUrl,
+                              isVip: u.isVip,
+                              isLike: item.isLike == 1,
+                              message: item.title,
+                              videoId: item.id,
+                            ),
+                          ),
+                        );
+                      } else {
+                        final imgPath = cover ?? '';
+                        if (imgPath.isEmpty) return;
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ViewOtherImagePage(
+                              imagePath: imgPath,
+                              displayName: u.displayName,
+                              avatarPath: u.avatarUrl,
+                              isVip: u.isVip,
+                              isLike: item.isLike == 1,
+                              message: item.title,
+                              videoId: item.id,
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          height: 220,
+                          child: Stack(
+                            children: [
+                              Positioned.fill(child: media),
+                              if (item.isTop == 1)
+                                Positioned(
+                                  bottom: 6, left: 6,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(color: Colors.pink, borderRadius: BorderRadius.circular(4)),
+                                    child: const Text('精选', style: TextStyle(color: Colors.white, fontSize: 10)),
+                                  ),
+                                ),
+                              const Positioned(
+                                bottom: 6, right: 6,
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.visibility, color: Colors.white, size: 14),
+                                    SizedBox(width: 2),
+                                    Text('1.1K', style: TextStyle(color: Colors.white, fontSize: 10)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+                childCount: feed.items.length, // ← 不要再 +1 了
+              ),
+            ),
+          ),
+
+          // 底部 loading（有更多時顯示 spinner）
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Center(
+                child: (feed.isLoading && feed.hasMore)
+                    ? const SizedBox(height: 32, width: 32, child: CircularProgressIndicator())
+                    : const SizedBox.shrink(),
+              ),
+            ),
+          ),
+
+          SliverToBoxAdapter(child: buildButtonView(u)),
+          const SliverToBoxAdapter(child: SizedBox(height: 36)),
+        ],
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        await ref.read(memberFeedByUserProvider(widget.userId).notifier).loadFirstPage();
+      },
+      child: bodyByState(),
+    );
+  }
+
+// 小工具：loading / fallback
+  Widget _loadingBox() => Container(
+    color: Colors.grey[300],
+    child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+  );
+
+  Widget _fallbackBox() => Container(
+    color: Colors.grey[200],
+    child: const Center(child: Icon(Icons.image_not_supported_outlined)),
+  );
+
+
+
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        extendBodyBehindAppBar: true,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          leading: const BackButton(color: Colors.white),
-        ),
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Stack(
-              alignment: Alignment.bottomCenter,
+    final asyncUser = ref.watch(otherUserProvider(widget.userId));
+
+    return asyncUser.when(
+      loading: () => const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(child: CircularProgressIndicator()),
+      ),
+      error: (e, _) => Scaffold(
+        appBar: AppBar(),
+        body: Center(child: Text('載入失敗：$e')),
+      ),
+      data: (u) {
+        final current = _userOverride ?? u;                // ← 用覆寫版
+        final displayName = (current.displayName?.isNotEmpty == true) ? current.displayName! : '用戶';
+        final avatars = current.photoURL.isNotEmpty ? current.photoURL : const ['assets/pic_girl1.png'];
+        final likesDisplay = (current.fans ?? 0) + 11;     // ← fans + 11
+
+        return DefaultTabController(
+          length: 2,
+          child: Scaffold(
+            extendBodyBehindAppBar: true,
+            appBar: AppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              leading: const BackButton(color: Colors.white),
+            ),
+            body: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                CarouselSlider.builder(
-                  carouselController: _carouselController,
-                  itemCount: demoImages.length,
-                  options: CarouselOptions(
-                    height: 240,
-                    viewportFraction: 1.0,
-                    autoPlay: true,
-                    onPageChanged: (index, reason) {
-                      _currentIndexNotifier.value = index;
-                    },
-                  ),
-                  itemBuilder: (context, index, realIndex) {
-                    return Image.asset(
-                      demoImages[index],
-                      width: double.infinity,
-                      height: 240,
-                      fit: BoxFit.cover,
-                      alignment: Alignment.topCenter,
-                    );
-                  },
-                ),
-                Positioned(
-                  bottom: 12,
-                  child: ValueListenableBuilder<int>(
-                    valueListenable: _currentIndexNotifier,
-                    builder: (context, currentIndex, _) {
-                      return AnimatedSmoothIndicator(
-                        activeIndex: currentIndex,
-                        count: demoImages.length,
-                        effect: const ExpandingDotsEffect(
-                          activeDotColor: Colors.white,
-                          dotColor: Colors.white54,
-                          dotHeight: 8,
-                          dotWidth: 8,
-                          spacing: 6,
+
+                // 頂部媒體（自動判斷 0/1/多張）
+                _buildTopMedia(u.photoURL),
+                const SizedBox(height: 8),
+
+                // 基本資訊列（用 displayName / avatarPath）
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: // 放在 build() 裡原來的位置，替換那段 Column
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 左側：名字 + 性別年齡 + VIP
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 5),
+                          child: Row(
+                            children: [
+                              // 名字
+                              Flexible(
+                                child: Text(
+                                  displayName,
+                                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+
+                              // 性別年齡 Chip（男藍/女粉）
+                              _GenderAgeChip(
+                                sex: u.sex,                       // 1=男、2=女（若後端不同，自己對應）
+                                age: u.extra?['age']?.toString(),
+                              ),
+                              const SizedBox(width: 6),
+
+                              // VIP 鑽石（在性別年齡的右邊）
+                              if (u.isVip == true)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(6),
+                                    gradient: const LinearGradient(
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                      colors: [Color(0xFFFFA770), Color(0xFFD247FE)],
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      SvgPicture.asset('assets/pic_vip.svg', width: 14, height: 14),
+                                      const SizedBox(width: 4),
+                                      const Text(
+                                        'VIP',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.white),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
-                        onDotClicked: (index) =>
-                            _carouselController.animateToPage(index),
-                      );
-                    },
+                      ),
+                      // 右側：喜歡數，用自訂圖示
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0F0F0),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            children: [
+                              SvgPicture.asset('assets/pic_profile.svg', width: 16, height: 16),
+                              const SizedBox(width: 4),
+                              Text('$likesDisplay 喜歡', style: const TextStyle(fontSize: 12, color: Colors.black87)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                ),
+
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 15 , vertical: 12),
+                  child: TabBar(
+                    labelColor: Color(0xFFFF4D67),
+                    unselectedLabelColor: Colors.grey,
+                    labelStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    unselectedLabelStyle: TextStyle(fontSize: 16),
+                    indicatorColor: Color(0xFFFF4D67),
+                    indicatorWeight: 2,
+                    dividerColor: Colors.transparent,
+                    tabs: [
+                      Tab(text: '我的資料'),
+                      Tab(text: '個人動態'),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      buildMyProfileTab(current), // ✅ 傳入 u
+                      buildMyVideoTab(current),   // ✅ 傳入 u
+                    ],
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            widget.displayName,
-                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(6),
-                              gradient: const LinearGradient(colors: [Color(0xFFFF8FB1), Color(0xFF9F6EFF)]),
-                            ),
-                            child: const Text('VIP', style: TextStyle(fontSize: 10, color: Colors.white)),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Color(0xFFFF4081),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.female, size: 14, color: Colors.white),
-                            SizedBox(width: 2),
-                            Text('19', style: TextStyle(fontSize: 12, color: Colors.white)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Spacer(),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Color(0xFFF0F0F0),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.person, size: 16, color: Colors.grey),
-                          SizedBox(width: 4),
-                          Text('11喜欢', style: TextStyle(fontSize: 12, color: Colors.black87)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 15),
-              child: TabBar(
-                labelColor: Colors.pink,
-                unselectedLabelColor: Colors.grey,
-                labelStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                unselectedLabelStyle: TextStyle(fontSize: 16),
-                indicatorColor: Colors.pink,
-                indicatorWeight: 2,
-                dividerColor: Colors.transparent,
-                tabs: [
-                  Tab(text: '我的资料'),
-                  Tab(text: '个人动态'),
-                ],
-              ),
-            ),
-            Expanded(
-              child: TabBarView(
-                children: [
-                  buildMyProfileTab(),
-                  buildMyVedioTab(),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
   @override
   void dispose() {
-    isLikedNotifier.dispose();
+    _feedScroll.dispose();
+    _currentIndexNotifier.dispose();
     scaleNotifier.dispose();
     super.dispose();
   }
@@ -683,3 +804,41 @@ class _GiftItem extends StatelessWidget {
     );
   }
 }
+
+class _GenderAgeChip extends StatelessWidget {
+  final dynamic sex;  // 後端可能 int 或 String
+  final String? age;
+  const _GenderAgeChip({required this.sex, this.age});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = sex?.toString();
+    final isMale = s == '1' || s?.toLowerCase() == 'male';
+    final isFemale = s == '2' || s?.toLowerCase() == 'female';
+
+    if (!(isMale || isFemale)) return const SizedBox.shrink();
+
+    final color = isMale ? const Color(0xFF3A9EFF) : const Color(0xFFFF4081);
+    final icon = isMale ? Icons.male : Icons.female;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: Colors.white),
+          const SizedBox(width: 2),
+          Text(
+            age?.isNotEmpty == true ? age! : '--',
+            style: TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+  }
+}
+

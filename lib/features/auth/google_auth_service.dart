@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import '../mine/user_repository_provider.dart';
 import './providers/auth_repository_provider.dart';
 import '../../core/user_local_storage.dart';
 import '../../data/models/user_model.dart';
@@ -86,11 +87,10 @@ class GoogleAuthService {
       if (user != null) {
         final idToken = await user.getIdToken();
 
-        // 使用新的 UserModel 結構
         final tempModel = UserModel(
           uid: user.uid,
           displayName: user.displayName,
-          photoURL: user.photoURL != null ? [user.photoURL!] : [],  // <-- 修改
+          photoURL: user.photoURL != null ? [user.photoURL!] : [],
           logins: [
             LoginMethod(
               provider: 'google',
@@ -113,13 +113,17 @@ class GoogleAuthService {
         final authRepository = ref.read(authRepositoryProvider);
         final resultModel = await authRepository.loginWithGoogle(tempModel);
 
-        print('🔥 準備送出登錄資料給後端');
-        print(tempModel.toJson());
-
+        // **立即更新本地與 provider → 確保攔截器用的是最新 token**
         await UserLocalStorage.saveUser(resultModel);
-        print('✅ 後端回傳登錄成功: ${resultModel.toJson()}');
-
         ref.read(userProfileProvider.notifier).setUser(resultModel);
+
+        // 再去獲取完整會員資料
+        final userRepo = ref.read(userRepositoryProvider);
+        final updatedUser = await userRepo.getMemberInfo(resultModel);
+
+        // 更新一次最終資料
+        await UserLocalStorage.saveUser(updatedUser);
+        ref.read(userProfileProvider.notifier).setUser(updatedUser);
       }
       return user;
     } catch (e) {
