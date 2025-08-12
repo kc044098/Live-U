@@ -17,30 +17,82 @@ class ApiClient {
       receiveTimeout: const Duration(seconds: 10),
     ));
 
-    // 註冊攔截器
     _dio.interceptors.addAll([
-      AuthInterceptor(ref), // 負責處理 token 攔截
+      AuthInterceptor(ref),
       if (kDebugMode) LogInterceptor(requestBody: true, responseBody: true),
     ]);
   }
 
-  Future<Response> get(String path, {Map<String, dynamic>? queryParameters}) async {
-    final response = await _dio.get(path, queryParameters: queryParameters);
+  // 有時 service 需要更底層能力，提供唯讀 getter（可選）
+  Dio get dio => _dio;
+
+  Future<Response> get(
+      String path, {
+        Map<String, dynamic>? queryParameters,
+        Options? options,
+        CancelToken? cancelToken,
+        ProgressCallback? onReceiveProgress,
+      }) async {
+    final response = await _dio.get(
+      path,
+      queryParameters: queryParameters,
+      options: options,
+      cancelToken: cancelToken,
+      onReceiveProgress: onReceiveProgress,
+    );
     return _normalizeResponse(response);
   }
 
-  Future<Response> post(String path, {dynamic data}) async {
-    final response = await _dio.post(path, data: data);
+  Future<Response> post(
+      String path, {
+        dynamic data,
+        Options? options,
+        CancelToken? cancelToken,
+        ProgressCallback? onSendProgress,
+        ProgressCallback? onReceiveProgress,
+      }) async {
+    final response = await _dio.post(
+      path,
+      data: data ?? {},
+      options: options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
     return _normalizeResponse(response);
   }
 
-  Future<Response> put(String path, {dynamic data}) async {
-    final response = await _dio.put(path, data: data);
+  Future<Response> put(
+      String path, {
+        dynamic data,
+        Options? options,
+        CancelToken? cancelToken,
+        ProgressCallback? onSendProgress,
+        ProgressCallback? onReceiveProgress,
+      }) async {
+    final response = await _dio.put(
+      path,
+      data: data ?? {},
+      options: options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
     return _normalizeResponse(response);
   }
 
-  Future<Response> delete(String path) async {
-    final response = await _dio.delete(path);
+  Future<Response> delete(
+      String path, {
+        dynamic data,
+        Options? options,
+        CancelToken? cancelToken,
+      }) async {
+    final response = await _dio.delete(
+      path,
+      data: data,
+      options: options,
+      cancelToken: cancelToken,
+    );
     return _normalizeResponse(response);
   }
 

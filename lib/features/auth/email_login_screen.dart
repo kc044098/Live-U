@@ -117,7 +117,10 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
             width: 24,
             height: 24,
           ),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            FocusScope.of(context).unfocus();
+            Navigator.pop(context);
+          },
         ),
       ),
       body: Stack(

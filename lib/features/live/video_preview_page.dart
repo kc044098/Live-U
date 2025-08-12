@@ -28,6 +28,7 @@ class _VideoPreviewPageState extends State<VideoPreviewPage>
   VideoPlayerController? _videoController;
   ap.AudioPlayer? _audioPlayer;
   bool _isDisposed = false;
+  bool _isRestarting = false;
   late final bool _isPhoto;
 
   @override
@@ -55,13 +56,22 @@ class _VideoPreviewPageState extends State<VideoPreviewPage>
 
         _videoController!.addListener(() async {
           final value = _videoController!.value;
-          final pos = value.position;
-          final dur = value.duration;
 
-          if (dur != null && pos >= dur && !value.isPlaying && !_isDisposed) {
+          if (_isDisposed || !mounted || value.duration == null) return;
+
+          final isEnded = value.position >= value.duration * 0.99;
+
+          // 播完後延遲1秒再重播
+          if (!_isRestarting && isEnded && !value.isPlaying) {
+            _isRestarting = true;
+
+            await Future.delayed(const Duration(seconds: 1));
+            if (!mounted || _isDisposed) return;
+
             await _videoController!.seekTo(Duration.zero);
             await _videoController!.play();
-            _playMusic();
+            await _playMusic(); // 如果需要重播音樂
+            _isRestarting = false;
           }
         });
       });

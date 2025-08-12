@@ -35,12 +35,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   void _checkUserGender() {
     final user = ref.read(userProfileProvider);
-    final gender = user?.extra?['gender'];
 
-    if (user!.uid.isNotEmpty && (gender == null || gender.toString().isEmpty)) {
+    if (user!.uid.isNotEmpty && (user.sex == 0)) {
+
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const UpdateMyInfoPage()),
-            (route) => false, // 移除所有之前的路由
+            (route) => false,
       );
     }
   }
@@ -69,7 +69,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(userProfileProvider);
-    final isMale = (user?.extra?['gender'] == 'male');
+    final isMale = (user?.extra?['sex'] == 1);
 
     final pages = [
       LiveListPage(

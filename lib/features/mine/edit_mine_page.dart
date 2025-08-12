@@ -2,7 +2,10 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:carousel_slider/carousel_slider.dart';
+import 'package:dio/dio.dart';
+import 'package:djs_live_stream/features/mine/user_repository_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
@@ -12,8 +15,11 @@ import 'package:flutter/services.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 
+import '../../core/location_helper.dart';
+import '../../core/user_local_storage.dart';
 import '../../data/models/user_model.dart';
 import '../../routes/app_routes.dart';
+import '../live/member_video_feed_state.dart';
 import '../profile/profile_controller.dart';
 import '../widgets/edit_profile_fullscreen_image_page.dart';
 import '../widgets/edit_profile_fullscreen_video_player_page.dart';
@@ -28,31 +34,15 @@ class EditMinePage extends ConsumerStatefulWidget {
 
 class _EditMinePageState extends ConsumerState<EditMinePage> {
   final CarouselSliderController _carouselController = CarouselSliderController();
+  final ScrollController _videoScrollController = ScrollController();
   final ValueNotifier<int> _currentIndexNotifier = ValueNotifier(0);
-
-  Future<Uint8List?> _getVideoThumbnail(String assetPath) async {
-    try {
-      final byteData = await rootBundle.load(assetPath);
-      final tempDir = await getTemporaryDirectory();
-      final tempFile = File('${tempDir.path}/temp_video.mp4');
-      await tempFile.writeAsBytes(byteData.buffer.asUint8List());
-
-      final thumbnail = await VideoThumbnail.thumbnailData(
-        video: tempFile.path,
-        imageFormat: ImageFormat.PNG,
-        maxWidth: 128,
-        quality: 75,
-      );
-      return thumbnail;
-    } catch (e) {
-      debugPrint("🎬 Failed to generate video thumbnail: $e");
-      return null;
-    }
-  }
+  final Map<String, Future<Uint8List?>> _thumbFutureCache = {};
+  late String currentCity = "";
 
   Widget _buildProfileHeader(UserModel? user) {
     final photos = user?.photoURL ?? [];
 
+    // 沒有圖片 → 顯示預設圖
     if (photos.isEmpty) {
       return SizedBox(
         width: double.infinity,
@@ -65,6 +55,17 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
       );
     }
 
+    // 只有一張圖片 → 顯示單圖（不輪播）
+    if (photos.length == 1) {
+      final path = photos.first;
+      return SizedBox(
+        width: double.infinity,
+        height: 288,
+        child: _buildImageByPath(path),
+      );
+    }
+
+    // 兩張及以上 → 輪播
     return Stack(
       alignment: Alignment.bottomCenter,
       children: [
@@ -80,57 +81,7 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
             },
           ),
           itemBuilder: (context, index, realIndex) {
-            final path = photos[index];
-            if (path.isEmpty) {
-              return Image.asset(
-                'assets/my_photo_defult.jpeg',
-                width: double.infinity,
-                height: 288,
-                fit: BoxFit.cover,
-                alignment: Alignment.topCenter,
-              );
-            }
-
-            // 判斷 Base64 或 本地路徑
-            if (path.startsWith('data:image') || path.length > 200) {
-              try {
-                final bytes = base64Decode(path);
-                return Image.memory(
-                  bytes,
-                  width: double.infinity,
-                  height: 288,
-                  fit: BoxFit.cover,
-                  alignment: Alignment.topCenter,
-                );
-              } catch (_) {
-                return Image.asset(
-                  'assets/my_photo_defult.jpeg',
-                  width: double.infinity,
-                  height: 288,
-                  fit: BoxFit.cover,
-                  alignment: Alignment.topCenter,
-                );
-              }
-            } else {
-              final file = File(path);
-              if (file.existsSync()) {
-                return Image.file(
-                  file,
-                  width: double.infinity,
-                  height: 288,
-                  fit: BoxFit.cover,
-                  alignment: Alignment.topCenter,
-                );
-              } else {
-                return Image.asset(
-                  'assets/my_photo_defult.jpeg',
-                  width: double.infinity,
-                  height: 288,
-                  fit: BoxFit.cover,
-                  alignment: Alignment.topCenter,
-                );
-              }
-            }
+            return _buildImageByPath(photos[index]);
           },
         ),
         Positioned(
@@ -158,12 +109,67 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
     );
   }
 
+  // 新增一個圖片載入判斷
+  Widget _buildImageByPath(String path) {
+    if (path.isEmpty) {
+      return Image.asset(
+        'assets/my_photo_defult.jpeg',
+        width: double.infinity,
+        height: 288,
+        fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
+      );
+    }
+    // Base64 或 本地路徑
+    if (path.startsWith('data:image') || path.length > 200) {
+      try {
+        final bytes = base64Decode(path);
+        return Image.memory(
+          bytes,
+          width: double.infinity,
+          height: 288,
+          fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
+        );
+      } catch (_) {
+        return Image.asset(
+          'assets/my_photo_defult.jpeg',
+          width: double.infinity,
+          height: 288,
+          fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
+        );
+      }
+    } else {
+      final file = File(path);
+      if (file.existsSync()) {
+        return Image.file(
+          file,
+          width: double.infinity,
+          height: 288,
+          fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
+        );
+      } else {
+        return CachedNetworkImage(
+          imageUrl: path,
+          width: double.infinity,
+          height: 288,
+          fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
+          errorWidget: (_, __, ___) =>
+              Image.asset('assets/my_photo_defult.jpeg'),
+        );
+      }
+    }
+  }
+
   Widget buildMyProfileTab(UserModel? user) {
     // 從 user.extra 中讀取擴展資料（假設後端返回了身高、體重等資訊）
     final height = user?.extra?['height'] ?? '未知';
     final weight = user?.extra?['weight'] ?? '未知';
     final body = user?.extra?['body'] ?? '未知';
-    final city = user?.extra?['city'] ?? '未知';
+    final city = user?.extra?['city'] ?? currentCity;
     final job = user?.extra?['job'] ?? '未知';
 
     return SingleChildScrollView(
@@ -206,18 +212,16 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
             ),
           ),
           const SizedBox(height: 16),
-          const Text('我的標籤', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          const Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _TagChip(label: '#吃貨'),
-              _TagChip(label: '#幽默風趣'),
-              _TagChip(label: '#大男人'),
-              _TagChip(label: '#健美'),
-            ],
-          ),
+          if ((user?.tags ?? []).isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Text('我的標籤', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: user!.tags!.map((tag) => _TagChip(label: '#$tag')).toList(),
+            ),
+          ],
           const SizedBox(height: 50),
           Center(
             child: SizedBox(
@@ -270,174 +274,281 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
     );
   }
 
-  Widget buildMyVedioTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: 12,
-            padding: EdgeInsets.zero,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childAspectRatio: 8 / 12,
-            ),
-            itemBuilder: (context, index) {
-              final isVideo = index % 3 == 0;
-              final path = isVideo
-                  ? 'assets/demo_video1.mp4'
-                  : (index % 2 == 0
-                  ? 'assets/pic_girl2.png'
-                  : 'assets/pic_girl3.png');
+  Widget buildMyVideoTab() {
+    final feed = ref.watch(memberFeedProvider);
+    final notifier = ref.read(memberFeedProvider.notifier);
 
-              return GestureDetector(
-                onTap: () {
-                  if (isVideo) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            FullscreenVideoPlayerPage(videoPath: path),
+    if (feed.items.isEmpty && feed.isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return RefreshIndicator(
+      onRefresh: () async => notifier.loadFirstPage(),
+      child: CustomScrollView(
+        controller: _videoScrollController,
+        cacheExtent: 3000,
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 8 / 12,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                  final item = feed.items[index];
+                  final hasCover = item.coverUrl != null && item.coverUrl!.isNotEmpty;
+                  final isImage = !item.isVideo;
+
+                  Widget mediaWidget;
+                  if (hasCover) {
+                    // ① coverUrl 優先
+                    mediaWidget = CachedNetworkImage(
+                      imageUrl: item.coverUrl!,
+                      width: double.infinity,
+                      height: double.infinity,
+                      fit: BoxFit.cover,
+                      errorWidget: (_, __, ___) => Container(
+                        color: Colors.grey[300],
+                        child: const Center(child: Icon(Icons.broken_image)),
                       ),
+                      placeholder: (_, __) {
+                        return Container(
+                          color: Colors.grey[200],
+                          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                        );
+                      },
+                    );
+                  } else if (item.isVideo) {
+                    // ② 無 coverUrl 且為影片 → 動態生成縮圖
+                    mediaWidget = FutureBuilder<Uint8List?>(
+                      future: _getNetworkVideoThumbnail(item.videoUrl),
+                      builder: (context, snap) {
+                        if (snap.connectionState == ConnectionState.done && snap.hasData) {
+                          return Image.memory(
+                            snap.data!,
+                            width: double.infinity,
+                            height: double.infinity,
+                            fit: BoxFit.cover,
+                          );
+                        }
+                        return Container(
+                          color: Colors.grey[200],
+                          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                        );
+                      },
+                    );
+                  } else if (isImage) {
+                    // ③ 圖片直接載入（有些後端把圖片路徑也放在 videoUrl）
+                    mediaWidget = CachedNetworkImage(
+                      imageUrl: item.videoUrl,
+                      width: double.infinity,
+                      height: double.infinity,
+                      fit: BoxFit.cover,
+                      errorWidget: (_, __, ___) => Container(
+                        color: Colors.grey[300],
+                        child: const Center(child: Icon(Icons.broken_image)),
+                      ),
+                      placeholder: (_, __) {
+                        return Container(
+                          color: Colors.grey[200],
+                          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                        );
+                      },
                     );
                   } else {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            FullscreenImagePage(imagePath: path),
-                      ),
+                    mediaWidget = Container(
+                      color: Colors.grey[200],
+                      child: const Center(child: Icon(Icons.insert_drive_file)),
                     );
                   }
-                },
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      height: 250,
-                      child: Stack(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: isVideo
-                                ? FutureBuilder<Uint8List?>(
-                              future: _getVideoThumbnail(path),
-                              builder: (context, snapshot) {
-                                if (snapshot.connectionState ==
-                                    ConnectionState.done &&
-                                    snapshot.hasData) {
-                                  return Image.memory(snapshot.data!,
-                                      width: double.infinity,
-                                      height: double.infinity,
-                                      fit: BoxFit.cover);
-                                } else {
-                                  return Container(
-                                    color: Colors.grey[300],
-                                    child: const Center(
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2),
+                  return GestureDetector(
+                    onTap: () async {
+                      if (item.isVideo) {
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => FullscreenVideoPlayerPage(item: item),
+                          ),
+                        );
+
+                        if (result is Map && result['updated'] == true) {
+                          ref.read(memberFeedProvider.notifier).applyLocalUpdate(
+                            id: result['id'] as int,
+                            title: result['title'] as String,
+                            isTop: result['isTop'] as int,
+                          );
+                        }
+                      } else {
+                        final img = hasCover
+                            ? item.coverUrl!
+                            : (isImage ? item.videoUrl : '');
+                        if (img.isNotEmpty) {
+                          final result = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => FullscreenImagePage(item: item),
+                            ),
+                          );
+
+                          if (result is Map && result['updated'] == true) {
+                            ref.read(memberFeedProvider.notifier).applyLocalUpdate(
+                              id: result['id'] as int,
+                              title: result['title'] as String,
+                              isTop: result['isTop'] as int,
+                            );
+                          }
+                        }
+                      }
+                    },
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          height: 250,
+                          child: Stack(
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: mediaWidget,
+                              ),
+                              if (item.isVideo)
+                                const Positioned.fill(
+                                  child: Center(
+                                    child: Icon(Icons.play_circle_fill, size: 36, color: Colors.white),
+                                  ),
+                                ),
+                              if (item.isTop == 1)
+                                Positioned(
+                                  bottom: 6,
+                                  left: 6,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.pink,
+                                      borderRadius: BorderRadius.circular(4),
                                     ),
-                                  );
-                                }
-                              },
-                            )
-                                : Image.asset(
-                              path,
-                              width: double.infinity,
-                              height: double.infinity,
-                              fit: BoxFit.cover,
-                            ),
+                                    child: const Text('精選', style: TextStyle(color: Colors.white, fontSize: 10)),
+                                  ),
+                                ),
+                            ],
                           ),
-                          if (isVideo)
-                            const Positioned.fill(
-                              child: Center(
-                                child: Icon(Icons.play_circle_fill,
-                                    size: 36, color: Colors.white),
-                              ),
-                            ),
-                          Positioned(
-                            bottom: 6,
-                            left: 6,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.pink,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: const Text('精選',
-                                  style: TextStyle(
-                                      color: Colors.white, fontSize: 10)),
-                            ),
-                          ),
-                          const Positioned(
-                            bottom: 6,
-                            right: 6,
-                            child: Row(
-                              children: [
-                                Icon(Icons.visibility,
-                                    color: Colors.white, size: 14),
-                                SizedBox(width: 2),
-                                Text('1.1K',
-                                    style: TextStyle(
-                                        color: Colors.white, fontSize: 10)),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          item.title.isEmpty ? (item.isVideo ? '影片' : (isImage ? '圖片' : '內容')) : item.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 6),
-                    const Text('別看文案，看我啦…',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 13)),
-                  ],
-                ),
-              );
-            },
+                  );
+                },
+                childCount: feed.items.length,
+              ),
+            ),
           ),
-          const SizedBox(height: 18),
-          Center(
-            child: GestureDetector(
-              onTap: () {
-                Navigator.pushNamed(context, AppRoutes.videoRecorder);
-              },
-              child: Container(
-                width: 288,
-                height: 48,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFFFB56B), Color(0xFFDF65F8)],
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Center(
+                child: feed.isLoading
+                    ? const SizedBox(height: 32, width: 32, child: CircularProgressIndicator())
+                    : (feed.hasMore ? const SizedBox.shrink() : const SizedBox(height: 20)),
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Center(
+              child: GestureDetector(
+                onTap: () => Navigator.pushNamed(context, AppRoutes.videoRecorder),
+                child: Container(
+                  width: 288,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(colors: [Color(0xFFFFB56B), Color(0xFFDF65F8)]),
+                    borderRadius: BorderRadius.circular(30),
                   ),
-                  borderRadius: BorderRadius.circular(30),
-                ),
-                child: Center(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SvgPicture.asset('assets/icon_start_video.svg',
-                        width: 24,
-                        height: 24,
-                      ),
-                      const SizedBox(width: 6),
-                      const Text('發布動態',
-                          style: TextStyle(color: Colors.white, fontSize: 16)),
-                    ],
+                  child: Center(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SvgPicture.asset('assets/icon_start_video.svg', width: 24, height: 24),
+                        const SizedBox(width: 6),
+                        const Text('發布動態', style: TextStyle(color: Colors.white, fontSize: 16)),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 40),
+          const SliverToBoxAdapter(child: SizedBox(height: 40)),
         ],
       ),
     );
+  }
+
+  Future<Uint8List?> _getNetworkVideoThumbnail(String videoUrl) {
+    // 避免同一個 URL 重複計算
+    if (_thumbFutureCache.containsKey(videoUrl)) return _thumbFutureCache[videoUrl]!;
+
+    final future = (() async {
+      try {
+        final tmpDir = await getTemporaryDirectory();
+        final fileName = videoUrl.split('/').last;
+        final localPath = '${tmpDir.path}/thumb_src_$fileName';
+        final f = File(localPath);
+
+        if (!await f.exists()) {
+          final resp = await Dio().get<List<int>>(videoUrl,
+              options: Options(responseType: ResponseType.bytes));
+          await f.writeAsBytes(resp.data as List<int>);
+        }
+
+        return await VideoThumbnail.thumbnailData(
+          video: f.path,
+          imageFormat: ImageFormat.PNG,
+          maxWidth: 256, // 比 128 再清楚一些
+          quality: 75,
+        );
+      } catch (e) {
+        debugPrint('🎬 Failed to gen network thumbnail: $e');
+        return null;
+      }
+    })();
+
+    _thumbFutureCache[videoUrl] = future;
+    return future;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() async {
+      final currentUser = await UserLocalStorage.getUser();
+      if (currentUser == null) return;
+
+      final userRepo = ref.read(userRepositoryProvider);
+      final updatedUser = await userRepo.getMemberInfo(currentUser);
+
+      await UserLocalStorage.saveUser(updatedUser);
+      ref.read(userProfileProvider.notifier).setUser(updatedUser);
+      ref.read(memberFeedProvider.notifier).loadFirstPage();
+    });
+    _getCurrentCityFromGPS();
+
+    // 接近動態底部時抓下一頁
+    _videoScrollController.addListener(() {
+      final pos = _videoScrollController.position;
+      if (pos.pixels >= pos.maxScrollExtent - 400) {
+        ref.read(memberFeedProvider.notifier).loadNextPage();
+      }
+    });
   }
 
   @override
@@ -484,7 +595,7 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
               child: TabBarView(
                 children: [
                   buildMyProfileTab(user),
-                  buildMyVedioTab(),
+                  buildMyVideoTab(),
                 ],
               ),
             ),
@@ -494,8 +605,42 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
     );
   }
 
+  Future<void> _getCurrentCityFromGPS() async {
+    final city = await LocationHelper.getCurrentCity();
+    if (city == null || city.isEmpty) return;
+
+    debugPrint('📍 GPS取得城市: $city');
+    setState(() => currentCity = city);
+
+    final user = ref.read(userProfileProvider);
+    if (user == null) return;
+
+    final updatedExtra = Map<String, dynamic>.from(user.extra ?? {});
+    updatedExtra['city'] = city;
+
+    // 呼叫 API 更新暱稱
+    final repo = ref.read(userRepositoryProvider);
+    await repo.updateMemberInfo({
+      'detail': {
+        'city': city,
+      }
+    });
+
+    // 更新 provider 與本地存儲
+    final updatedUser = user.copyWith(extra: updatedExtra);
+    ref.read(userProfileProvider.notifier).setUser(updatedUser);
+    await UserLocalStorage.saveUser(updatedUser);
+  }
+
+  bool _looksLikeImageUrl(String url) {
+    final u = url.toLowerCase();
+    const exts = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.heic', '.heif'];
+    return exts.any((e) => u.endsWith(e));
+  }
+
   @override
   void dispose() {
+    _videoScrollController.dispose();
     _currentIndexNotifier.dispose();
     super.dispose();
   }

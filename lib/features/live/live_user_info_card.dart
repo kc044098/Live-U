@@ -65,8 +65,7 @@ class _LiveUserInfoCardState extends ConsumerState<LiveUserInfoCard> {
                       context,
                       MaterialPageRoute(
                         builder: (_) => ViewProfilePage(
-                          displayName: widget.name,
-                          avatarPath: widget.avatarPath,
+                          userId: 1,
                         ),
                       ),
                     );

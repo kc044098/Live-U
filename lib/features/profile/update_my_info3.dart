@@ -22,6 +22,11 @@ class _UpdateMyInfoPage3State extends ConsumerState<UpdateMyInfoPage3> {
       return;
     }
 
+    if (nickname.length > 20) {
+      Fluttertoast.showToast(msg: '暱稱長度過長, 請重新輸入');
+      return;
+    }
+
     // 更新暱稱
     ref.read(userProfileProvider.notifier).updateDisplayName(nickname);
 

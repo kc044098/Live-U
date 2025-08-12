@@ -4,7 +4,9 @@ import 'package:fluttertoast/fluttertoast.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/user_local_storage.dart';
 import '../home/home_screen.dart';
+import '../mine/user_repository_provider.dart';
 import 'update_my_info2.dart';
 
 class UpdateMyInfoPage extends ConsumerStatefulWidget {
@@ -17,18 +19,25 @@ class UpdateMyInfoPage extends ConsumerStatefulWidget {
 class _UpdateMyInfoPageState extends ConsumerState<UpdateMyInfoPage> {
   String? _selectedGender; // "female" or "male"
 
-  void _onNext() {
+  Future<void> _onNext() async {
     if (_selectedGender == null) {
       Fluttertoast.showToast(msg: "請先選擇性別");
       return;
     }
 
-    // 更新 gender
-    ref.read(userProfileProvider.notifier)
-        .updateExtraField('gender', _selectedGender);
+    final sexValue = _selectedGender == 'male' ? 1 : 2;
+    final user = ref.watch(userProfileProvider);
+    final repo = ref.read(userRepositoryProvider);
+    final updatedUser = user?.copyWith(sex: sexValue);
+    ref.read(userProfileProvider.notifier).setUser(updatedUser!);
+    UserLocalStorage.saveUser(updatedUser);
 
     if (_selectedGender == 'male') {
       // 男生 → 回首頁並清空路由
+
+      // 5. API 上傳
+      await repo.updateMemberInfo({'sex': 1});
+
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const HomeScreen()),
             (route) => false,
@@ -43,6 +52,10 @@ class _UpdateMyInfoPageState extends ConsumerState<UpdateMyInfoPage> {
   }
 
   void _onSkip() {
+    final user = ref.watch(userProfileProvider);
+    final updatedUser = user?.copyWith(sex: 3);
+    ref.read(userProfileProvider.notifier).setUser(updatedUser!);
+    UserLocalStorage.saveUser(updatedUser);
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const UpdateMyInfoPage2()),

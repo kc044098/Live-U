@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
@@ -7,6 +9,8 @@ import 'package:video_thumbnail/video_thumbnail.dart' as vt;
 import 'package:path_provider/path_provider.dart';
 
 import 'package:image_picker/image_picker.dart';
+import 'package:mime/mime.dart' as mime;
+import 'package:path/path.dart' as p;
 
 class VideoRecorderPage extends StatefulWidget {
   const VideoRecorderPage({super.key});
@@ -47,17 +51,20 @@ class _VideoRecorderPageState extends State<VideoRecorderPage> {
 
   Future<void> _stopRecording() async {
     if (_controller != null && _isRecording) {
-      final file = await _controller!.stopVideoRecording();
+      final xfile = await _controller!.stopVideoRecording();
       setState(() => _isRecording = false);
 
-      final thumbPath = await _generateThumbnail(file.path);
+      final fixed = await _normalizeCapturedFile(File(xfile.path), isVideo: true);
+      final fixedPath = fixed.path;
+
+      final thumbPath = await _generateThumbnail(fixedPath);
 
       if (!mounted) return;
       await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => VideoPreviewPage(
-            videoPath: file.path,
+            videoPath: fixedPath,
             thumbnailPath: thumbPath,
             musicAdded: _musicAdded,
           ),
@@ -71,12 +78,15 @@ class _VideoRecorderPageState extends State<VideoRecorderPage> {
 
     try {
       final picture = await _controller!.takePicture();
+      final fixed = await _normalizeCapturedFile(File(picture.path), isVideo: false);
+      final fixedPath = fixed.path;
+
       await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => VideoPreviewPage(
-            videoPath: picture.path,
-            thumbnailPath: picture.path,
+            videoPath: fixedPath,
+            thumbnailPath: fixedPath,
             musicAdded: false,
           ),
         ),
@@ -398,5 +408,43 @@ class _VideoRecorderPageState extends State<VideoRecorderPage> {
       quality: 75,
     );
     return thumbPath;
+  }
+
+  Future<String?> _detectMime(File f) async {
+    try {
+      final raf = await f.open();
+      final len = await f.length();
+      final n = len >= 512 ? 512 : len; // 取前 512 bytes
+      final bytes = await raf.read(n);
+      await raf.close();
+      return mime.lookupMimeType(f.path, headerBytes: bytes);
+    } catch (_) {
+      return mime.lookupMimeType(f.path); // 退而求其次用路徑判斷
+    }
+  }
+
+  /// 判斷是否為影片（不要只看副檔名）
+  Future<bool> _isVideoFile(File f) async {
+    final m = await _detectMime(f);
+    return m != null && m.startsWith('video/');
+  }
+
+  /// 若檔名沒有正確副檔名，移到 app cache 並補上副檔名（.mp4 / .jpg）
+  Future<File> _normalizeCapturedFile(File src, {required bool isVideo}) async {
+    final m = await _detectMime(src);
+    final isReallyVideo = m != null ? m.startsWith('video/') : isVideo;
+
+    final ext = isReallyVideo ? '.mp4' : '.jpg';
+    // 若已經是正確副檔名就直接回傳
+    if (src.path.toLowerCase().endsWith(ext)) return src;
+
+    final cache = await getTemporaryDirectory();
+    final base = p.basenameWithoutExtension(src.path); // 去掉原本錯誤的 .temp
+    final dstPath = p.join(cache.path, '$base$ext');
+
+    final dst = await src.copy(dstPath);
+    // 可選：刪掉舊檔
+    try { await src.delete(); } catch (_) {}
+    return dst;
   }
 }

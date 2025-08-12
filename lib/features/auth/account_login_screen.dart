@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
 import '../../core/user_local_storage.dart';
+import '../mine/user_repository_provider.dart';
 import '../profile/profile_controller.dart';
 import 'google_auth_service.dart';
 
@@ -41,13 +42,24 @@ class _AccountLoginScreenState extends ConsumerState<AccountLoginScreen> {
     setState(() => _isLoading = true);
     try {
       final authRepo = ref.read(authRepositoryProvider);
+      final userRepo = ref.read(userRepositoryProvider);
+
+      // 1. 登錄（拿到 token）
       final user = await authRepo.loginWithAccountPassword(
         account: account,
         password: password,
       );
 
+      // 2. 先寫入本地與 provider，確保攔截器使用的是最新 token
       await UserLocalStorage.saveUser(user);
       ref.read(userProfileProvider.notifier).setUser(user);
+
+      // 3. 再調用會員資訊 API（用最新 token）
+      final updatedUser = await userRepo.getMemberInfo(user);
+
+      // 4. 用完整資料覆蓋
+      await UserLocalStorage.saveUser(updatedUser);
+      ref.read(userProfileProvider.notifier).setUser(updatedUser);
 
       Fluttertoast.showToast(msg: '登錄成功');
       Navigator.pushReplacementNamed(context, '/home');
@@ -87,7 +99,10 @@ class _AccountLoginScreenState extends ConsumerState<AccountLoginScreen> {
             width: 24,
             height: 24,
           ),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            FocusScope.of(context).unfocus();
+            Navigator.pop(context);
+          },
         ),
       ),
       body: Stack(

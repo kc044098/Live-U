@@ -7,8 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:image_picker/image_picker.dart';
 import '../../data/models/user_model.dart';
+import '../../data/network/avatar_cache.dart';
 import '../mine/account_manage_page.dart';
 import '../mine/invite_friend_page.dart';
 import '../mine/price_setting_page.dart';
@@ -62,12 +62,15 @@ class _MinePageState extends ConsumerState<MinePage> {
                       children: [
                         // Avatar
                         GestureDetector(
-                          onTap: () async {
-                          },
+                          onTap: () async {},
                           child: CircleAvatar(
                             radius: 32,
-                            backgroundImage: user.avatarImage,
-                          ),
+                            backgroundImage: buildAvatarProvider(
+                              avatarUrl: user.avatarUrl,
+                              context: context,
+                              logicalSize: 64,
+                            ),
+                          )
                         ),
                         const SizedBox(width: 16),
                         // 名稱 + VIP 標籤 + ID
@@ -264,7 +267,8 @@ class _MinePageState extends ConsumerState<MinePage> {
                             onTap: () {
                               Navigator.push(
                                 context,
-                                MaterialPageRoute(builder: (_) => const InviteFriendPage()),
+                                MaterialPageRoute(
+                                    builder: (_) => const InviteFriendPage()),
                               );
                             },
                             child: Stack(
@@ -282,7 +286,8 @@ class _MinePageState extends ConsumerState<MinePage> {
                                   child: Padding(
                                     padding: const EdgeInsets.all(12),
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         const SizedBox(height: 8),
                                         const Text(
@@ -295,7 +300,8 @@ class _MinePageState extends ConsumerState<MinePage> {
                                         ),
                                         const SizedBox(height: 8),
                                         Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
                                           children: [
                                             const Text(
                                               '赚取永久佣金',
@@ -309,15 +315,23 @@ class _MinePageState extends ConsumerState<MinePage> {
                                                 onPressed: () {},
                                                 style: OutlinedButton.styleFrom(
                                                   side: const BorderSide(
-                                                      color: Color(0xFFFF4D67), width: 1),
+                                                      color: Color(0xFFFF4D67),
+                                                      width: 1),
                                                   shape: RoundedRectangleBorder(
-                                                    borderRadius: BorderRadius.circular(20),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            20),
                                                   ),
-                                                  padding: const EdgeInsets.symmetric(
-                                                      horizontal: 10, vertical: 12),
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 12),
                                                   minimumSize: Size.zero,
-                                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                                  visualDensity: VisualDensity.compact,
+                                                  tapTargetSize:
+                                                      MaterialTapTargetSize
+                                                          .shrinkWrap,
+                                                  visualDensity:
+                                                      VisualDensity.compact,
                                                 ),
                                                 child: const Text(
                                                   '立即邀请',
@@ -338,7 +352,6 @@ class _MinePageState extends ConsumerState<MinePage> {
                             ),
                           ),
                         ),
-
                       ],
                     ),
                   ),
@@ -486,7 +499,7 @@ class _MinePageState extends ConsumerState<MinePage> {
               }),
             ]),
           ] else
-          // 男生 → 使用原本普通用戶列表
+            // 男生 → 使用原本普通用戶列表
             _buildFunctionCard([
               _buildMenuItem('assets/icon_mine_beauty.svg', '美颜设置', () {
                 Fluttertoast.showToast(msg: "尚未實現美顏功能");

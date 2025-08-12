@@ -16,7 +16,7 @@ class AuthInterceptor extends Interceptor {
     final user = await UserLocalStorage.getUser();
     final token = user?.primaryLogin?.token;
     if (token != null && token.isNotEmpty) {
-      options.headers['Authorization'] = 'Bearer $token';
+      options.headers['Token'] = token.trim();
     }
 
     // UID

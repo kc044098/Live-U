@@ -1,34 +1,47 @@
+import 'dart:async';
 import 'dart:convert';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 
-import '../profile/profile_controller.dart';
+import '../../data/network/avatar_cache.dart';
+import '../mine/user_repository_provider.dart';
 
-class ViewOtherImagePage extends StatefulWidget {
+class ViewOtherImagePage extends ConsumerStatefulWidget {
   final String imagePath;
-  final String displayName;
+  final String? displayName;
   final String avatarPath;
   final String message;
   final bool isVip;
+  final bool isLike;
+  final int videoId;
 
   const ViewOtherImagePage({
     super.key,
     required this.imagePath,
     required this.displayName,
     required this.avatarPath,
-    this.message = '別睡了, 起來嗨',
+    this.message = '',
     this.isVip = false,
+    required this.isLike,
+    required this.videoId,
   });
 
   @override
-  State<ViewOtherImagePage> createState() => _ViewOtherImagePageState();
+  ConsumerState<ViewOtherImagePage> createState() => _ViewOtherImagePageState();
 }
 
-class _ViewOtherImagePageState extends State<ViewOtherImagePage>
+class _ViewOtherImagePageState extends ConsumerState<ViewOtherImagePage>
     with SingleTickerProviderStateMixin {
-  bool isLiked = false;
+  late bool isLiked;
   double _scale = 1.0;
+
+  @override
+  void initState() {
+    super.initState();
+    isLiked = widget.isLike;
+  }
 
   void _onLikePressed() {
     setState(() {
@@ -43,6 +56,11 @@ class _ViewOtherImagePageState extends State<ViewOtherImagePage>
         });
       }
     });
+    final svc = ref.read(backgroundApiServiceProvider);
+    unawaited(
+        svc.likeVideoAndRefresh(videoId: widget.videoId).catchError((e, st) {
+        })
+    );
   }
 
   @override
@@ -53,8 +71,8 @@ class _ViewOtherImagePageState extends State<ViewOtherImagePage>
         children: [
           /// **全螢幕圖片**
           SizedBox.expand(
-            child: Image.asset(
-              widget.imagePath,
+            child: CachedNetworkImage(
+              imageUrl:widget.imagePath,
               fit: BoxFit.cover,
             ),
           ),
@@ -81,9 +99,11 @@ class _ViewOtherImagePageState extends State<ViewOtherImagePage>
                       children: [
                         CircleAvatar(
                           radius: 24,
-                          backgroundImage: widget.avatarPath.isNotEmpty
-                              ? AssetImage(widget.avatarPath)
-                              : const AssetImage('assets/my_icon_defult.jpeg'),
+                          backgroundImage: buildAvatarProvider(
+                            avatarUrl: widget.avatarPath,
+                            context: context,
+                            logicalSize: 48,
+                          ),
                         ),
                         Positioned(
                           right: 2,
@@ -104,7 +124,7 @@ class _ViewOtherImagePageState extends State<ViewOtherImagePage>
                     Row(
                       children: [
                         Text(
-                          widget.displayName,
+                          widget.displayName?? '',
                           style: const TextStyle(
                             fontSize: 16,
                             color: Colors.white,

@@ -6,7 +6,9 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../core/user_local_storage.dart';
 import '../home/home_screen.dart';
+import '../mine/user_repository_provider.dart';
 
 class UpdateMyInfoPage4 extends ConsumerStatefulWidget {
   const UpdateMyInfoPage4({super.key});
@@ -18,19 +20,58 @@ class UpdateMyInfoPage4 extends ConsumerStatefulWidget {
 class _UpdateMyInfoPage4State extends ConsumerState<UpdateMyInfoPage4> {
   File? _selectedImage;
 
-  void _onFinish() {
-
-    // 保存照片 URL 到 user.photoURL（這裡可以改成上傳到伺服器再取得 URL）
-    if (_selectedImage != null) {
-      ref.read(userProfileProvider.notifier)
-          .updateExtraField('localAvatar', _selectedImage!.path);
+  void _onFinish() async {
+    if (_selectedImage == null) {
+      Fluttertoast.showToast(msg: "請先選擇照片");
+      return;
     }
 
-    Fluttertoast.showToast(msg: "個人資料已完成！");
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const HomeScreen()),
-          (route) => false, // 移除所有之前的路由
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
     );
+
+    try {
+      final repo = ref.read(userRepositoryProvider);
+      final user = ref.read(userProfileProvider);
+
+      if (user == null) throw Exception("使用者未登入");
+
+      // 1. 上傳圖片到 S3
+      final s3Url = await repo.uploadToS3Avatar(_selectedImage!);
+
+      // 2. 拼接 CDN URL + file_url
+      final fullUrl = "${user.cdnUrl}$s3Url";
+
+      // 3. 更新 photoURL（只保留這張）
+      final updatedUser = user.copyWith(photoURL: [fullUrl]);
+
+      // 4. 本地更新 user state
+      ref.read(userProfileProvider.notifier).setUser(updatedUser);
+      await UserLocalStorage.saveUser(updatedUser);
+
+      // 5. API 上傳
+      final updateData = {
+        'avatar': [fullUrl],
+        'nick_name': user.displayName ?? '',
+        'sex': user.sex,
+        'detail': {
+          'age': (user.extra?['age'] ?? '').toString().replaceAll('岁', ''),
+        },
+      };
+      await repo.updateMemberInfo(updateData);
+
+      Fluttertoast.showToast(msg: "個人資料已完成！");
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+            (route) => false,
+      );
+    } catch (e) {
+      debugPrint("上傳失敗: $e");
+      Fluttertoast.showToast(msg: "上傳失敗：$e");
+      Navigator.of(context).pop();
+    }
   }
 
   Widget _buildProgressIndicator() {
