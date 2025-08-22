@@ -1,9 +1,11 @@
 // background_api_service.dart
 import 'dart:async';
 import 'dart:io';
+import 'package:camera/camera.dart';
 import 'package:dio/dio.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../core/user_local_storage.dart';
 import '../../features/mine/user_repository.dart';
@@ -51,6 +53,8 @@ class BackgroundApiService {
     }
   }
 
+
+
   Future<void> updateMemberInfoQueued(Map<String, dynamic> updateData) {
     return _enqueue(() => _withRetry(() async {
       await _repo.updateMemberInfo(updateData);
@@ -80,7 +84,7 @@ class BackgroundApiService {
         final uidInt = int.tryParse(targetUid);
         if (uidInt != null) {
           Future.microtask(() {
-            if (_ref.exists(otherUserProvider(uidInt))) { // otherUserProvider 沒帶參數嗎？
+            if (_ref.exists(otherUserProvider(uidInt))) {
               _ref.invalidate(otherUserProvider(uidInt));
             }
           });
@@ -131,69 +135,122 @@ class BackgroundApiService {
     });
   }
 
-  /// 多張頭像上傳後更新會員資訊（cdnBase 可選）
+  /// 只保留 path（/ 開頭），把 http(s) 與查詢參數等都去掉
+  String _pathOnly(String u) {
+    if (!u.isHttp) return u; // 本地檔或已是相對路徑
+    try {
+      final uri = Uri.parse(u);
+      final p = uri.path.isEmpty ? u : uri.path;
+      return p.startsWith('/') ? p : '/$p';
+    } catch (_) {
+      return u;
+    }
+  }
+
+  /// 多張頭像上傳後更新會員資訊
   Future<void> uploadAvatarsAndUpdate({
-    required List<String> paths,  // 可能混合 http 與本地路徑
-    String? cdnBase,              // 有就拼上（只對「非 http」的上傳結果）
-    void Function(double progress)? onProgress, // 可選：0~1 進度回呼（不畫 UI）
+    required List<String> paths,
+    void Function(double progress)? onProgress,
   }) {
     return _enqueue(() async {
-      // 1) 將 http 的直接保留，非 http 的排進待上傳
-      final retained = <String>[];
-      final toUpload = <String>[];
+      String _pathOnly(String u) {
+        if (!u.isHttp) return u;
+        try {
+          final uri = Uri.parse(u);
+          final p = uri.path.isEmpty ? u : uri.path;
+          return p.startsWith('/') ? p : '/$p';
+        } catch (_) {
+          return u;
+        }
+      }
+
+      final retained = <String>[]; // 伺服器相對路徑（或已經是 /avatar/.. 等）
+      final toUpload = <String>[]; // 本地檔（含 /storage… /data…、content://、file://、相對檔名）
+
       for (final p in paths) {
         if (p.isEmpty) continue;
         if (p.isHttp) {
-          retained.add(p);
+          retained.add(_pathOnly(p));
+        } else if (p.isServerRelative) {
+          retained.add(p); // 僅 /avatar/... 這類
         } else {
-          toUpload.add(p);
+          toUpload.add(p); // 本地絕對/相對/URI 皆列入上傳
         }
       }
 
-      // 2) 依序上傳本地檔（序列化避免併發）
       final uploaded = <String>[];
       for (var i = 0; i < toUpload.length; i++) {
-        final localPath = toUpload[i];
-        final file = File(localPath);
-        if (await file.exists()) {
-          String url = await _withRetry(() => _repo.uploadToS3Avatar(file));
-          // 只對非 http 的「後端回傳相對路徑」加上 cdnBase（依你後端而定）
-          if (!url.isHttp && cdnBase != null && cdnBase.isNotEmpty) {
-            url = cdnBase.endsWith('/') ? '${cdnBase.substring(0, cdnBase.length - 1)}$url' : '$cdnBase$url';
-          }
-          uploaded.add(url);
+        final f = await _toReadableFile(toUpload[i]);
+        if (f != null) {
+          final url = await _withRetry(() => _repo.uploadToS3Avatar(f));
+          uploaded.add(_pathOnly(url)); // 只存相對路徑
         }
-        // 粗略進度（非必要）
-        if (onProgress != null) {
-          final done = retained.length + uploaded.length;
-          final total = retained.length + toUpload.length;
-          onProgress(total == 0 ? 1.0 : done / total);
-        }
+        onProgress?.call(
+            (retained.length + uploaded.length) /
+                ((retained.length + toUpload.length) == 0 ? 1 : (retained.length + toUpload.length))
+        );
       }
 
-      final finalList = <String>[
-        ...retained,
-        ...uploaded,
-      ];
+      final finalList = <String>[...retained, ...uploaded];
 
-      // 3) 更新後端
       await _withRetry(() => _repo.updateMemberInfo({'avatar': finalList}));
 
-      // 4) 同步到本地（不需要 dialog）
       final me = _ref.read(userProfileProvider);
       if (me != null) {
-        final updated = me.copyWith(photoURL: finalList);
+        final updated = me.copyWith(photoURL: finalList); // 仍只存相對路徑
         _ref.read(userProfileProvider.notifier).setUser(updated);
         await UserLocalStorage.saveUser(updated);
       }
     });
   }
 
+  Future<File?> _toReadableFile(String src) async {
+    try {
+      if (src.isContentUri) {
+        final xf = XFile(src);
+        final bytes = await xf.readAsBytes();
+        final dir = await getTemporaryDirectory();
+        final f = File('${dir.path}/pick_${DateTime.now().microsecondsSinceEpoch}.bin');
+        await f.writeAsBytes(bytes);
+        return f;
+      }
+      final f = File(src);
+      if (await f.exists()) return f;
+    } catch (_) {}
+    return null;
+  }
+
   Future<UserModel> refreshMe(UserModel me) {
-    return _enqueue(() => _withRetry(() => _repo.getMemberInfo(me)));
+  return _enqueue(() => _withRetry(() => _repo.getMemberInfo(me)));
   }
 }
 
-extension _UrlHelpers on String {
+extension PathX on String {
   bool get isHttp => startsWith('http://') || startsWith('https://');
+  bool get isDataUri => startsWith('data:image');
+  bool get isContentUri => startsWith('content://') || startsWith('file://');
+
+  // 常見本地絕對路徑（Android/iOS）
+  bool get isLocalAbs =>
+      startsWith('/storage/') || // Android
+          startsWith('/mnt/')     || // Android
+          startsWith('/data/')    || // Android app data
+          startsWith('/var/');       // iOS
+
+  /// 只有像 /avatar/xxx.jpg 這種「伺服器相對路徑」才回 true
+  bool get isServerRelative => startsWith('/') && !isLocalAbs;
 }
+
+/// 只在「伺服器相對路徑」時拼 CDN，其餘直接回傳原字串
+String joinCdnIfNeeded(String raw, String? cdnBase) {
+  if (raw.isEmpty || raw.isHttp || raw.isDataUri || raw.isContentUri || raw.isLocalAbs) {
+    return raw; // 不拼
+  }
+  if (!raw.isServerRelative) return raw; // 例如本地相對檔案名，也不拼
+  if (cdnBase == null || cdnBase.isEmpty) return raw;
+
+  final b = cdnBase.endsWith('/') ? cdnBase.substring(0, cdnBase.length - 1) : cdnBase;
+  final p = raw.startsWith('/') ? raw : '/$raw';
+  return '$b$p';
+}
+

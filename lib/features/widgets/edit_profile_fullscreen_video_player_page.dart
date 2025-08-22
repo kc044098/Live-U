@@ -6,6 +6,7 @@ import 'package:video_player/video_player.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/member_video_model.dart';
+import '../../routes/app_routes.dart';
 import '../live/video_repository_provider.dart';
 import '../profile/profile_controller.dart';
 
@@ -20,7 +21,7 @@ class FullscreenVideoPlayerPage extends ConsumerStatefulWidget {
   ConsumerState<FullscreenVideoPlayerPage> createState() => _FullscreenVideoPlayerPageState();
 }
 
-class _FullscreenVideoPlayerPageState extends ConsumerState<FullscreenVideoPlayerPage> {
+class _FullscreenVideoPlayerPageState extends ConsumerState<FullscreenVideoPlayerPage> with RouteAware {
   late VideoPlayerController _controller;
 
   // 與圖片頁一致：標題 + 分類（精選/日常） + 樂觀上傳
@@ -28,6 +29,8 @@ class _FullscreenVideoPlayerPageState extends ConsumerState<FullscreenVideoPlaye
   final TextEditingController _textController = TextEditingController();
   late final String _origTitle;
   late final int _origIsTop;
+
+  final ValueNotifier<bool> _playGate = ValueNotifier(true);
 
   String _isTopToCategory(int isTop) => isTop == 1 ? '精選' : '日常';
   int _categoryToIsTop(String cat) => cat == '精選' ? 1 : 2;
@@ -67,7 +70,26 @@ class _FullscreenVideoPlayerPageState extends ConsumerState<FullscreenVideoPlaye
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route != null) routeObserver.subscribe(this, route);
+  }
+
+  @override
+  void didPushNext() {
+    _playGate.value = false; // 上層推入 -> 暫停
+  }
+
+  @override
+  void didPopNext() {
+    _playGate.value = true;  // 返回本頁 -> 恢復
+  }
+
+  @override
   void dispose() {
+    routeObserver.unsubscribe(this);
+    _playGate.dispose();
     _controller.dispose();
     _textController.dispose();
     super.dispose();
@@ -114,6 +136,7 @@ class _FullscreenVideoPlayerPageState extends ConsumerState<FullscreenVideoPlaye
         return false;
       },
       child: Scaffold(
+        extendBodyBehindAppBar: true,
         backgroundColor: Colors.black,
         appBar: AppBar(
           backgroundColor: Colors.transparent,
@@ -128,16 +151,6 @@ class _FullscreenVideoPlayerPageState extends ConsumerState<FullscreenVideoPlaye
               }
             },
           ),
-          actions: [
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: TextButton.icon(
-                onPressed: _hasChanges ? _saveChangesOptimistically : null,
-                icon: const Icon(Icons.check, color: Colors.white, size: 18),
-                label: const Text('完成', style: TextStyle(color: Colors.white)),
-              ),
-            ),
-          ],
         ),
         body: Stack(
           children: [

@@ -1,0 +1,3 @@
+[submodule "third_party/agora_rtc_rawdata"]
+	path = third_party/agora_rtc_rawdata
+	url = https://github.com/Faceunity/FUAgroFlutterDemo.git

@@ -9,6 +9,7 @@ import '../mine/user_repository_provider.dart';
 import '../profile/profile_controller.dart';
 import 'google_auth_service.dart';
 
+// 通过账号密码登录
 class AccountLoginScreen extends ConsumerStatefulWidget {
   const AccountLoginScreen({super.key});
 

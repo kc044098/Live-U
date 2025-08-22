@@ -126,6 +126,7 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
         if (!isVideo && imageUrl != null) 'img': [imageUrl], // 單張也用陣列
       };
 
+      print("上傳動態 payload ：$payload");
       // 4) 通知後端建立動態
       final resp = await api.post(ApiEndpoints.momentCreate, data: payload);
       final raw = resp.data is String ? jsonDecode(resp.data) : resp.data;
@@ -257,45 +258,72 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
         ),
 
         // ====== 上傳中覆蓋層 + 進度條 + 取消 ======
-        if (_isUploading)
-          Positioned.fill(
-            child: IgnorePointer(
-              ignoring: false,
-              child: Container(
-                color: Colors.black.withOpacity(0.35),
-                child: Center(
-                  child: Container(
-                    width: 280,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text('上傳中...', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 12),
-                        LinearProgressIndicator(value: _progress.clamp(0.0, 1.0)),
-                        const SizedBox(height: 8),
-                        Text('${(_progress * 100).toStringAsFixed(0)}%'),
-                        const SizedBox(height: 12),
-                        TextButton(
-                          onPressed: () {
-                            _cancelToken?.cancel('user cancel');
-                          },
-                          child: const Text('取消上傳'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
+        if (_isUploading) _buildUploadingOverlay(),
       ],
     );
   }
+
+  Widget _buildUploadingOverlay() {
+    final pct = ((_progress.clamp(0.0, 1.0)) * 100).toStringAsFixed(0);
+
+    return Positioned.fill(
+      child: IgnorePointer(
+        ignoring: true, // 背景不可點
+        child: Container(
+          color: Colors.black.withOpacity(0.35),
+          child: Center(
+            child: Container(
+              width: 300,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.10),
+                    blurRadius: 16,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 100%
+                  Text(
+                    '$pct%',
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFFFF4D67),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // 膠囊進度條
+                  _GradientCapsuleProgress(value: _progress.clamp(0.0, 1.0)),
+                  const SizedBox(height: 16),
+                  const Text(
+                    '上传视频中...',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Color(0xFF333333),
+                    ),
+                  ),
+                  // 如果要保留取消按鈕，就把下面註解拿掉
+                  // const SizedBox(height: 8),
+                  // TextButton(
+                  //   onPressed: () => _cancelToken?.cancel('user cancel'),
+                  //   child: const Text('取消上传'),
+                  // ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
 
   void _showCategoryBottomSheet(BuildContext context) {
     showModalBottomSheet(
@@ -395,6 +423,48 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
               ),
             );
           },
+        );
+      },
+    );
+  }
+}
+
+class _GradientCapsuleProgress extends StatelessWidget {
+  final double value; // 0.0 ~ 1.0
+  const _GradientCapsuleProgress({required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, c) {
+        final w = c.maxWidth;
+        final fillW = (w * value).clamp(0.0, w);
+
+        return Container(
+          height: 18,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF3F3F3),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Stack(
+            children: [
+              Align( // 🔑 保證從左邊開始
+                alignment: Alignment.centerLeft,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOut,
+                  width: fillW,
+                  height: double.infinity,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(999),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFFF4D67), Color(0xFFFF8FB1)],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         );
       },
     );

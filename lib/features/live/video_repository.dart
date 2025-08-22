@@ -5,6 +5,7 @@ import '../../data/models/member_video_model.dart';
 import '../../data/network/api_client.dart';
 import '../../data/network/api_endpoints.dart';
 import '../profile/profile_controller.dart';
+import 'data_model/feed_item.dart';
 
 class VideoRepository {
   final ApiClient _api;
@@ -40,6 +41,25 @@ class VideoRepository {
     final count = (data['count'] ?? list.length) as int;
 
     return MemberVideoPage(list: list, count: count);
+  }
+
+
+  /// 取得首頁推薦影片/圖片流（分頁）
+  Future<List<FeedItem>> fetchRecommend({required int page}) async {
+    final Response res = await _api.post(
+      ApiEndpoints.videoRecommend,
+      data: {"page": page},
+    );
+
+    final data = res.data['data'] as Map<String, dynamic>? ?? const {};
+    final rawList = (data['list'] as List?) ?? const [];
+
+    final cdnUrl = _ref.read(userProfileProvider)?.cdnUrl;
+    final base = (cdnUrl != null && cdnUrl.isNotEmpty) ? cdnUrl : _config.apiBaseUrl;
+
+    return rawList
+        .map((e) => FeedItem.fromJson(e as Map<String, dynamic>, cdnBaseUrl: base))
+        .toList();
   }
 
   Future<void> updateVideo({

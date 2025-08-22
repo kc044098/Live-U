@@ -117,17 +117,18 @@ class InviteFriendPage extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 28),
+                        padding:  const EdgeInsets.fromLTRB(12, 24, 12, 0),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+
                             // 紅色 + 白色文案區塊
                             Row(
                               children: [
                                 Container(
+                                  height: 70,
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: 24, vertical: 8),
+                                      horizontal: 18, vertical: 8),
                                   decoration: BoxDecoration(
                                     color: const Color(0xFFFF8888),
                                     borderRadius: const BorderRadius.only(
@@ -146,8 +147,9 @@ class InviteFriendPage extends StatelessWidget {
                                 ),
                                 Expanded(
                                   child: Container(
+                                    height: 70,
                                     padding: const EdgeInsets.symmetric(
-                                        horizontal: 12, vertical: 8),
+                                        horizontal: 4, vertical: 8),
                                     decoration: BoxDecoration(
                                       color: Colors.white,
                                       border: Border.all(
@@ -157,34 +159,36 @@ class InviteFriendPage extends StatelessWidget {
                                         bottomRight: Radius.circular(8),
                                       ),
                                     ),
-                                    child: const Text.rich(
-                                      TextSpan(
-                                        children: [
-                                          TextSpan(
-                                            text: '好友每次充值余额，即可享受好友充值总金额',
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              color: Color(0xFF535353),
-                                              height: 1.4,
+                                    child: Center(
+                                      child: const Text.rich(
+                                        TextSpan(
+                                          children: [
+                                            TextSpan(
+                                              text: '好友每次充值余额，即可享受好友充值总金额',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Color(0xFF535353),
+                                                height: 0.8,
+                                              ),
                                             ),
-                                          ),
-                                          TextSpan(
-                                            text: '10%',
-                                            style: TextStyle(
-                                              fontSize: 20,
-                                              color: Color(0xFFFF4D67),
-                                              height: 1.4,
+                                            TextSpan(
+                                              text: '10%',
+                                              style: TextStyle(
+                                                fontSize: 18,
+                                                color: Color(0xFFFF4D67),
+                                                height: 1.4,
+                                              ),
                                             ),
-                                          ),
-                                          TextSpan(
-                                            text: '的提成',
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              color: Color(0xFF535353),
-                                              height: 1.4,
+                                            TextSpan(
+                                              text: '的提成',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Color(0xFF535353),
+                                                height: 1.4,
+                                              ),
                                             ),
-                                          ),
-                                        ],
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -204,7 +208,7 @@ class InviteFriendPage extends StatelessWidget {
                             // 按鈕區塊
                             Center(
                               child: SizedBox(
-                                width: 300,
+                                width: double.infinity,
                                 child: ElevatedButton(
                                   onPressed: () {
                                     showDialog(
@@ -236,7 +240,7 @@ class InviteFriendPage extends StatelessWidget {
 
                             Center(
                               child: SizedBox(
-                                width: 300,
+                                width: double.infinity,
                                 child: OutlinedButton(
                                   onPressed: () {
                                     Navigator.push(

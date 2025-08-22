@@ -95,87 +95,61 @@ class InviteDialog extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 10),
-                      GestureDetector(
-                        onTap: () {
-                          _showShareBottomSheet(context);
-                        },
+                      Material( // 讓 InkWell 有水波（透明也可以）
+                        color: Colors.transparent,
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                           child: Row(
                             children: [
                               // 分享海報
                               Expanded(
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    SvgPicture.asset('assets/icon_share.svg',
-                                        width: 18, height: 18),
-                                    const SizedBox(width: 6),
-                                    const Text(
-                                      '分享海報',
-                                      style: TextStyle(
-                                          fontSize: 12, color: Color(0xFFFB5D5D)),
-                                    ),
-                                  ],
-                                ),
-                              ),
-
-                              // 分隔線
-                              Container(
-                                width: 1,
-                                height: 20,
-                                color: Color(0xFFFACCCC),
-                              ),
-
-                              // 複製連結
-                              Expanded(
-                                child: GestureDetector(
-                                  onTap: () {
-                                    Clipboard.setData(const ClipboardData(
-                                        text: 'https://api.ludev.shop?inviterId=frankie'));
-                                    Fluttertoast.showToast(msg: "已複製連結");
-                                  },
+                                child: InkWell(
+                                  onTap: () => _showShareBottomSheet(context),
                                   child: Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      SvgPicture.asset('assets/icon_copy.svg',
-                                          width: 18, height: 18),
+                                      SvgPicture.asset('assets/icon_share.svg', width: 18, height: 18),
                                       const SizedBox(width: 6),
-                                      const Text(
-                                        '複製連接',
-                                        style: TextStyle(
-                                            fontSize: 12,
-                                            color: Color(0xFFFB5D5D)),
-                                      ),
+                                      const Text('分享海報', style: TextStyle(fontSize: 12, color: Color(0xFFFB5D5D))),
                                     ],
                                   ),
                                 ),
                               ),
 
                               // 分隔線
-                              Container(
-                                width: 1,
-                                height: 20,
-                                color: Color(0xFFFACCCC),
-                              ),
+                              Container(width: 1, height: 20, color: const Color(0xFFFACCCC)),
 
-                              // 保存圖片
+                              // 複製連結
                               Expanded(
-                                child: GestureDetector(
-                                  onTap: _saveQrCode,
+                                child: InkWell(
+                                  onTap: () {
+                                    Clipboard.setData(const ClipboardData(text: 'https://api.ludev.shop?inviterId=frankie'));
+                                    Fluttertoast.showToast(msg: "已複製連結");
+                                  },
                                   child: Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      SvgPicture.asset('assets/icon_save.svg',
-                                          width: 18, height: 18),
+                                      SvgPicture.asset('assets/icon_copy.svg', width: 18, height: 18),
                                       const SizedBox(width: 6),
-                                      const Text(
-                                        '保存圖片',
-                                        style: TextStyle(
-                                            fontSize: 12,
-                                            color: Color(0xFFFB5D5D)),
-                                      ),
+                                      const Text('複製連接', style: TextStyle(fontSize: 12, color: Color(0xFFFB5D5D))),
+                                    ],
+                                  ),
+                                ),
+                              ),
+
+                              // 分隔線
+                              Container(width: 1, height: 20, color: const Color(0xFFFACCCC)),
+
+                              // 保存圖片
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () => _saveQrCode(context), // ← 確認有傳 context
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      SvgPicture.asset('assets/icon_save.svg', width: 18, height: 18),
+                                      const SizedBox(width: 6),
+                                      const Text('保存圖片', style: TextStyle(fontSize: 12, color: Color(0xFFFB5D5D))),
                                     ],
                                   ),
                                 ),
@@ -204,38 +178,74 @@ class InviteDialog extends StatelessWidget {
     );
   }
 
-  Future<void> _saveQrCode() async {
+  Future<void> _saveQrCode(BuildContext context) async {
     try {
-      // Step 1: 取得權限
-      final status = await Permission.storage.request();
-      if (!status.isGranted) {
-        Fluttertoast.showToast(msg: "請允許儲存權限");
+      final ok = await _ensureSavePermission(context);
+      if (!ok) return;
+
+      final boundary = _qrKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) {
+        Fluttertoast.showToast(msg: "畫面尚未準備完成");
         return;
       }
-
-      // Step 2: 擷取 RepaintBoundary 圖片
-      RenderRepaintBoundary boundary =
-          _qrKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
       final image = await boundary.toImage(pixelRatio: 3.0);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       final pngBytes = byteData!.buffer.asUint8List();
 
-      // Step 3: 儲存至相簿資料夾
       final directory = Directory('/storage/emulated/0/Pictures/lu.live');
       await directory.create(recursive: true);
       final timeStamp = DateTime.now().millisecondsSinceEpoch;
-      final filePath = '${directory.path}/qr_$timeStamp.png';
-      final file = File(filePath);
+      final file = File('${directory.path}/qr_$timeStamp.png');
       await file.writeAsBytes(pngBytes);
 
-      // Step 4: 嘗試用 OpenFile 打開（可引導用戶加入相簿）
       await OpenFile.open(file.path);
-
       Fluttertoast.showToast(msg: "已保存至相簿資料夾！");
     } catch (e) {
       debugPrint("❌ 錯誤: $e");
       Fluttertoast.showToast(msg: "保存失敗");
     }
+  }
+
+  Future<bool> _ensureSavePermission(BuildContext context) async {
+    final results = await [
+      if (Platform.isAndroid) Permission.photos,       // Android 13+
+      if (Platform.isAndroid) Permission.storage,      // Android 12-
+      if (Platform.isIOS)     Permission.photosAddOnly // iOS 只寫入相簿
+    ].request();
+
+    final granted = results.values.any((s) => s.isGranted);
+    if (granted) return true;
+
+    // 永久拒絕 → 引導去系統設定
+    final permanentlyDenied = results.values.any((s) => s.isPermanentlyDenied);
+    if (permanentlyDenied) {
+      final go = await _showOpenSettingsDialog(context);
+      if (go == true) {
+        await openAppSettings();
+        final re = await [
+          if (Platform.isAndroid) Permission.photos,
+          if (Platform.isAndroid) Permission.storage,
+          if (Platform.isIOS)     Permission.photosAddOnly
+        ].request();
+        return re.values.any((s) => s.isGranted);
+      }
+    }
+    return false;
+  }
+
+  // 只有「去設定」這個引導（非必然出現）
+  Future<bool?> _showOpenSettingsDialog(BuildContext context) {
+    return showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('權限被停用'),
+        content: const Text('您已關閉儲存/相簿權限，請前往系統設定手動開啟。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(context, true),  child: const Text('去設定')),
+        ],
+      ),
+    );
   }
 
   void _showShareBottomSheet(BuildContext context) {
