@@ -10,6 +10,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 import '../../data/models/user_model.dart';
 import '../../data/network/avatar_cache.dart';
 import '../mine/account_manage_page.dart';
+import '../mine/dnd_mode_page.dart';
 import '../mine/invite_friend_page.dart';
 import '../mine/price_setting_page.dart';
 import '../mine/vip_privilege_page.dart';
@@ -66,7 +67,7 @@ class _MinePageState extends ConsumerState<MinePage> {
                           child: CircleAvatar(
                             radius: 32,
                             backgroundImage: buildAvatarProvider(
-                              avatarUrl: user.avatarUrl,
+                              avatarUrl: user.avatarUrlAbs,
                               context: context,
                               logicalSize: 64,
                             ),
@@ -176,7 +177,7 @@ class _MinePageState extends ConsumerState<MinePage> {
                                   child: IgnorePointer(
                                     ignoring: false, // 允許內部按鈕點擊
                                     child: Padding(
-                                      padding: const EdgeInsets.all(12),
+                                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
                                       child: Column(
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
@@ -188,58 +189,42 @@ class _MinePageState extends ConsumerState<MinePage> {
                                                   fontWeight: FontWeight.bold,
                                                   color: Color(0xFF836810))),
                                           const SizedBox(height: 8),
-                                          Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              const Text('开通专属特权',
-                                                  style: TextStyle(
-                                                      fontSize: 14,
-                                                      color:
-                                                          Color(0xFFD1B765))),
-                                              OutlinedButton(
-                                                onPressed: () async {
-                                                  await Navigator.push(
-                                                      context,
-                                                      MaterialPageRoute(
-                                                        builder: (_) =>
-                                                            const VipPrivilegePage(),
-                                                      ));
-                                                  setState(() {});
-                                                },
-                                                style: OutlinedButton.styleFrom(
-                                                  side: const BorderSide(
-                                                      color: Color(0xFF836810),
-                                                      width: 1),
-                                                  shape: RoundedRectangleBorder(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            20),
-                                                  ),
-                                                  padding: const EdgeInsets
-                                                      .symmetric(
-                                                      horizontal: 10,
-                                                      vertical: 12),
-                                                  minimumSize: Size.zero,
-                                                  tapTargetSize:
-                                                      MaterialTapTargetSize
-                                                          .shrinkWrap,
-                                                  visualDensity:
-                                                      VisualDensity.compact,
-                                                ),
-                                                child: Text(
-                                                  user.isVip == true
-                                                      ? '已开通'
-                                                      : '立即开通',
-                                                  style: const TextStyle(
-                                                    fontSize: 12,
-                                                    color: Color(0xFF836810),
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              '开通专属特权',
+                                              style: const TextStyle(fontSize: 12, color: Color(0xFFD1B765)),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis, // 超出以…顯示
+                                              softWrap: false,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          OutlinedButton(
+                                            onPressed: () async {
+                                              await Navigator.push(
+                                                context,
+                                                MaterialPageRoute(builder: (_) => const VipPrivilegePage()),
+                                              );
+                                              setState(() {});
+                                            },
+                                            style: OutlinedButton.styleFrom(
+                                              side: const BorderSide(color: Color(0xFF836810), width: 1),
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                                              minimumSize: Size.zero,
+                                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                              visualDensity: VisualDensity.compact,
+                                            ),
+                                            child: Text(
+                                              user.isVip == true ? '已开通' : '立即开通',
+                                              style: const TextStyle(fontSize: 12, color: Color(0xFF836810)),
+                                            ),
                                           ),
                                         ],
+                                      ),
+                                      ],
                                       ),
                                     ),
                                   ),
@@ -284,7 +269,7 @@ class _MinePageState extends ConsumerState<MinePage> {
                                 ),
                                 Positioned.fill(
                                   child: Padding(
-                                    padding: const EdgeInsets.all(12),
+                                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
@@ -306,7 +291,7 @@ class _MinePageState extends ConsumerState<MinePage> {
                                             const Text(
                                               '赚取永久佣金',
                                               style: TextStyle(
-                                                fontSize: 14,
+                                                fontSize: 12,
                                                 color: Color(0xFFFF92A2),
                                               ),
                                             ),
@@ -438,14 +423,14 @@ class _MinePageState extends ConsumerState<MinePage> {
   }
 
   Widget _buildFunctionList(BuildContext context, UserModel user) {
-    final isMale = user.extra?['gender'] == 'male'; // 新增性別判斷
+    final isBroadcaster = user.isBroadcaster; // 主播判斷
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
         children: [
-          if (!isMale) ...[
-            // 不是男生 → 使用原本主播的兩段列表
+          if (isBroadcaster) ...[
+            // 主播的兩段列表
             _buildFunctionCard([
               _buildMenuItem('assets/icon_mine_ticket.svg', '价格设置', () {
                 Navigator.push(
@@ -468,11 +453,6 @@ class _MinePageState extends ConsumerState<MinePage> {
                     builder: (_) => const WhoLikesMePage(),
                   ),
                 );
-                var u = ref.read(userProfileProvider);
-                u!.isVip = true;
-                if (result == true) {
-                  setState(() {});
-                }
               }),
               _buildMenuItem('assets/icon_mine_like.svg', '我喜欢的', () {
                 Navigator.push(
@@ -499,7 +479,7 @@ class _MinePageState extends ConsumerState<MinePage> {
               }),
             ]),
           ] else
-            // 男生 → 使用原本普通用戶列表
+            // 普通用戶列表
             _buildFunctionCard([
               _buildMenuItem('assets/icon_mine_beauty.svg', '美颜设置', () {
                 Fluttertoast.showToast(msg: "尚未實現美顏功能");
@@ -528,6 +508,14 @@ class _MinePageState extends ConsumerState<MinePage> {
                   context,
                   MaterialPageRoute(
                     builder: (_) => const AccountManagePage(),
+                  ),
+                );
+              }),
+              _buildMenuItem('assets/notify_mode.svg', '勿扰模式', () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const DndModePage(),
                   ),
                 );
               }),

@@ -7,6 +7,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
 import '../../core/user_local_storage.dart';
+import '../mine/user_repository_provider.dart';
 import '../profile/profile_controller.dart';
 import 'google_auth_service.dart';
 
@@ -75,6 +76,13 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
 
       await UserLocalStorage.saveUser(user);
       ref.read(userProfileProvider.notifier).setUser(user);
+
+      // 再調用會員資訊 API（用最新 token）
+      final updatedUser = await ref.read(userRepositoryProvider).getMemberInfo(user);
+
+      // 4. 用完整資料覆蓋
+      await UserLocalStorage.saveUser(updatedUser);
+      ref.read(userProfileProvider.notifier).setUser(updatedUser);
 
       Fluttertoast.showToast(msg: '登入成功');
       Navigator.pushReplacementNamed(context, '/home');

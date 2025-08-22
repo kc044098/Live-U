@@ -6,7 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 
 import '../../data/network/avatar_cache.dart';
+import '../live/data_model/feed_item.dart';
+import '../live/data_model/home_feed_state.dart';
 import '../mine/user_repository_provider.dart';
+import '../profile/profile_controller.dart';
 
 class ViewOtherImagePage extends ConsumerStatefulWidget {
   final String imagePath;
@@ -15,7 +18,7 @@ class ViewOtherImagePage extends ConsumerStatefulWidget {
   final String message;
   final bool isVip;
   final bool isLike;
-  final int videoId;
+  final String uid;
 
   const ViewOtherImagePage({
     super.key,
@@ -25,7 +28,7 @@ class ViewOtherImagePage extends ConsumerStatefulWidget {
     this.message = '',
     this.isVip = false,
     required this.isLike,
-    required this.videoId,
+    required this.uid,
   });
 
   @override
@@ -36,35 +39,75 @@ class _ViewOtherImagePageState extends ConsumerState<ViewOtherImagePage>
     with SingleTickerProviderStateMixin {
   late bool isLiked;
   double _scale = 1.0;
+  late final int _intUid;
 
   @override
   void initState() {
     super.initState();
-    isLiked = widget.isLike;
+    _intUid = int.tryParse(widget.uid) ?? -1;
+
+    // 以首頁列表中最新資料為準；找不到才用路由參數
+    final likedFromList = _selectLikeFromHomeFeed(ref, _intUid);
+    isLiked = likedFromList ?? widget.isLike;
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final latest = _selectLikeFromHomeFeed(ref, _intUid);
+    if (latest != null && latest != isLiked) {
+      setState(() => isLiked = latest);
+    }
+  }
+
+  bool? _selectLikeFromHomeFeed(WidgetRef ref, int uid) {
+    return ref.read(
+      homeFeedProvider.select((s) {
+        final hit = s.items.cast<FeedItem?>().firstWhere(
+              (e) => e != null && e.uid == uid,
+          orElse: () => null,
+        );
+        if (hit == null) return null;
+        return hit.isLike == 1; // 1=已讚，其餘=未讚
+      }),
+    );
+  }
+
+
   void _onLikePressed() {
+
+    // 樂觀更新 + 小放大動畫
     setState(() {
       isLiked = !isLiked;
-      _scale = 3.0; // 放大
+      _scale = 3.0;
+    });
+    Future.delayed(const Duration(milliseconds: 150), () {
+      if (mounted) setState(() => _scale = 1.0);
     });
 
-    Future.delayed(const Duration(milliseconds: 150), () {
-      if (mounted) {
-        setState(() {
-          _scale = 1.0;
-        });
-      }
-    });
+    // 同步到首頁推薦列表（批量：該 uid 的所有卡片）
+    ref.read(homeFeedProvider.notifier).setLikeByUser(
+      uid: _intUid,
+      liked: isLiked,
+    );
+
+    // 背景送 API；失敗回滾（UI + 列表）
     final svc = ref.read(backgroundApiServiceProvider);
     unawaited(
-        svc.likeVideoAndRefresh(videoId: widget.videoId).catchError((e, st) {
-        })
+      svc.likeUserAndRefresh(targetUid: widget.uid).catchError((e, st) {
+        if (!mounted) return;
+        setState(() => isLiked = !isLiked); // UI 回滾
+        ref.read(homeFeedProvider.notifier).setLikeByUser(
+          uid: _intUid,
+          liked: isLiked, // 回滾後的值
+        );
+      }),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final myUid = ref.watch(userProfileProvider)?.uid;
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -173,6 +216,7 @@ class _ViewOtherImagePageState extends ConsumerState<ViewOtherImagePage>
           ),
 
           /// **右下角愛心按鈕 + 動畫**
+          (myUid != null && widget.uid.toString() != myUid) ?
           Positioned(
             bottom: 120,
             right: 20,
@@ -190,7 +234,7 @@ class _ViewOtherImagePageState extends ConsumerState<ViewOtherImagePage>
                 ),
               ),
             ),
-          ),
+          ): SizedBox(height: 40),
         ],
       ),
     );

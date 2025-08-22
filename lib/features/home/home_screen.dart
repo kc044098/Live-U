@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import '../../l10n/l10n.dart';
+import '../live/data_model/home_feed_state.dart';
 import 'live_list_page.dart';
 import 'mine_page.dart';
 import 'message_page.dart';
@@ -21,8 +22,29 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _selectedIndex = 0;
   int _liveTabIndex = 0;
+  DateTime? _lastHomeRefreshAt;
 
   bool get _isLiveHomeTab => _selectedIndex == 0 && _liveTabIndex == 0;
+
+
+  void _refreshHomeIfStale([Duration maxAge = const Duration(seconds: 15)]) {
+    final now = DateTime.now();
+    if (_lastHomeRefreshAt == null || now.difference(_lastHomeRefreshAt!) > maxAge) {
+      ref.read(homeFeedProvider.notifier).refresh();
+      _lastHomeRefreshAt = now;
+    }
+  }
+
+  void _onItemTapped(int index) {
+    final wasHome = _selectedIndex == 0;
+    setState(() => _selectedIndex = index);
+
+    // 切到首頁就嘗試刷新
+    if (index == 0) _refreshHomeIfStale();
+
+    // 如果使用者已在首頁又再點一次首頁，也允許刷新
+    if (index == 0 && wasHome) _refreshHomeIfStale();
+  }
 
   @override
   void initState() {
@@ -45,12 +67,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-  }
-
   String _getSvgPath(int index, bool selected) {
     switch (index) {
       case 0:
@@ -69,7 +85,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(userProfileProvider);
-    final isMale = (user?.extra?['sex'] == 1);
 
     final pages = [
       LiveListPage(
@@ -77,8 +92,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           setState(() {
             _liveTabIndex = index;
           });
+
+          // 只有當前底部是首頁，且主播 tab 切回「首页」時刷新
+          if (_selectedIndex == 0 && index == 0) {
+            _refreshHomeIfStale();
+          }
         },
-        isMale: isMale,
+        isBroadcaster: user?.isBroadcaster ?? false,
       ),
       const MessagePage(),
       const MinePage(),

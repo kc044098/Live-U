@@ -1,12 +1,16 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:mime/mime.dart';
 import 'package:path/path.dart' as p;
 
 import '../../data/models/user_model.dart';
 import '../../data/network/api_client.dart';
 import '../../data/network/api_endpoints.dart';
+import 'model/fan_user.dart';
+import 'model/focus_user.dart';
+import 'model/vip_plan.dart';
 
 
 class UserRepository {
@@ -142,6 +146,74 @@ class UserRepository {
     );
   }
 
+  // 獲取粉絲列表
+  Future<MemberFansPage> fetchMemberFans({int page = 1}) async {
+    final resp = await _api.post(ApiEndpoints.memberFans, data: {'page': page});
+    final raw = resp.data is String ? jsonDecode(resp.data) : resp.data;
+
+    if (raw is! Map || raw['code'] != 200 || raw['data'] == null) {
+      throw Exception("獲取誰喜歡我失敗: $raw");
+    }
+
+    final data = (raw['data'] as Map).cast<String, dynamic>();
+    final listJson = (data['list'] as List?) ?? const [];
+
+    final list = listJson
+        .map((e) => MemberFanUser.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
+
+    final countRaw = data['count'];
+    final count = countRaw is int ? countRaw : int.tryParse('$countRaw') ?? 0;
+
+    return MemberFansPage(list: list, count: count);
+  }
+
+  // 獲取關注列表
+  Future<MemberFocusPage> fetchMemberFocusList({int page = 1}) async {
+    final resp = await _api.post(ApiEndpoints.memberFocusList, data: {'page': page});
+    final raw = resp.data is String ? jsonDecode(resp.data) : resp.data;
+
+    if (raw is! Map || raw['code'] != 200 || raw['data'] == null) {
+      throw Exception("獲取我的關注列表失敗: $raw");
+    }
+
+    final data = (raw['data'] as Map).cast<String, dynamic>();
+    final listJson = (data['list'] as List?) ?? const [];
+
+    final list = listJson
+        .map((e) => MemberFocusUser.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
+
+    final countRaw = data['count'];
+    final count = countRaw is int ? countRaw : int.tryParse('$countRaw') ?? 0;
+
+    return MemberFocusPage(list: list, count: count);
+  }
+
+  /// 取得 VIP 方案列表（以 sort 升冪；若沒有 sort 就以 month 升冪）
+  Future<List<VipPlan>> fetchVipPlans() async {
+    final resp = await _api.post(ApiEndpoints.memberVipList, data: {});
+    final raw = resp.data is String ? jsonDecode(resp.data) : resp.data;
+
+    if (raw is! Map || raw['code'] != 200 || raw['data'] == null) {
+      throw Exception("取得 VIP 禮包失敗: $raw");
+    }
+
+    final data = (raw['data'] as Map).cast<String, dynamic>();
+    final listJson = (data['list'] as List?) ?? const [];
+    final plans = listJson
+        .map((e) => VipPlan.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
+
+    // sort → month
+    plans.sort((a, b) {
+      final s = a.sort.compareTo(b.sort);
+      return s != 0 ? s : a.month.compareTo(b.month);
+    });
+
+    return plans;
+  }
+
   // 點擊喜歡視頻
   Future<void> likeVideo({required int id}) async {
     await _api.post(ApiEndpoints.videoLike, data: {'id': id});
@@ -229,7 +301,7 @@ class UserRepository {
     if (res.statusCode != 200) {
       throw Exception('S3 上傳失敗: ${res.statusCode}');
     }
-
+    Fluttertoast.showToast(msg: "上傳成功～");
     return fileUrl;
   }
 
@@ -261,4 +333,14 @@ class UserRepository {
     return ext.startsWith('.') ? ext.substring(1) : ext;
   }
 
+  Future<void> logout() async {
+    await _api.post(ApiEndpoints.logout);
+  }
+}
+
+extension FirstNonEmpty on List<String> {
+  String firstNonEmptyOrEmpty() {
+    for (final s in this) { if (s.isNotEmpty) return s; }
+    return '';
+  }
 }

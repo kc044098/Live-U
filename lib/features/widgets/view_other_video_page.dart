@@ -1,13 +1,17 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../data/network/avatar_cache.dart';
+import '../live/data_model/feed_item.dart';
+import '../live/data_model/home_feed_state.dart';
 import '../mine/user_repository_provider.dart';
+import '../profile/profile_controller.dart';
 
 class ViewOtherVideoPage extends ConsumerStatefulWidget {
   final String videoPath;
@@ -18,7 +22,7 @@ class ViewOtherVideoPage extends ConsumerStatefulWidget {
 
   // ✅ 新增：按讚狀態 + 影片 id
   final bool isLike;
-  final int videoId;
+  final String uid;
 
   const ViewOtherVideoPage({
     super.key,
@@ -28,7 +32,7 @@ class ViewOtherVideoPage extends ConsumerStatefulWidget {
     this.message = '別睡了, 起來嗨',
     this.isVip = false,
     required this.isLike,
-    required this.videoId,
+    required this.uid,
   });
 
   @override
@@ -40,11 +44,14 @@ class _ViewOtherVideoPageState extends ConsumerState<ViewOtherVideoPage>
   late VideoPlayerController _controller;
   bool isLiked = false;
   double _scale = 1.0;
+  late final int _intUid;
 
   @override
   void initState() {
     super.initState();
-    isLiked = widget.isLike;
+    _intUid = int.tryParse(widget.uid) ?? -1;
+    final likedFromList = _selectLikeFromHomeFeed(ref, _intUid);
+    isLiked = likedFromList ?? widget.isLike;
 
     // ✅ 自動判斷來源（network / file / asset）
     final p = widget.videoPath;
@@ -66,6 +73,30 @@ class _ViewOtherVideoPageState extends ConsumerState<ViewOtherVideoPage>
     });
   }
 
+  /// 從首頁列表讀取某個 uid 的「是否被我按讚」
+  bool? _selectLikeFromHomeFeed(WidgetRef ref, int uid) {
+    final liked = ref.read(homeFeedProvider.select((s) {
+        final hit = s.items.cast<FeedItem?>().firstWhere(
+              (e) => e != null && e.uid == uid,
+          orElse: () => null,
+        );
+        if (hit == null) return null;
+        return hit.isLike == 1; // 你目前用 1=已讚 / 2/0=未讚
+      }),
+    );
+    return liked;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 讓詳情頁在顯示中也能跟著首頁變化（例如從別處改了讚）
+    final latest = _selectLikeFromHomeFeed(ref, _intUid);
+    if (latest != null && latest != isLiked) {
+      setState(() => isLiked = latest);
+    }
+  }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -73,7 +104,7 @@ class _ViewOtherVideoPageState extends ConsumerState<ViewOtherVideoPage>
   }
 
   void _onLikePressed() {
-    // 1) 動效 + 樂觀切換
+    // 動效
     setState(() {
       isLiked = !isLiked;
       _scale = 3.0;
@@ -82,20 +113,27 @@ class _ViewOtherVideoPageState extends ConsumerState<ViewOtherVideoPage>
       if (mounted) setState(() => _scale = 1.0);
     });
 
-    // 2) 背景打 API（失敗還原）
+    // 2) 先同步到首頁列表（樂觀）
+    ref.read(homeFeedProvider.notifier)
+        .setLikeByUser(uid: _intUid, liked: isLiked);
+
+    // 3) 背景送 API；失敗回滾（UI + provider）
     final svc = ref.read(backgroundApiServiceProvider);
     unawaited(
-      svc.likeVideoAndRefresh(videoId: widget.videoId).catchError((e, st) {
-        if (!mounted) return;
-        setState(() {
-          isLiked = !isLiked; // 還原
-        });
-      }),
+        svc.likeUserAndRefresh(targetUid: widget.uid).catchError((e, st) {
+          if (!mounted) return;
+          // 回滾本地
+          setState(() => isLiked = !isLiked);
+          // 回滾首頁列表
+          ref.read(homeFeedProvider.notifier)
+              .setLikeByUser(uid: _intUid, liked: isLiked);
+        })
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final myUid = ref.watch(userProfileProvider)?.uid;
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -136,12 +174,10 @@ class _ViewOtherVideoPageState extends ConsumerState<ViewOtherVideoPage>
                     Stack(
                       children: [
                         CircleAvatar(
+                          backgroundImage: (widget.avatarPath == null || widget.avatarPath.isEmpty)
+                              ? const AssetImage('assets/my_icon_defult.jpeg')
+                              : CachedNetworkImageProvider(widget.avatarPath) as ImageProvider,
                           radius: 24,
-                          backgroundImage: buildAvatarProvider(
-                            avatarUrl: widget.avatarPath,
-                            context: context,
-                            logicalSize: 48,
-                          ),
                         ),
                         Positioned(
                           right: 2,
@@ -209,6 +245,7 @@ class _ViewOtherVideoPageState extends ConsumerState<ViewOtherVideoPage>
           ),
 
           /// **右下角愛心按鈕 + 動畫（樂觀切換 + 背景送讚）**
+          (myUid != null && widget.uid.toString() != myUid) ?
           Positioned(
             bottom: 120,
             right: 20,
@@ -226,7 +263,7 @@ class _ViewOtherVideoPageState extends ConsumerState<ViewOtherVideoPage>
                 ),
               ),
             ),
-          ),
+          ) : SizedBox(height: 40),
         ],
       ),
     );

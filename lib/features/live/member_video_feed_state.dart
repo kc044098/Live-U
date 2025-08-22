@@ -14,7 +14,7 @@ class MemberFeedState {
     required this.items,
     required this.page,
     required this.totalCount,
-    required this.isLoading,
+    required this.isLoading ,
   });
 
   bool get hasMore => items.length < totalCount;
@@ -54,29 +54,42 @@ class MemberFeedNotifier extends AutoDisposeNotifier<MemberFeedState> {
 
   Future<void> loadFirstPage({int? uid}) async {
     if (state.isLoading) return;
+    // 樂觀：進入載入中
     state = state.copyWith(isLoading: true);
-
-    final page1 = await _repo.fetchMemberVideos(page: 1, uid: uid);
-    state = MemberFeedState(
-      items: page1.list,
-      page: 1,
-      totalCount: page1.count,
-      isLoading: false,
-    );
+    try {
+      final page1 = await _repo.fetchMemberVideos(page: 1, uid: uid);
+      state = MemberFeedState(
+        items: page1.list,
+        page: 1,
+        totalCount: page1.count,
+        isLoading: false,
+      );
+    } catch (e, st) {
+      // 失敗也必須把 isLoading 還原
+      state = state.copyWith(isLoading: false);
+      print('loadFirstPage error: $e\n$st');
+      rethrow; // 看你需不需要往上拋
+    }
   }
 
   Future<void> loadNextPage({int? uid}) async {
     if (state.isLoading || !state.hasMore) return;
     state = state.copyWith(isLoading: true);
+    try {
+      final next = state.page + 1;
+      final p = await _repo.fetchMemberVideos(page: next, uid: uid);
+      state = state.copyWith(
+        items: [...state.items, ...p.list],
+        page: next,
+        totalCount: p.count,
+        isLoading: false,
+      );
+    } catch (e, st) {
+      state = state.copyWith(isLoading: false);
+      print('loadNextPage error: $e\n$st');
+      rethrow;
+    }
 
-    final next = state.page + 1;
-    final p = await _repo.fetchMemberVideos(page: next, uid: uid);
-    state = state.copyWith(
-      items: [...state.items, ...p.list],
-      page: next,
-      totalCount: p.count,
-      isLoading: false,
-    );
   }
 
   Future<void> updateItem({
@@ -157,28 +170,38 @@ class MemberFeedByUserNotifier extends AutoDisposeFamilyNotifier<MemberFeedState
   Future<void> loadFirstPage({int? uid}) async {
     if (state.isLoading) return;
     state = state.copyWith(isLoading: true);
-
-    final page1 = await _repo.fetchMemberVideos(page: 1, uid: _uid);
-    state = MemberFeedState(
-      items: page1.list,
-      page: 1,
-      totalCount: page1.count,
-      isLoading: false,
-    );
+    try {
+      final page1 = await _repo.fetchMemberVideos(page: 1, uid: _uid);
+      state = MemberFeedState(
+        items: page1.list,
+        page: 1,
+        totalCount: page1.count,
+        isLoading: false,
+      );
+    } catch (e, st) {
+      state = state.copyWith(isLoading: false);
+      print('loadFirstPage(byUser) error: $e\n$st');
+      rethrow;
+    }
   }
 
   Future<void> loadNextPage({int? uid}) async {
     if (state.isLoading || !state.hasMore) return;
     state = state.copyWith(isLoading: true);
-
-    final next = state.page + 1;
-    final p = await _repo.fetchMemberVideos(page: next, uid: _uid);
-    state = state.copyWith(
-      items: [...state.items, ...p.list],
-      page: next,
-      totalCount: p.count,
-      isLoading: false,
-    );
+    try {
+      final next = state.page + 1;
+      final p = await _repo.fetchMemberVideos(page: next, uid: _uid);
+      state = state.copyWith(
+        items: [...state.items, ...p.list],
+        page: next,
+        totalCount: p.count,
+        isLoading: false,
+      );
+    } catch (e, st) {
+      state = state.copyWith(isLoading: false);
+      print('loadNextPage(byUser) error: $e\n$st');
+      rethrow;
+    }
   }
 
 }

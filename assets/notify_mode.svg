@@ -1,0 +1,16 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Iconly/Curved/Logout">
+<mask id="mask0_565_173" style="mask-type:luminance" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+<path id="&#232;&#183;&#175;&#229;&#190;&#132;" fill-rule="evenodd" clip-rule="evenodd" d="M0 0H24V24H0V0Z" fill="white"/>
+</mask>
+<g mask="url(#mask0_565_173)">
+<g id="Iconly/Light/Notification">
+<g id="Notification">
+<path id="Stroke 1" fill-rule="evenodd" clip-rule="evenodd" d="M12.25 17.8476C17.8892 17.8476 20.4981 17.1242 20.75 14.2205C20.75 11.3188 18.9312 11.5054 18.9312 7.94511C18.9312 5.16414 16.2952 2 12.25 2C8.20477 2 5.56885 5.16414 5.56885 7.94511C5.56885 11.5054 3.75 11.3188 3.75 14.2205C4.00295 17.1352 6.61177 17.8476 12.25 17.8476Z" stroke="#616161" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<line id="Line 4" x1="5.97299" y1="2.18244" x2="18.1824" y2="20.027" stroke="#616161" stroke-width="1.4" stroke-linecap="round"/>
+<path id="Stroke 3" d="M14.6387 20.8574C13.2746 22.3721 11.1466 22.3901 9.76941 20.8574" stroke="#616161" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+</g>
+</g>
+</g>
+</svg>

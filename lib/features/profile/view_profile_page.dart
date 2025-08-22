@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:dio/dio.dart';
+import 'package:djs_live_stream/features/profile/profile_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,11 +16,11 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/services.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
-import 'package:http/http.dart' as http;
 
 import '../../data/models/user_model.dart';
-import '../../routes/app_routes.dart';
 import '../call/call_request_page.dart';
+import '../live/data_model/feed_item.dart';
+import '../live/data_model/home_feed_state.dart';
 import '../live/member_video_feed_state.dart';
 import '../message/message_chat_page.dart';
 import '../mine/user_repository_provider.dart';
@@ -28,6 +29,7 @@ import '../widgets/view_other_video_page.dart';
 
 class ViewProfilePage extends ConsumerStatefulWidget {
   final int userId;
+
   const ViewProfilePage({super.key, required this.userId});
 
   @override
@@ -35,32 +37,22 @@ class ViewProfilePage extends ConsumerStatefulWidget {
 }
 
 class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
-
-  final CarouselSliderController _carouselController = CarouselSliderController();
+  final CarouselSliderController _carouselController =
+      CarouselSliderController();
   final ScrollController _feedScroll = ScrollController();
   final ValueNotifier<int> _currentIndexNotifier = ValueNotifier(0);
   final ValueNotifier<double> scaleNotifier = ValueNotifier(1.0);
 
-  final List<String> demoImages = [
-    'assets/pic_girl1.png',
-    'assets/pic_girl2.png',
-    'assets/pic_girl3.png',
-  ];
   final Map<String, Future<Uint8List?>> _thumbFutureCache = {};
-  UserModel? _userOverride; // 本頁暫存修改後的 user
-
-  final CacheManager _headerCache = CacheManager(
-    Config('other_profile_header', stalePeriod: Duration(days: 14), maxNrOfCacheObjects: 200),
-  );
-  bool _headerPrecached = false;
-
 
   @override
   void initState() {
     super.initState();
     // ✅ 首次載入指定用戶的動態
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(memberFeedByUserProvider(widget.userId).notifier).loadFirstPage();
+      ref
+          .read(memberFeedByUserProvider(widget.userId).notifier)
+          .loadFirstPage();
     });
 
     // ✅ 監聽滑到底自動載入下一頁
@@ -68,14 +60,17 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
       if (!_feedScroll.hasClients) return;
       final position = _feedScroll.position;
       if (position.pixels > position.maxScrollExtent - 400) {
-        ref.read(memberFeedByUserProvider(widget.userId).notifier).loadNextPage();
+        ref
+            .read(memberFeedByUserProvider(widget.userId).notifier)
+            .loadNextPage();
       }
     });
   }
 
   Future<Uint8List?> _getNetworkVideoThumbnail(String videoUrl) {
     // 避免同一個 URL 重複計算
-    if (_thumbFutureCache.containsKey(videoUrl)) return _thumbFutureCache[videoUrl]!;
+    if (_thumbFutureCache.containsKey(videoUrl))
+      return _thumbFutureCache[videoUrl]!;
 
     final future = (() async {
       try {
@@ -106,7 +101,7 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
     return future;
   }
 
-  Widget buildMyProfileTab(UserModel? user) {
+  Widget buildMyProfileTab(UserModel? user, bool effectiveIsLike) {
     // 從 user.extra 中讀取擴展資料（假設後端返回了身高、體重等資訊）
     String height = user?.extra?['height'] ?? '未知';
     String weight = user?.extra?['weight'] ?? '未知';
@@ -128,7 +123,8 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 12),
-          const Text('關於我', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const Text('關於我',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.all(12),
@@ -164,138 +160,147 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
           const SizedBox(height: 16),
           if ((user?.tags ?? []).isNotEmpty) ...[
             const SizedBox(height: 16),
-            const Text('我的標籤', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const Text('我的標籤',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: user!.tags!.map((tag) => _TagChip(label: '#$tag')).toList(),
+              children:
+                  user!.tags!.map((tag) => _TagChip(label: '#$tag')).toList(),
             ),
           ],
           const SizedBox(height: 50),
-          buildButtonView(user),
+          buildButtonView(user, effectiveIsLike),
           const SizedBox(height: 24),
         ],
       ),
     );
   }
 
-
-  Widget buildButtonView(UserModel? u) {
+  Widget buildButtonView(UserModel? u, bool effectiveIsLike) {
+    final myUid = ref.watch(userProfileProvider)?.uid;
     if (u == null) return const SizedBox.shrink();
-    final liked = (u.isLike == 1);
+    final liked = effectiveIsLike;
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: [
-        // 愛心
-        Column(
-          children: [
-            ValueListenableBuilder<double>(
-              valueListenable: scaleNotifier,
-              builder: (_, scale, __) {
-                return GestureDetector(
-                  onTap: () => _toggleLike(u),
-                  child: AnimatedScale(
-                    scale: scale,
-                    duration: const Duration(milliseconds: 150),
-                    child: SvgPicture.asset(
-                      liked ? 'assets/live_heart_filled2.svg'
-                          : 'assets/live_heart2.svg',
-                      width: 40,
-                      height: 40,
+    return (myUid != null && u.uid.toString() != myUid)
+        ? Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              // 愛心
+              Column(
+                children: [
+                  ValueListenableBuilder<double>(
+                    valueListenable: scaleNotifier,
+                    builder: (_, scale, __) {
+                      return GestureDetector(
+                        onTap: () => _toggleLike(u, liked),
+                        child: AnimatedScale(
+                          scale: scale,
+                          duration: const Duration(milliseconds: 150),
+                          child: SvgPicture.asset(
+                            liked
+                                ? 'assets/live_heart_filled2.svg'
+                                : 'assets/live_heart2.svg',
+                            width: 40,
+                            height: 40,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 2),
+                ],
+              ),
+
+              // 私信
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Colors.pink),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24)),
+                ),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => MessageChatPage(
+                        partnerName: u.displayName ?? '',
+                        partnerAvatar: u.avatarUrl,
+                        isVip: u.isVip,
+                        statusText: '當前在線',
+                      ),
+                    ),
+                  );
+                },
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  child: Text('私信TA', style: TextStyle(color: Colors.pink)),
+                ),
+              ),
+
+              // 發起視頻
+              Column(
+                children: [
+                  GestureDetector(
+                    onTap: () => _handleCallRequest(u),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 60, vertical: 12),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFFFB56B), Color(0xFFDF65F8)],
+                        ),
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: const Text('发起视频',
+                          style: TextStyle(color: Colors.white, fontSize: 14)),
                     ),
                   ),
-                );
-              },
-            ),
-            const SizedBox(height: 2),
-          ],
-        ),
-
-        // 私信
-        OutlinedButton(
-          style: OutlinedButton.styleFrom(
-            side: const BorderSide(color: Colors.pink),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          ),
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => MessageChatPage(
-                  partnerName: u.displayName ?? '',
-                  partnerAvatar: u.avatarUrl,
-                  isVip: u.isVip,
-                  statusText: '當前在線',
-                ),
+                  const SizedBox(height: 4),
+                  const Text('1美元/分钟',
+                      style: TextStyle(color: Colors.grey, fontSize: 10)),
+                ],
               ),
-            );
-          },
-          child: const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            child: Text('私信TA', style: TextStyle(color: Colors.pink)),
-          ),
-        ),
-
-        // 發起視頻
-        Column(
-          children: [
-            GestureDetector(
-              onTap: () => _handleCallRequest(u),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 12),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFFFB56B), Color(0xFFDF65F8)],
-                  ),
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: const Text('发起视频', style: TextStyle(color: Colors.white, fontSize: 14)),
-              ),
-            ),
-            const SizedBox(height: 4),
-            const Text('1美元/分钟', style: TextStyle(color: Colors.grey, fontSize: 10)),
-          ],
-        ),
-      ],
-    );
+            ],
+          )
+        : SizedBox(height: 4);
   }
 
-  void _toggleLike(UserModel current) {
-    // 動效
+  void _toggleLike(UserModel current, bool currentLiked) {
+    // 動效（僅縮放，不改 like 狀態）
     scaleNotifier.value = 3.0;
     Future.delayed(const Duration(milliseconds: 150), () {
       if (mounted) scaleNotifier.value = 1.0;
     });
 
-    final wasLiked   = (current.isLike == 1);
-    final prevFans   = current.fans ?? 0;
-    final newIsLike  = wasLiked ? 0 : 1;
-    final newFans    = (wasLiked ? (prevFans - 1) : (prevFans + 1)).clamp(0, 0x7fffffff);
+    final nextLiked = !currentLiked;
 
-    // 樂觀更新
-    setState(() {
-      _userOverride = current.copyWith(isLike: newIsLike, fans: newFans);
-    });
+    // 1) 立刻同步到首頁推薦列表（此人所有卡片）
+    ref.read(homeFeedProvider.notifier).setLikeByUser(
+      uid: int.parse(current.uid),
+      liked: nextLiked,
+    );
 
-    // 背景執行：不在 callback 中使用 ref / setState
+    // 2) 背景 API；失敗回滾
     final svc = ref.read(backgroundApiServiceProvider);
     unawaited(
-        svc.likeUserAndRefresh(targetUid: current.uid).catchError((e, st) {
-          if (!mounted) return;
-          setState(() {
-            _userOverride = current.copyWith(isLike: wasLiked ? 1 : 0, fans: prevFans);
-          });
-        })
+      svc.likeUserAndRefresh(targetUid: current.uid).catchError((e, st) {
+        // 回滾首頁列表
+        ref.read(homeFeedProvider.notifier).setLikeByUser(
+          uid: int.parse(current.uid),
+          liked: currentLiked,
+        );
+      }),
     );
   }
 
   void _handleCallRequest(UserModel u) {
-    final broadcasterId = u.displayName ?? '';
+    final user = ref.watch(userProfileProvider);
+    final broadcasterId = u.uid ?? '';
     final broadcasterName = u.displayName ?? '主播';
-    final broadcasterImage = u.avatarUrl;
+    final broadcasterImage = '${user?.cdnUrl}${u.photoURL.first}';
 
     Navigator.push(
       context,
@@ -313,19 +318,22 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
     const aspect = 16 / 9;
 
     Widget _img(String url) {
-      return url.startsWith('http')
-          ? CachedNetworkImage(imageUrl: url, fit: BoxFit.cover)
-          : Image.asset(url, fit: BoxFit.cover);
+      if (url.startsWith('assets/')) {
+        return Image.asset(url, fit: BoxFit.cover);
+      }
+      return CachedNetworkImage(imageUrl: url, fit: BoxFit.cover);
     }
 
     if (avatars.isEmpty) {
-      return AspectRatio(aspectRatio: aspect,
+      return AspectRatio(
+        aspectRatio: aspect,
         child: _img('assets/my_photo_defult.jpeg'),
       );
     }
 
     if (avatars.length == 1) {
-      return AspectRatio(aspectRatio: aspect,
+      return AspectRatio(
+        aspectRatio: aspect,
         child: _img(avatars.first),
       );
     }
@@ -377,14 +385,16 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
     );
   }
 
-  Widget buildMyVideoTab(UserModel u) {
+  Widget buildMyVideoTab(UserModel u , bool effectiveIsLike) {
     final feed = ref.watch(memberFeedByUserProvider(widget.userId));
+    final myCdnBase = ref.watch(userProfileProvider)?.cdnUrl ?? '';
 
     // ✅ 下拉重刷
     Widget bodyByState() {
       // 初次載入中
       if (feed.items.isEmpty && feed.isLoading) {
-        return const Center(child: Padding(
+        return const Center(
+            child: Padding(
           padding: EdgeInsets.only(top: 40),
           child: CircularProgressIndicator(),
         ));
@@ -398,7 +408,8 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.photo_library_outlined, size: 48, color: Colors.grey),
+                const Icon(Icons.photo_library_outlined,
+                    size: 48, color: Colors.grey),
                 const SizedBox(height: 8),
                 Text('還沒有內容', style: TextStyle(color: Colors.grey[600])),
               ],
@@ -407,7 +418,6 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
         );
       }
 
-      // 有資料 ➜ 網格
       // 有資料 ➜ 網格 + 底部按鈕
       return CustomScrollView(
         controller: _feedScroll,
@@ -423,7 +433,7 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
                 childAspectRatio: 9 / 12,
               ),
               delegate: SliverChildBuilderDelegate(
-                    (context, index) {
+                (context, index) {
                   final item = feed.items[index];
                   final isVideo = item.isVideo;
                   final cover = item.coverUrl;
@@ -449,12 +459,15 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
                       child: FutureBuilder<Uint8List?>(
                         future: _getNetworkVideoThumbnail(item.videoUrl),
                         builder: (context, snap) {
-                          if (snap.connectionState == ConnectionState.done && snap.data != null) {
+                          if (snap.connectionState == ConnectionState.done &&
+                              snap.data != null) {
                             return Stack(
                               fit: StackFit.expand,
                               children: [
                                 Image.memory(snap.data!, fit: BoxFit.cover),
-                                const Center(child: Icon(Icons.play_circle_fill, size: 36, color: Colors.white)),
+                                const Center(
+                                    child: Icon(Icons.play_circle_fill,
+                                        size: 36, color: Colors.white)),
                               ],
                             );
                           }
@@ -463,7 +476,9 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
                       ),
                     );
                   } else {
-                    media = ClipRRect(borderRadius: BorderRadius.circular(12), child: _fallbackBox());
+                    media = ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: _fallbackBox());
                   }
 
                   return GestureDetector(
@@ -475,11 +490,11 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
                             builder: (_) => ViewOtherVideoPage(
                               videoPath: item.videoUrl,
                               displayName: u.displayName,
-                              avatarPath: u.avatarUrl,
+                              avatarPath: '$myCdnBase${u.avatarUrl}',
                               isVip: u.isVip,
-                              isLike: item.isLike == 1,
+                              isLike: u.isLike == 1,
                               message: item.title,
-                              videoId: item.id,
+                              uid: u.uid,
                             ),
                           ),
                         );
@@ -492,11 +507,11 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
                             builder: (_) => ViewOtherImagePage(
                               imagePath: imgPath,
                               displayName: u.displayName,
-                              avatarPath: u.avatarUrl,
+                              avatarPath: '$myCdnBase${u.avatarUrl}',
                               isVip: u.isVip,
-                              isLike: item.isLike == 1,
+                              isLike: u.isLike == 1,
                               message: item.title,
-                              videoId: item.id,
+                              uid: u.uid,
                             ),
                           ),
                         );
@@ -505,27 +520,36 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        SizedBox(
-                          height: 220,
+                        Expanded(
                           child: Stack(
                             children: [
                               Positioned.fill(child: media),
                               if (item.isTop == 1)
                                 Positioned(
-                                  bottom: 6, left: 6,
+                                  bottom: 6,
+                                  left: 6,
                                   child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(color: Colors.pink, borderRadius: BorderRadius.circular(4)),
-                                    child: const Text('精选', style: TextStyle(color: Colors.white, fontSize: 10)),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                        color: Colors.pink,
+                                        borderRadius: BorderRadius.circular(4)),
+                                    child: const Text('精选',
+                                        style: TextStyle(
+                                            color: Colors.white, fontSize: 10)),
                                   ),
                                 ),
                               const Positioned(
-                                bottom: 6, right: 6,
+                                bottom: 6,
+                                right: 6,
                                 child: Row(
                                   children: [
-                                    Icon(Icons.visibility, color: Colors.white, size: 14),
+                                    Icon(Icons.visibility,
+                                        color: Colors.white, size: 14),
                                     SizedBox(width: 2),
-                                    Text('1.1K', style: TextStyle(color: Colors.white, fontSize: 10)),
+                                    Text('1.1K',
+                                        style: TextStyle(
+                                            color: Colors.white, fontSize: 10)),
                                   ],
                                 ),
                               ),
@@ -554,13 +578,16 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Center(
                 child: (feed.isLoading && feed.hasMore)
-                    ? const SizedBox(height: 32, width: 32, child: CircularProgressIndicator())
+                    ? const SizedBox(
+                        height: 32,
+                        width: 32,
+                        child: CircularProgressIndicator())
                     : const SizedBox.shrink(),
               ),
             ),
           ),
 
-          SliverToBoxAdapter(child: buildButtonView(u)),
+          SliverToBoxAdapter(child: buildButtonView(u, effectiveIsLike)),
           const SliverToBoxAdapter(child: SizedBox(height: 36)),
         ],
       );
@@ -568,7 +595,9 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
 
     return RefreshIndicator(
       onRefresh: () async {
-        await ref.read(memberFeedByUserProvider(widget.userId).notifier).loadFirstPage();
+        await ref
+            .read(memberFeedByUserProvider(widget.userId).notifier)
+            .loadFirstPage();
       },
       child: bodyByState(),
     );
@@ -576,20 +605,31 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
 
 // 小工具：loading / fallback
   Widget _loadingBox() => Container(
-    color: Colors.grey[300],
-    child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-  );
+        color: Colors.grey[300],
+        child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      );
 
   Widget _fallbackBox() => Container(
-    color: Colors.grey[200],
-    child: const Center(child: Icon(Icons.image_not_supported_outlined)),
-  );
-
-
+        color: Colors.grey[200],
+        child: const Center(child: Icon(Icons.image_not_supported_outlined)),
+      );
 
   @override
   Widget build(BuildContext context) {
     final asyncUser = ref.watch(otherUserProvider(widget.userId));
+    final myCdnBase = ref.watch(userProfileProvider)?.cdnUrl ?? '';
+
+    // 從首頁推薦列表抓「此人」最新的 like 狀態（null 表示列表還沒載到這人）
+    final likeFromHome = ref.watch(
+      homeFeedProvider.select((s) {
+        final hit = s.items.cast<FeedItem?>().firstWhere(
+              (e) => e != null && e.uid == widget.userId,
+          orElse: () => null,
+        );
+        if (hit == null) return null;
+        return hit.isLike == 1;
+      }),
+    );
 
     return asyncUser.when(
       loading: () => const Scaffold(
@@ -601,10 +641,15 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
         body: Center(child: Text('載入失敗：$e')),
       ),
       data: (u) {
-        final current = _userOverride ?? u;                // ← 用覆寫版
-        final displayName = (current.displayName?.isNotEmpty == true) ? current.displayName! : '用戶';
-        final avatars = current.photoURL.isNotEmpty ? current.photoURL : const ['assets/pic_girl1.png'];
-        final likesDisplay = (current.fans ?? 0) + 11;     // ← fans + 11
+        final current = u; // ← 用覆寫版
+        final displayName = (current.displayName?.isNotEmpty == true)
+            ? current.displayName!
+            : '用戶';
+        final headerPhotos = current.photoURL.isNotEmpty
+            ? current.photoURL.map((p) => _cdnJoin(myCdnBase, p)).toList()
+            : ['assets/pic_girl1.png'];
+        final likesDisplay = (current.fans ?? 0) + 11; // ← fans + 11
+        final effectiveIsLike = likeFromHome ?? (u.isLike == 1);
 
         return DefaultTabController(
           length: 2,
@@ -613,104 +658,114 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
             appBar: AppBar(
               backgroundColor: Colors.transparent,
               elevation: 0,
-              leading: const BackButton(color: Colors.white),
+              leading: const BackButton(color: Colors.black38),
             ),
             body: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-
                 // 頂部媒體（自動判斷 0/1/多張）
-                _buildTopMedia(u.photoURL),
+                _buildTopMedia(headerPhotos),
                 const SizedBox(height: 8),
 
                 // 基本資訊列（用 displayName / avatarPath）
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: // 放在 build() 裡原來的位置，替換那段 Column
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // 左側：名字 + 性別年齡 + VIP
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.only(top: 5),
-                          child: Row(
-                            children: [
-                              // 名字
-                              Flexible(
-                                child: Text(
-                                  displayName,
-                                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                                  overflow: TextOverflow.ellipsis,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: // 放在 build() 裡原來的位置，替換那段 Column
+                        Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 左側：名字 + 性別年齡 + VIP
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 5),
+                            child: Row(
+                              children: [
+                                // 名字
+                                Flexible(
+                                  child: Text(
+                                    displayName,
+                                    style: const TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 6),
+                                const SizedBox(width: 6),
 
-                              // 性別年齡 Chip（男藍/女粉）
-                              _GenderAgeChip(
-                                sex: u.sex,                       // 1=男、2=女（若後端不同，自己對應）
-                                age: u.extra?['age']?.toString(),
-                              ),
-                              const SizedBox(width: 6),
+                                // 性別年齡 Chip（男藍/女粉）
+                                _GenderAgeChip(
+                                  sex: u.sex, // 1=男、2=女（若後端不同，自己對應）
+                                  age: u.extra?['age']?.toString(),
+                                ),
+                                const SizedBox(width: 6),
 
-                              // VIP 鑽石（在性別年齡的右邊）
-                              if (u.isVip == true)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(6),
-                                    gradient: const LinearGradient(
-                                      begin: Alignment.topCenter,
-                                      end: Alignment.bottomCenter,
-                                      colors: [Color(0xFFFFA770), Color(0xFFD247FE)],
+                                // VIP 鑽石（在性別年齡的右邊）
+                                if (u.isVip == true)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(6),
+                                      gradient: const LinearGradient(
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
+                                        colors: [
+                                          Color(0xFFFFA770),
+                                          Color(0xFFD247FE)
+                                        ],
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        SvgPicture.asset('assets/pic_vip.svg',
+                                            width: 14, height: 14),
+                                        const SizedBox(width: 4),
+                                        const Text(
+                                          'VIP',
+                                          style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.white),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      SvgPicture.asset('assets/pic_vip.svg', width: 14, height: 14),
-                                      const SizedBox(width: 4),
-                                      const Text(
-                                        'VIP',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.white),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                      // 右側：喜歡數，用自訂圖示
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF0F0F0),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            children: [
-                              SvgPicture.asset('assets/pic_profile.svg', width: 16, height: 16),
-                              const SizedBox(width: 4),
-                              Text('$likesDisplay 喜歡', style: const TextStyle(fontSize: 12, color: Colors.black87)),
-                            ],
+                        // 右側：喜歡數，用自訂圖示
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF0F0F0),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              children: [
+                                SvgPicture.asset('assets/pic_profile.svg',
+                                    width: 16, height: 16),
+                                const SizedBox(width: 4),
+                                Text('$likesDisplay 喜歡',
+                                    style: const TextStyle(
+                                        fontSize: 12, color: Colors.black87)),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                  )
-                ),
+                      ],
+                    )),
 
                 const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 15 , vertical: 12),
+                  padding: EdgeInsets.symmetric(horizontal: 15, vertical: 12),
                   child: TabBar(
                     labelColor: Color(0xFFFF4D67),
                     unselectedLabelColor: Colors.grey,
-                    labelStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    labelStyle:
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     unselectedLabelStyle: TextStyle(fontSize: 16),
                     indicatorColor: Color(0xFFFF4D67),
                     indicatorWeight: 2,
@@ -724,8 +779,8 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
                 Expanded(
                   child: TabBarView(
                     children: [
-                      buildMyProfileTab(current), // ✅ 傳入 u
-                      buildMyVideoTab(current),   // ✅ 傳入 u
+                      buildMyProfileTab(current, effectiveIsLike), // ✅ 傳入 u
+                      buildMyVideoTab(current, effectiveIsLike), // ✅ 傳入 u
                     ],
                   ),
                 ),
@@ -737,6 +792,13 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
     );
   }
 
+  String _cdnJoin(String? base, String path) {
+    if (path.isEmpty) return '';
+    final b = (base ?? '').replaceAll(RegExp(r'/+$'), '');
+    final p = path.replaceAll(RegExp(r'^/+'), '');
+    return '$b/$p';
+  }
+
   @override
   void dispose() {
     _feedScroll.dispose();
@@ -744,7 +806,6 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
     scaleNotifier.dispose();
     super.dispose();
   }
-
 }
 
 class _InfoRow extends StatelessWidget {
@@ -760,15 +821,15 @@ class _InfoRow extends StatelessWidget {
       child: Row(
         children: [
           const SizedBox(width: 12),
-          Text('$label：', style: const TextStyle(color: Colors.grey, fontSize: 14)),
+          Text('$label：',
+              style: const TextStyle(color: Colors.grey, fontSize: 14)),
           const SizedBox(width: 4),
-          Text(value, style: const TextStyle(color: Colors.black, fontSize: 14)),
+          Text(value,
+              style: const TextStyle(color: Colors.black, fontSize: 14)),
         ],
       ),
     );
   }
-
-
 }
 
 class _TagChip extends StatelessWidget {
@@ -781,33 +842,16 @@ class _TagChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: const BoxDecoration(color: Color(0xFFFFEBEF)),
-      child: Text(label, style: const TextStyle(color: Colors.pink, fontSize: 13)),
-    );
-  }
-}
-
-class _GiftItem extends StatelessWidget {
-  final String imagePath;
-  final String label;
-
-  const _GiftItem({required this.imagePath, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Image.asset(imagePath, width: 60, height: 60),
-        const SizedBox(height: 4),
-        Text(label, style: const TextStyle(fontSize: 12)),
-      ],
+      child:
+          Text(label, style: const TextStyle(color: Colors.pink, fontSize: 13)),
     );
   }
 }
 
 class _GenderAgeChip extends StatelessWidget {
-  final dynamic sex;  // 後端可能 int 或 String
+  final dynamic sex; // 後端可能 int 或 String
   final String? age;
+
   const _GenderAgeChip({required this.sex, this.age});
 
   @override
@@ -834,11 +878,11 @@ class _GenderAgeChip extends StatelessWidget {
           const SizedBox(width: 2),
           Text(
             age?.isNotEmpty == true ? age! : '--',
-            style: TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w600),
+            style: TextStyle(
+                fontSize: 12, color: Colors.white, fontWeight: FontWeight.w600),
           ),
         ],
       ),
     );
   }
 }
-

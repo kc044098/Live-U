@@ -1,13 +1,14 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:djs_live_stream/data/network/background_api_service.dart';
 import 'package:djs_live_stream/features/mine/user_repository_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 
-import 'dart:typed_data';
 import '../../core/user_local_storage.dart';
 import '../profile/profile_controller.dart';
 
@@ -22,23 +23,34 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   final List<XFile?> _mediaFiles = [null, null, null];
   List<String> allTags = [];
   DateTime _selectedDate = DateTime(2005, 6, 17);
+  List<String>? _photosShadow; // 即時 UI 用，本地快照
+  static const _maxSlots = 3;
+
+  List<String> _normalizeSlots(List<String> src) {
+    final list = List<String>.from(src);
+    while (list.length < _maxSlots) list.add('');
+    if (list.length > _maxSlots) list.length = _maxSlots;
+    return list;
+  }
+
+  List<String> _compress(List<String> src) =>
+      src.where((e) => e.isNotEmpty).toList(growable: false);
 
   Future<void> _pickMedia(int tappedIndex) async {
-    final XFile? file = await _picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 100,
-    );
+    final XFile? file = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 100);
     if (file == null) return;
 
-    final allowedExtensions = ['jpg', 'jpeg', 'png'];
     final ext = file.path.split('.').last.toLowerCase();
-    if (!allowedExtensions.contains(ext)) {
+    if (!['jpg', 'jpeg', 'png'].contains(ext)) {
       Fluttertoast.showToast(msg: "只允許上傳 JPG / JPEG / PNG 圖片");
       return;
     }
 
     setState(() {
       _mediaFiles[tappedIndex] = file;
+      final slots = _normalizeSlots(_photosShadow ?? ref.read(userProfileProvider)?.photoURL ?? []);
+      slots[tappedIndex] = file.path;   // 只改這一格
+      _photosShadow = slots;            // 保留其它格的空字串
     });
 
     _updatePhoto(tappedIndex, file.path);
@@ -46,109 +58,72 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
 
   /// 新增或更新圖片
   void _updatePhoto(int index, String filePath) {
-    final user = ref.read(userProfileProvider);
-    final currentList = List<String>.from(user?.photoURL ?? []);
-
-    if (index < currentList.length) {
-      currentList[index] = filePath;
-    } else {
-      while (currentList.length < index) {
-        currentList.add('');
-      }
-      currentList.add(filePath);
-    }
-
-    _savePhotoList(currentList);
-  }
-
-  /// 刪除照片並自動前移
-  Future<void> _deletePhotoByUrl(String url) async {
-    final user = ref.read(userProfileProvider);
-    if (user == null) return;
-
-    final oldList = List<String>.from(user.photoURL);
-    final newList = List<String>.from(oldList)..remove(url);
-
-    // ① 樂觀更新（立即讓 UI 消失）
-    _applyOptimisticAvatarList(newList);
-
-    // ② 背景同步（不彈 Dialog、不阻塞）
-    final svc = ref.read(backgroundApiServiceProvider);
-    try {
-      await svc.updateMemberInfoQueued({'avatar': newList});
-      // 成功就什麼都不用做
-    } catch (e, st) {
-      // ③ 失敗回滾（還原 UI）
-      _rollbackAvatarList(oldList);
-      debugPrint('刪除頭像背景同步失敗：$e');
-    }
+    final current = _normalizeSlots(ref.read(userProfileProvider)?.photoURL ?? []);
+    current[index] = filePath;
+    _savePhotoList(current);
   }
 
   // 同步更新到 user model
-  Future<void> _savePhotoList(List<String> list) async {
-    // 清理
-    final clean = List<String>.from(list)..removeWhere((e) => e.isEmpty);
+  Future<void> _savePhotoList(List<String> slots) async {
+    // 先樂觀更新 UI（保留 3 格）
+    _applyOptimisticAvatarList(slots);
 
-    // 取 cdn base
-    final me = ref.read(userProfileProvider);
-    final cdn = me?.cdnUrl ?? '';
-
-    // ① 先把「可立即顯示」的部份（已是 http 的）直接套用到 UI
-    final immediate = <String>[];
-    final localFiles = <String>[];
-    for (final p in clean) {
-      if (p.startsWith('http')) {
-        immediate.add(p);
-      } else {
-        localFiles.add(p); // 這些要上傳
-      }
-    }
-    _applyOptimisticAvatarList([...immediate, ...localFiles]); // 預先顯示本地檔（UI 會用 FileImage）
-
-    // ② 背景：只上傳本地檔案，成功後得到雲端 URL，合併 & 同步到後端
     final svc = ref.read(backgroundApiServiceProvider);
+    final me  = ref.read(userProfileProvider);
+
     try {
-      final uploaded = await svc.uploadAvatarsAndUpdate(
-        paths: clean,      // 混和清單：svc 內部會分辨 http / local
-        cdnBase: cdn,
-      );
-      // 背景成功，同步 userProvider 由服務內處理；這裡不用再動
-    } catch (e, st) {
-      // ③ 失敗：回滾（你可選擇只回滾本次改動，或全數回滾；這裡用「保留原狀」）
+      // 後端只收非空的
+      await svc.uploadAvatarsAndUpdate(paths: _compress(slots));
+    } catch (e) {
       debugPrint('背景上傳/更新失敗：$e');
-      if (me != null) _rollbackAvatarList(me.photoURL);
+      if (me != null) _rollbackAvatarList(_normalizeSlots(me.photoURL));
     }
   }
 
-  void _applyOptimisticAvatarList(List<String> newList) {
-    // 更新 Provider + 本地存檔（不阻塞 UI）
+  void _applyOptimisticAvatarList(List<String> slots) {
     final currentUser = ref.read(userProfileProvider);
     if (currentUser == null) return;
 
-    final updated = currentUser.copyWith(photoURL: newList);
+    final normalized = _normalizeSlots(slots);
+    final updated = currentUser.copyWith(photoURL: normalized);
     ref.read(userProfileProvider.notifier).setUser(updated);
-    // 非阻塞保存（不要等待）
     unawaited(UserLocalStorage.saveUser(updated));
-
-    // 同步刷新本頁縮略圖陣列（避免空白）
-    if (mounted) {
-      setState(() {
-        // 把 _mediaFiles 跟著移位，單純清掉對應格子即可
-        for (int i = 0; i < _mediaFiles.length; i++) {
-          _mediaFiles[i] = null; // 讓 UI 重新由 photoURL 取圖，不依賴舊的 XFile
-        }
-      });
-    }
+    if (mounted) setState(() => _photosShadow = List<String>.from(normalized));
   }
 
   void _rollbackAvatarList(List<String> oldList) {
     final currentUser = ref.read(userProfileProvider);
     if (currentUser == null) return;
 
-    final updated = currentUser.copyWith(photoURL: oldList);
+    final normalized = _normalizeSlots(oldList);
+    final updated = currentUser.copyWith(photoURL: normalized);
     ref.read(userProfileProvider.notifier).setUser(updated);
     unawaited(UserLocalStorage.saveUser(updated));
-    if (mounted) setState(() {}); // 觸發重建
+    if (mounted) setState(() => _photosShadow = List<String>.from(normalized));
+  }
+
+  Future<void> _persistAvatarList(
+      List<String> newList, {
+        required List<String> rollbackOnFail,
+      }) async {
+    final svc = ref.read(backgroundApiServiceProvider);
+    try {
+      await svc.updateMemberInfoQueued({'avatar': newList});
+      // ✅ 成功：什麼都不做，UI 早就改好了
+    } catch (e, st) {
+      // ❌ 失敗：回滾到刪除前
+      if (mounted) _rollbackAvatarList(rollbackOnFail);
+    }
+  }
+
+  void _deletePhotoAtIndexImmediately(int index) {
+    setState(() => _mediaFiles[index] = null);
+
+    final oldSlots = _normalizeSlots(_photosShadow ?? ref.read(userProfileProvider)?.photoURL ?? []);
+    final newSlots = List<String>.from(oldSlots)..[index] = '';  // 不位移
+
+    _applyOptimisticAvatarList(newSlots);
+    unawaited(_persistAvatarList(_compress(newSlots), rollbackOnFail: oldSlots));
   }
 
   bool _isVideo(XFile file) {
@@ -160,23 +135,25 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   void initState() {
     super.initState();
     final user = ref.read(userProfileProvider);
+    _photosShadow = _normalizeSlots(user?.photoURL ?? []);
+
     final photos = user?.photoURL ?? [];
     for (int i = 0; i < photos.length && i < 3; i++) {
-      if (photos[i].isNotEmpty && !photos[i].startsWith('http')) {
-        // 只有本地檔案才存入 XFile
-        _mediaFiles[i] = XFile(photos[i]);
+      final p = photos[i];
+      if (p.isLocalAbs || p.isDataUri || p.isContentUri) {
+        _mediaFiles[i] = XFile(p);
       } else {
-        _mediaFiles[i] = null; // 網路圖片不轉成本地檔案
+        _mediaFiles[i] = null;
       }
     }
-
-    // 伺服器獲取的所有tags
     _loadAllTags();
   }
 
   @override
   Widget build(BuildContext context) {
+    final user = ref.watch(userProfileProvider);
     final extra = ref.watch(userProfileProvider)?.extra ?? {};
+    final photos = _photosShadow ?? _normalizeSlots(user?.photoURL ?? []);
 
     String displayHeight = extra['height']?.toString() ?? '';
     if (displayHeight.isNotEmpty && !displayHeight.contains('cm')) {
@@ -234,6 +211,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
       },
     ];
 
+    final cdn = user?.cdnUrl ?? '';
     return Scaffold(
       appBar: AppBar(
         title: const Text('Edit profile'),
@@ -247,81 +225,70 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         children: [
-          Row(
-            children: List.generate(3, (index) {
-              final file = _mediaFiles[index];
-              final isVideo = file != null && _isVideo(file);
 
-              return Expanded(
-                child: GestureDetector(
-                  onTap: () => _pickMedia(index),
-                  child: Container(
-                    margin: EdgeInsets.only(right: index < 2 ? 12 : 0),
-                    height: 100,
-                    child: Stack(
-                      children: [
-                        Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.grey.shade300),
-                            image: (() {
-                              final user = ref.read(userProfileProvider);
-                              final photos = user?.photoURL ?? [];
-                              final photoUrl = (index < photos.length) ? photos[index] : '';
 
-                              if (file != null && !isVideo && File(file.path).existsSync()) {
-                                return DecorationImage(image: FileImage(File(file.path)), fit: BoxFit.cover);
-                              } else if (photoUrl.startsWith('http')) {
-                                return DecorationImage(image: NetworkImage(photoUrl), fit: BoxFit.cover);
-                              }
-                              return null;
-                            })(),
-                          ),
-                          child: (() {
-                            final user = ref.read(userProfileProvider);
-                            final photos = user?.photoURL ?? [];
-                            final photoUrl = (index < photos.length) ? photos[index] : '';
-                            final hasImage = (file != null) || photoUrl.startsWith('http');
-                            return hasImage
-                                ? null
-                                : const Center(child: Icon(Icons.add, size: 32, color: Colors.grey));
-                          })(),
-                        ),
-                        // 右上角刪除 X
-                        if (file != null || (ref.read(userProfileProvider)?.photoURL.length ?? 0) > index &&
-                            ref.read(userProfileProvider)!.photoURL[index].startsWith('http'))
-                          Positioned(
-                            top: 4,
-                            right: 4,
-                            child: GestureDetector(
-                              onTap: () {
-                                final url = ref.read(userProfileProvider)?.photoURL[index];
-                                setState(() {
-                                  _mediaFiles[index] = null;
-                                  if (url != null) {
-                                    _deletePhotoByUrl(url);
-                                  }
-                                });
-                              },
-                              child: Container(
-                                decoration: const BoxDecoration(
-                                  color: Colors.black54,
-                                  shape: BoxShape.circle,
-                                ),
-                                padding: const EdgeInsets.all(4),
-                                child: const Icon(Icons.close, size: 16, color: Colors.white),
-                              ),
-                            ),
-                          ),
-                      ],
+    Row(
+    children: List.generate(3, (index) {
+      final file = _mediaFiles[index];
+      final raw = (index < photos.length) ? photos[index] : '';
+      final isVideo = file != null && _isVideo(file);
+
+      ImageProvider? provider;
+      if (file != null && !isVideo && File(file.path).existsSync()) {
+        provider = FileImage(File(file.path));               // 本地立即顯示
+      } else if (raw.isHttp) {
+        provider = CachedNetworkImageProvider(raw);          // 已是完整 http
+      } else if (raw.isServerRelative) {
+        provider = CachedNetworkImageProvider(joinCdnIfNeeded(raw, cdn)); // 相對路徑才拼
+      } else if (raw.isLocalAbs) {
+        provider = FileImage(File(raw));                     // 本地絕對路徑
+      } // 其餘：保持 null → 顯示「+」
+
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => _pickMedia(index),
+          child: Container(
+            margin: EdgeInsets.only(right: index < 2 ? 12 : 0), height: 100,
+            child: Stack(
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade300),
+                    image: provider == null
+                        ? null
+                        : DecorationImage(
+                      image: (provider is CachedNetworkImageProvider)
+                          ? ResizeImage(provider, width: 300, height: 300)
+                          : provider,
+                      fit: BoxFit.cover,
                     ),
                   ),
+                  child: provider == null
+                      ? const Center(child: Icon(Icons.add, size: 32, color: Colors.grey))
+                      : null,
                 ),
-              );
-            }),
+                if (provider != null)
+                  Positioned(
+                    top: 4, right: 4,
+                    child: GestureDetector(
+                      onTap: () => _deletePhotoAtIndexImmediately(index),
+                      child: Container(
+                        decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                        padding: const EdgeInsets.all(4),
+                        child: const Icon(Icons.close, size: 16, color: Colors.white),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
-          const SizedBox(height: 16),
+        ),
+      );
+    }),
+    ),
+    const SizedBox(height: 16),
           _buildProfileInfo(profileItems),
         ],
       ),

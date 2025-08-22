@@ -214,14 +214,8 @@ class _MessagePageState extends ConsumerState<MessagePage>
                   style: const TextStyle(color: Colors.grey),
                 ),
                   onTap: () {
-                    showLikeAlertDialog(context, () async {
+                    showLikeAlertDialog(context, ref,() async {
                       Navigator.pop(context); // 關閉彈窗
-                      var result = await Navigator.push(context, MaterialPageRoute(builder: (_) => const PaymentMethodPage(amount: 10.77)));
-                      if (result == true) {
-                        var user = ref.read(userProfileProvider);
-                        user?.isVip =true;
-                        setState(() {});
-                      }
                     });
                   }
               );

@@ -1,10 +1,12 @@
 // edit_profile_fullscreen_image_page.dart
 import 'dart:convert';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/member_video_model.dart';
+import '../../data/network/avatar_cache.dart';
 import '../live/member_video_feed_state.dart';
 import '../live/video_repository_provider.dart';
 import '../profile/profile_controller.dart';
@@ -98,14 +100,15 @@ class _FullscreenImagePageState extends ConsumerState<FullscreenImagePage> {
     if (url == null || url.isEmpty) {
       return const Center(child: Icon(Icons.broken_image, color: Colors.white54, size: 48));
     }
-    return Image.network(
-      url,
+    return CachedNetworkImage(
+      imageUrl: url,
       fit: BoxFit.contain,
       width: double.infinity,
       height: double.infinity,
-      loadingBuilder: (ctx, child, progress) =>
-      progress == null ? child : const Center(child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
-      errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image, color: Colors.white54, size: 48)),
+      placeholder: (_, __) => const Center(
+          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+      errorWidget: (_, __, ___) => const Center(
+          child: Icon(Icons.broken_image, color: Colors.white54, size: 48)),
     );
   }
 
@@ -122,6 +125,7 @@ class _FullscreenImagePageState extends ConsumerState<FullscreenImagePage> {
         return false;
       },
       child: Scaffold(
+        extendBodyBehindAppBar: true,
         backgroundColor: Colors.black,
         appBar: AppBar(
           backgroundColor: Colors.transparent,
@@ -136,16 +140,6 @@ class _FullscreenImagePageState extends ConsumerState<FullscreenImagePage> {
               }
             },
           ),
-          actions: [
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: TextButton.icon(
-                onPressed: _hasChanges ? _saveChangesOptimistically : null,
-                icon: const Icon(Icons.check, color: Colors.white, size: 18),
-                label: const Text('完成', style: TextStyle(color: Colors.white)),
-              ),
-            ),
-          ],
         ),
         body: Stack(
           children: [

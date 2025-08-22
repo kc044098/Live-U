@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:provider/provider.dart' as legacy;
+import 'features/call/call_signal_listener.dart';
 import 'features/live/broadcaster_page.dart';
+import 'globals.dart';
 import 'l10n/l10n.dart';
 import 'locale_provider.dart';
 import 'features/auth/login_screen.dart';
@@ -39,6 +41,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'lu live',
       debugShowCheckedModeBanner: false,
+      navigatorKey: rootNavigatorKey,
       theme: ThemeData(
         splashFactory: NoSplash.splashFactory,
         highlightColor: Colors.transparent,
@@ -75,6 +78,8 @@ class MyApp extends StatelessWidget {
         }
         return null;
       },
+      navigatorObservers: [routeObserver],
+      builder: (context, child) => CallSignalListener(child: child ?? const SizedBox()),
     );
   }
 }

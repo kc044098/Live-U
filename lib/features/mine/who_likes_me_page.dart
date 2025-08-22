@@ -1,16 +1,20 @@
 // 喜歡我的 頁面
 
 import 'dart:ui';
-
-import 'package:djs_live_stream/features/mine/show_like_alert_dialog.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 
+import '../../data/network/background_api_service.dart';
+import '../call/call_request_page.dart';
 import '../profile/profile_controller.dart';
 import '../profile/view_profile_page.dart';
-import '../wallet/my_wallet_page.dart';
 import '../wallet/payment_method_page.dart';
+import 'member_fans_provider.dart';
+import 'model/fan_user.dart';
+
 class WhoLikesMePage extends ConsumerStatefulWidget {
   const WhoLikesMePage({super.key});
 
@@ -20,32 +24,45 @@ class WhoLikesMePage extends ConsumerStatefulWidget {
 
 class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
   bool _showBlockLayer = false;
+  final _scroll = ScrollController();
 
   @override
   void initState() {
     super.initState();
 
-    // 延遲 1 秒後判斷是否為 VIP
+    // 進頁面抓第一頁
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(memberFansProvider.notifier).loadFirstPage();
+    });
+
+    // 非 VIP 遮罩
     Future.delayed(const Duration(milliseconds: 500), () {
       final user = ref.read(userProfileProvider);
-      if (mounted && user?.isVip != true) {
-        setState(() {
-          _showBlockLayer = true;
-        });
+      if (user?.isVip != true) {
+        setState(() => _showBlockLayer = true);
+      }
+    });
+
+    // 無限滾動載入下一頁（邏輯不影響既有 UI）
+    _scroll.addListener(() {
+      if (!_scroll.hasClients) return;
+      final pos = _scroll.position;
+      if (pos.pixels >= pos.maxScrollExtent - 300) {
+        ref.read(memberFansProvider.notifier).loadNextPage();
       }
     });
   }
 
   @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final likedUsers = [
-      {'name': '漂亮的小姐姐 1', 'image': 'assets/pic_girl1.png'},
-      {'name': '漂亮的小姐姐 2', 'image': 'assets/pic_girl2.png'},
-      {'name': '漂亮的小姐姐 3', 'image': 'assets/pic_girl3.png'},
-      {'name': '漂亮的小姐姐 4', 'image': 'assets/pic_girl4.png'},
-      {'name': '漂亮的小姐姐 5', 'image': 'assets/pic_girl5.png'},
-      {'name': '漂亮的小姐姐 6', 'image': 'assets/pic_girl6.png'},
-    ];
+    final fans = ref.watch(memberFansProvider);          // ← 改用 provider
+    final cdn = ref.watch(userProfileProvider)?.cdnUrl ?? '';
 
     return Scaffold(
       appBar: AppBar(
@@ -57,9 +74,11 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
       ),
       body: Stack(
         children: [
+          // Grid 邏輯與樣式維持不變，只換資料來源
           GridView.builder(
+            controller: _scroll,
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 60),
-            itemCount: likedUsers.length,
+            itemCount: fans.items.length,
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
               crossAxisSpacing: 12,
@@ -67,26 +86,105 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
               childAspectRatio: 0.66,
             ),
             itemBuilder: (context, index) {
-              final user = likedUsers[index];
+              final u = fans.items[index];
               return GestureDetector(
                 onTap: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => ViewProfilePage(
-                        userId: 1,
-                      ),
+                      // 用後端回來的 id 導到個資頁
+                      builder: (_) => ViewProfilePage(userId: u.id),
                     ),
                   );
                 },
-                child: _buildLikedCard(user),
+                child: _buildLikedCardFromApi(u, cdn),
               );
             },
           ),
 
-          // ✅ 覆蓋層：僅當非 VIP 且延遲後才顯示
-          if (_showBlockLayer) _buildOverlayLayer(),
+          // 非 VIP 遮罩（保留你的邏輯）
+          if (_showBlockLayer)_buildOverlayLayer(),
         ],
+      ),
+    );
+  }
+
+  Widget _buildLikedCardFromApi(MemberFanUser user, String cdnBase) {
+    // 封面：相對路徑才拼 CDN，取第一張非空
+    final coverRaw = user.avatars.firstWhere((e) => e.isNotEmpty, orElse: () => '');
+    final coverUrl = joinCdnIfNeeded(coverRaw, cdnBase);
+
+    final image = (coverUrl.isNotEmpty && coverUrl.startsWith('http'))
+        ? CachedNetworkImage(imageUrl: coverUrl, fit: BoxFit.cover)
+        : Image.asset('assets/pic_girl1.png', fit: BoxFit.cover); // fallback
+
+    return AspectRatio(
+      aspectRatio: 3 / 4,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Stack(
+          children: [
+            // 背景大圖
+            Positioned.fill(child: image),
+
+            // 底部漸層 + 名字 + 禮物圖示
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [Colors.black54, Colors.transparent],
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        user.name.isNotEmpty ? user.name : '用戶',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          shadows: [Shadow(blurRadius: 2, color: Colors.black45)],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    GestureDetector(
+                        onTap: () => _handleCallRequest(context, user),
+                        child: SvgPicture.asset('assets/logo_placeholder.svg',
+                            height: 28, width: 28, fit: BoxFit.contain))
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+
+  void _handleCallRequest(BuildContext context, MemberFanUser user) {
+    final broadcasterId = user.id.toString();
+    final broadcasterName = user.name;
+    final broadcasterImage = user.avatars.first;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CallRequestPage(
+          broadcasterId: broadcasterId,
+          broadcasterName: broadcasterName,
+          broadcasterImage: broadcasterImage,
+        ),
       ),
     );
   }
@@ -156,36 +254,6 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
               ],
             ),
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLikedCard(Map<String, String> user) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        AspectRatio(
-          aspectRatio: 3 / 4,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.asset(user['image']!, fit: BoxFit.cover),
-          ),
-        ),
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            CircleAvatar(
-              backgroundImage: AssetImage(user['image']!),
-              radius: 12,
-            ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(user['name']!, style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis),
-            ),
-            const SizedBox(width: 4),
-            SvgPicture.asset('assets/logo_placeholder.svg', height: 28, width: 28),
-          ],
         ),
       ],
     );

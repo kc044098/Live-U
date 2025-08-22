@@ -20,6 +20,7 @@ class AvatarCache {
 }
 
 /// 建議做成方法（可帶 context 計算 DPR 對應的像素尺寸）
+/// 建議做成方法（可帶 context 計算 DPR 對應的像素尺寸）
 ImageProvider<Object> buildAvatarProvider({
   required String avatarUrl,
   required BuildContext context,

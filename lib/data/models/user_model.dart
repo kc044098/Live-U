@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:djs_live_stream/data/network/background_api_service.dart';
 import 'package:flutter/cupertino.dart';
 
 import '../../features/auth/LoginMethod.dart';
@@ -11,9 +13,17 @@ class UserModel {
   final String uid;                  // 用戶ID (id)
   String? displayName;               // 暱稱 (nick_name)
   List<String> photoURL;             // 頭像清單 (avatar)
+  List<String> get photoURLAbs =>
+      photoURL.where((e) => e.isNotEmpty).map((e) => e.joinCdn(cdnUrl)).toList();
 
   /// 從頭像列表取得主要頭像
-  String get avatarUrl => photoURL.isNotEmpty ? photoURL.first : '';
+  String get avatarUrl {
+    for (final s in photoURL) {
+      if (s.isNotEmpty) return s;
+    }
+    return '';
+  }
+  String get avatarUrlAbs => avatarUrl.joinCdn(cdnUrl);
 
   bool isVip;                        // 會員狀態 (vip)
   final bool isBroadcaster;          // 是否為主播 (flag = 2 代表主播)
@@ -86,24 +96,25 @@ class UserModel {
 
   /// 取得主要頭像的 ImageProvider
   ImageProvider<Object> get avatarImage {
-    if (avatarUrl.isEmpty) {
-      return const AssetImage('assets/my_icon_defult.jpeg');
-    }
-    if (avatarUrl.startsWith('http')) {
-      return NetworkImage(avatarUrl);
-    }
-    if (avatarUrl.startsWith('data:image') || avatarUrl.length > 100) {
-      try {
-        return MemoryImage(base64Decode(avatarUrl));
-      } catch (_) {
+    final raw = avatarUrl;
+    final cdn = cdnUrl;
+
+    if (raw.isEmpty) return const AssetImage('assets/my_icon_defult.jpeg');
+    if (raw.isDataUri) {
+      try { return MemoryImage(base64Decode(raw)); } catch (_) {
         return const AssetImage('assets/my_icon_defult.jpeg');
       }
     }
-    return FileImage(File(avatarUrl));
+    if (raw.isHttp)   return CachedNetworkImageProvider(raw);
+    if (raw.isLocalAbs) return FileImage(File(raw));
+    if (raw.isServerRelative) return CachedNetworkImageProvider(joinCdnIfNeeded(raw, cdn));
+    // 其他情況（例如奇怪的相對檔名）直接當本地檔嘗試
+    return FileImage(File(raw));
   }
 
   /// 個人生活照（不包含第一張頭像）
-  List<String> get gallery => photoURL.length > 1 ? photoURL.sublist(1) : [];
+  List<String> get gallery =>
+      photoURL.where((e) => e.isNotEmpty).skip(1).toList();
 
   /// 主要登入方式
   LoginMethod? get primaryLogin {
@@ -253,3 +264,20 @@ class UserModel {
     );
   }
 }
+
+extension _CdnJoinX on String? {
+  String joinCdn(String? base) {
+    final p = this ?? '';
+    if (p.isEmpty) return p;
+
+    // 這些情況都「不要拼」
+    if (p.isHttp || p.isDataUri || p.isContentUri || p.isLocalAbs) return p;
+
+    if (base == null || base.isEmpty) return p;
+    final b = base.endsWith('/') ? base.substring(0, base.length - 1) : base;
+    final path = p.startsWith('/') ? p : '/$p';
+    return '$b$path';
+  }
+}
+
+

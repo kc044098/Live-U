@@ -40,7 +40,7 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
   late String currentCity = "";
 
   Widget _buildProfileHeader(UserModel? user) {
-    final photos = user?.photoURL ?? [];
+    final photos = user?.photoURLAbs ?? [];
 
     // 沒有圖片 → 顯示預設圖
     if (photos.isEmpty) {
@@ -274,126 +274,138 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
     );
   }
 
-  Widget buildMyVideoTab() {
+  Widget buildMyVideoTab(UserModel? user) {
     final feed = ref.watch(memberFeedProvider);
     final notifier = ref.read(memberFeedProvider.notifier);
 
-    if (feed.items.isEmpty && feed.isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    final hasItems = feed.items.isNotEmpty;
+    final isLoadingMore = hasItems && feed.isLoading; // 只在有資料時顯示底部 spinner
+    final isEmpty = feed.items.isEmpty;
 
     return RefreshIndicator(
-      onRefresh: () async => notifier.loadFirstPage(),
+      onRefresh: () async {
+        await notifier.loadFirstPage();
+      },
       child: CustomScrollView(
         controller: _videoScrollController,
         cacheExtent: 3000,
+        physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                childAspectRatio: 8 / 12,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                  final item = feed.items[index];
-                  final hasCover = item.coverUrl != null && item.coverUrl!.isNotEmpty;
-                  final isImage = !item.isVideo;
-
-                  Widget mediaWidget;
-                  if (hasCover) {
-                    // ① coverUrl 優先
-                    mediaWidget = CachedNetworkImage(
-                      imageUrl: item.coverUrl!,
-                      width: double.infinity,
-                      height: double.infinity,
-                      fit: BoxFit.cover,
-                      errorWidget: (_, __, ___) => Container(
-                        color: Colors.grey[300],
-                        child: const Center(child: Icon(Icons.broken_image)),
-                      ),
-                      placeholder: (_, __) {
-                        return Container(
-                          color: Colors.grey[200],
-                          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                        );
-                      },
-                    );
-                  } else if (item.isVideo) {
-                    // ② 無 coverUrl 且為影片 → 動態生成縮圖
-                    mediaWidget = FutureBuilder<Uint8List?>(
-                      future: _getNetworkVideoThumbnail(item.videoUrl),
-                      builder: (context, snap) {
-                        if (snap.connectionState == ConnectionState.done && snap.hasData) {
-                          return Image.memory(
-                            snap.data!,
-                            width: double.infinity,
-                            height: double.infinity,
-                            fit: BoxFit.cover,
-                          );
-                        }
-                        return Container(
-                          color: Colors.grey[200],
-                          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                        );
-                      },
-                    );
-                  } else if (isImage) {
-                    // ③ 圖片直接載入（有些後端把圖片路徑也放在 videoUrl）
-                    mediaWidget = CachedNetworkImage(
-                      imageUrl: item.videoUrl,
-                      width: double.infinity,
-                      height: double.infinity,
-                      fit: BoxFit.cover,
-                      errorWidget: (_, __, ___) => Container(
-                        color: Colors.grey[300],
-                        child: const Center(child: Icon(Icons.broken_image)),
-                      ),
-                      placeholder: (_, __) {
-                        return Container(
-                          color: Colors.grey[200],
-                          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                        );
-                      },
-                    );
-                  } else {
-                    mediaWidget = Container(
-                      color: Colors.grey[200],
-                      child: const Center(child: Icon(Icons.insert_drive_file)),
-                    );
-                  }
-                  return GestureDetector(
-                    onTap: () async {
-                      if (item.isVideo) {
-                        final result = await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => FullscreenVideoPlayerPage(item: item),
+          if (isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 48),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.photo_library_outlined, size: 48, color: Colors.grey),
+                    const SizedBox(height: 8),
+                    Text('還沒有內容', style: TextStyle(color: Colors.grey[600])),
+                    const SizedBox(height: 120),
+                    GestureDetector(
+                      onTap: () => Navigator.pushNamed(context, AppRoutes.videoRecorder),
+                      child: Container(
+                        width: 288,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(colors: [Color(0xFFFFB56B), Color(0xFFDF65F8)]),
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                        child: Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SvgPicture.asset('assets/icon_start_video.svg', width: 24, height: 24),
+                              const SizedBox(width: 6),
+                              const Text('發佈動態', style: TextStyle(color: Colors.white, fontSize: 16)),
+                            ],
                           ),
-                        );
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
 
-                        if (result is Map && result['updated'] == true) {
-                          ref.read(memberFeedProvider.notifier).applyLocalUpdate(
-                            id: result['id'] as int,
-                            title: result['title'] as String,
-                            isTop: result['isTop'] as int,
+          // 有資料：Grid
+          if (hasItems)
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              sliver: SliverGrid(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: 8 / 12,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                    final item = feed.items[index];
+                    final hasCover = item.coverUrl != null && item.coverUrl!.isNotEmpty;
+                    final isImage = !item.isVideo;
+
+                    Widget mediaWidget;
+                    if (hasCover) {
+                      mediaWidget = CachedNetworkImage(
+                        imageUrl: item.coverUrl!,
+                        width: double.infinity,
+                        height: double.infinity,
+                        fit: BoxFit.cover,
+                        errorWidget: (_, __, ___) => Container(
+                          color: Colors.grey[300],
+                          child: const Center(child: Icon(Icons.broken_image)),
+                        ),
+                        placeholder: (_, __) => Container(
+                          color: Colors.grey[200],
+                          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                        ),
+                      );
+                    } else if (item.isVideo) {
+                      mediaWidget = FutureBuilder<Uint8List?>(
+                        future: _getNetworkVideoThumbnail(item.videoUrl),
+                        builder: (context, snap) {
+                          if (snap.connectionState == ConnectionState.done && snap.hasData) {
+                            return Image.memory(snap.data!, width: double.infinity, height: double.infinity, fit: BoxFit.cover);
+                          }
+                          return Container(
+                            color: Colors.grey[200],
+                            child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
                           );
-                        }
-                      } else {
-                        final img = hasCover
-                            ? item.coverUrl!
-                            : (isImage ? item.videoUrl : '');
-                        if (img.isNotEmpty) {
+                        },
+                      );
+                    } else if (isImage) {
+                      mediaWidget = CachedNetworkImage(
+                        imageUrl: item.videoUrl,
+                        width: double.infinity,
+                        height: double.infinity,
+                        fit: BoxFit.cover,
+                        errorWidget: (_, __, ___) => Container(
+                          color: Colors.grey[300],
+                          child: const Center(child: Icon(Icons.broken_image)),
+                        ),
+                        placeholder: (_, __) => Container(
+                          color: Colors.grey[200],
+                          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                        ),
+                      );
+                    } else {
+                      mediaWidget = Container(
+                        color: Colors.grey[200],
+                        child: const Center(child: Icon(Icons.insert_drive_file)),
+                      );
+                    }
+
+                    return GestureDetector(
+                      onTap: () async {
+                        if (item.isVideo) {
                           final result = await Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => FullscreenImagePage(item: item),
+                              builder: (_) => FullscreenVideoPlayerPage(item: item),
                             ),
                           );
-
                           if (result is Map && result['updated'] == true) {
                             ref.read(memberFeedProvider.notifier).applyLocalUpdate(
                               id: result['id'] as int,
@@ -401,86 +413,85 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
                               isTop: result['isTop'] as int,
                             );
                           }
+                        } else {
+                          final img = hasCover ? item.coverUrl! : (isImage ? item.videoUrl : '');
+                          if (img.isNotEmpty) {
+                            final result = await Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => FullscreenImagePage(item: item)),
+                            );
+                            if (result is Map && result['updated'] == true) {
+                              ref.read(memberFeedProvider.notifier).applyLocalUpdate(
+                                id: result['id'] as int,
+                                title: result['title'] as String,
+                                isTop: result['isTop'] as int,
+                              );
+                            }
+                          }
                         }
-                      }
-                    },
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SizedBox(
-                          height: 250,
-                          child: Stack(
-                            children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: mediaWidget,
-                              ),
-                              if (item.isVideo)
-                                const Positioned.fill(
-                                  child: Center(
-                                    child: Icon(Icons.play_circle_fill, size: 36, color: Colors.white),
+                      },
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Stack(
+                              children: [
+                                ClipRRect(borderRadius: BorderRadius.circular(12), child: mediaWidget),
+                                if (item.isVideo)
+                                  const Positioned.fill(
+                                    child: Center(child: Icon(Icons.play_circle_fill, size: 36, color: Colors.white)),
                                   ),
-                                ),
-                              if (item.isTop == 1)
-                                Positioned(
-                                  bottom: 6,
-                                  left: 6,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: Colors.pink,
-                                      borderRadius: BorderRadius.circular(4),
+                                if (item.isTop == 1)
+                                  Positioned(
+                                    bottom: 6, left: 6,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(color: Colors.pink, borderRadius: BorderRadius.circular(4)),
+                                      child: const Text('精選', style: TextStyle(color: Colors.white, fontSize: 10)),
                                     ),
-                                    child: const Text('精選', style: TextStyle(color: Colors.white, fontSize: 10)),
                                   ),
-                                ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          item.title.isEmpty ? (item.isVideo ? '影片' : (isImage ? '圖片' : '內容')) : item.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-                childCount: feed.items.length,
+                          const SizedBox(height: 6),
+                          Text(
+                            item.title.isEmpty ? (item.isVideo ? '影片' : (isImage ? '圖片' : '內容')) : item.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                  childCount: feed.items.length,
+                ),
               ),
             ),
-          ),
+
+          // CTA
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
+              padding: const EdgeInsets.symmetric( vertical: 50),
               child: Center(
-                child: feed.isLoading
-                    ? const SizedBox(height: 32, width: 32, child: CircularProgressIndicator())
-                    : (feed.hasMore ? const SizedBox.shrink() : const SizedBox(height: 20)),
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Center(
-              child: GestureDetector(
-                onTap: () => Navigator.pushNamed(context, AppRoutes.videoRecorder),
-                child: Container(
-                  width: 288,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [Color(0xFFFFB56B), Color(0xFFDF65F8)]),
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                  child: Center(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SvgPicture.asset('assets/icon_start_video.svg', width: 24, height: 24),
-                        const SizedBox(width: 6),
-                        const Text('發布動態', style: TextStyle(color: Colors.white, fontSize: 16)),
-                      ],
+                child: GestureDetector(
+                  onTap: () => Navigator.pushNamed(context, AppRoutes.videoRecorder),
+                  child: Container(
+                    width: 288,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(colors: [Color(0xFFFFB56B), Color(0xFFDF65F8)]),
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    child: Center(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SvgPicture.asset('assets/icon_start_video.svg', width: 24, height: 24),
+                          const SizedBox(width: 6),
+                          const Text('發佈動態', style: TextStyle(color: Colors.white, fontSize: 16)),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -544,6 +555,8 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
 
     // 接近動態底部時抓下一頁
     _videoScrollController.addListener(() {
+      final s = ref.read(memberFeedProvider);
+      if (s.isLoading || !s.hasMore) return;
       final pos = _videoScrollController.position;
       if (pos.pixels >= pos.maxScrollExtent - 400) {
         ref.read(memberFeedProvider.notifier).loadNextPage();
@@ -595,7 +608,7 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
               child: TabBarView(
                 children: [
                   buildMyProfileTab(user),
-                  buildMyVideoTab(),
+                  buildMyVideoTab(user),
                 ],
               ),
             ),
@@ -630,12 +643,6 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
     final updatedUser = user.copyWith(extra: updatedExtra);
     ref.read(userProfileProvider.notifier).setUser(updatedUser);
     await UserLocalStorage.saveUser(updatedUser);
-  }
-
-  bool _looksLikeImageUrl(String url) {
-    final u = url.toLowerCase();
-    const exts = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.heic', '.heif'];
-    return exts.any((e) => u.endsWith(e));
   }
 
   @override
