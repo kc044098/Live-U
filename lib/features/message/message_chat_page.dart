@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:math';
 
 import 'package:djs_live_stream/features/message/voice_bubble.dart';
 import 'package:flutter/material.dart';
@@ -7,9 +9,11 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import '../../data/models/user_model.dart';
+import '../../data/network/api_endpoints.dart';
 import '../call/call_request_page.dart';
 import '../profile/profile_controller.dart';
 import 'chat_message.dart';
+import 'chat_repository.dart';
 
 class MessageChatPage extends ConsumerStatefulWidget {
   final String partnerName;
@@ -17,12 +21,15 @@ class MessageChatPage extends ConsumerStatefulWidget {
   final bool isVip;
   final String statusText;
 
+  final int? partnerUid;
+
   const MessageChatPage({
     super.key,
     required this.partnerName,
     required this.partnerAvatar,
     required this.isVip,
     required this.statusText,
+    this.partnerUid,
   });
 
   @override
@@ -169,9 +176,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
     });
   }
 
-  void _sendMessage() {
-
-    // 10 次時觸發彈窗
+  void _sendMessage() async {
     if (_sendCount >= 10) {
       _textController.clear();
       _showLimitDialog();
@@ -181,17 +186,60 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
     final text = _textController.text.trim();
     if (text.isEmpty) return;
 
+    // 取得 myUid 與 對方 uid
+    final user = ref.read(userProfileProvider);
+    final myUid = int.tryParse(user?.uid ?? '');
+    final toUid = widget.partnerUid; // 或使用你本頁現有變數
+
+    // 若取不到 id，避免打 API，但仍可把訊息顯示為失敗（不破 UI）
+    if (myUid == null || toUid == null) {
+      setState(() {
+        _messages.add(ChatMessage(
+          type: MessageType.self,
+          contentType: ChatContentType.text,
+          text: text,
+          sendState: SendState.failed,
+        ));
+        _sendCount++;
+      });
+      _textController.clear();
+      _scrollToBottom();
+      return;
+    }
+
+    final uuid = _genUuid(myUid);
+
+    // 樂觀加入一條 sending 訊息
+    final sending = ChatMessage(
+      type: MessageType.self,
+      contentType: ChatContentType.text,
+      text: text,
+      uuid: uuid,
+      flag: 'chat_person',
+      toUid: toUid,
+      data: {'chat_text': text},
+      sendState: SendState.sending,
+    );
     setState(() {
-      _messages.add(ChatMessage(
-        type: MessageType.self,
-        contentType: ChatContentType.text,
-        text: text,
-      ));
+      _messages.add(sending);
       _sendCount++;
     });
-
     _textController.clear();
     _scrollToBottom();
+
+    // ✅ 呼叫 Repository
+    final repo = ref.read(chatRepositoryProvider);
+    final ok = await repo.sendText(uuid: uuid, toUid: toUid, text: text);
+
+    if (!mounted) return;
+    setState(() {
+      final i = _messages.indexWhere((m) => m.uuid == uuid);
+      if (i >= 0) {
+        _messages[i] = _messages[i].copyWith(
+          sendState: ok ? SendState.sent : SendState.failed,
+        );
+      }
+    });
   }
 
   void _showLimitDialog() async {
@@ -378,7 +426,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
 
     return Row(
       mainAxisAlignment: isSelf ? MainAxisAlignment.end : MainAxisAlignment.start,
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         // 對方頭像
         if (!isSelf)
@@ -390,10 +438,13 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
           ),
         if (!isSelf) const SizedBox(width: 8),
 
+        // 訊息氣泡
         _buildBubble(message),
 
+        if (isSelf) const SizedBox(width: 6),
+        if (isSelf) _tailStatus(message),
         if (isSelf) const SizedBox(width: 8),
-        // 自己頭像（直接用 UserModel 的 avatarImage）
+
         if (isSelf)
           CircleAvatar(
             radius: 16,
@@ -544,5 +595,48 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
         ],
       ),
     );
+  }
+
+  Widget _tailStatus(ChatMessage m) {
+    switch (m.sendState) {
+      case SendState.sending:
+      // 傳送中 → 灰色單勾
+        return const Icon(
+          Icons.check,
+          size: 16,
+          color: Colors.grey,
+        );
+      case SendState.sent:
+      // 傳送成功 → 藍色單勾
+        return const Icon(
+          Icons.check,
+          size: 16,
+          color: Colors.blue,
+        );
+      case SendState.failed:
+      // 傳送失敗 → 紅色錯誤
+        return const Icon(
+          Icons.error,
+          size: 16,
+          color: Colors.red,
+        );
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  int _deviceType() {
+    // 1=h5, 2=android, 3=ios, 4=pc, 5=server
+    if (Platform.isAndroid) return 2;
+    if (Platform.isIOS) return 3;
+    if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) return 4;
+    return 4;
+  }
+
+  String _genUuid(int myUid) {
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final dev = _deviceType();
+    final rnd = Random().nextInt(9000000) + 1000000; // 7位
+    return '$myUid-$ts-$dev-$rnd';
   }
 }

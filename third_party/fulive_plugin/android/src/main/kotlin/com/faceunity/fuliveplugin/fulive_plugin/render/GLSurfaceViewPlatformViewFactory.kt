@@ -30,33 +30,49 @@ class GLSurfaceViewPlatformViewFactory: PlatformViewFactory(StandardMessageCodec
     private var cacheMediaPath: String? = null
     //是否是因为离开 cameraView页面 而关闭 相机
     private var leaveCameraPage = false
+    private var lastCameraKey: String? = null
 
     override fun create(context: Context, viewId: Int, args: Any?): PlatformView {
         val identifier = args as? String ?: throw IllegalArgumentException("identifier is null")
         FULogger.d(TAG, "create view: $identifier, viewId: $viewId")
-        val platformView = when(RenderType.valueFrom(identifier)) {
-            RenderType.CAMERA -> GLCameraPlatformView(context) {
-                removePlatformView(identifier)
+
+        val platformView: BasePlatformView = when (RenderType.valueFrom(identifier)) {
+            RenderType.CAMERA -> {
+                Log.d("FU-Factory", "-> GLCameraPlatformView")
+                val v = GLCameraPlatformView(context) { removePlatformView(identifier) }
+                v // ★ 這裡不要立即 startCamera()
             }
             RenderType.IMAGE -> {
+                Log.d("FU-Factory", "-> GLImagePlatformView")
                 val path = cacheMediaPath ?: ""
                 cacheMediaPath = null
-                GLImagePlatformView(context, path) {
-                    removePlatformView(identifier)
-                }
+                GLImagePlatformView(context, path) { removePlatformView(identifier) }
             }
             RenderType.VIDEO -> {
+                Log.d("FU-Factory", "-> GLVideoPlatformView")
                 val path = cacheMediaPath ?: ""
                 cacheMediaPath = null
-                GLVideoPlatformView(context, path) {
-                    removePlatformView(identifier)
-                }
+                GLVideoPlatformView(context, path) { removePlatformView(identifier) }
             }
         }
+
         platformView.setRenderFrameListener(renderFrameListener)
         platformViews[identifier] = platformView
         sortedPlatformViews.add(platformView)
+
+        if (platformView is GLCameraPlatformView) {
+            lastCameraKey = identifier
+        }
         return platformView
+    }
+
+    private fun findCameraView(): GLCameraPlatformView? {
+        // 1) 優先用最後一個註冊的 camera key
+        lastCameraKey?.let { key ->
+            (platformViews[key] as? GLCameraPlatformView)?.let { return it }
+        }
+        // 2) 退而求其次，用 map 中找到的第一個 camera view
+        return platformViews.values.firstOrNull { it is GLCameraPlatformView } as? GLCameraPlatformView
     }
 
     private fun removePlatformView(identifier: String) {
@@ -73,33 +89,50 @@ class GLSurfaceViewPlatformViewFactory: PlatformViewFactory(StandardMessageCodec
     }
 
     fun startCamera() {
-        leaveCameraPage = false
-        (platformViews[CAMERA_RENDER] as? GLCameraPlatformView)?.startCamera()
+        val v = findCameraView()
+        if (v == null) {
+            FULogger.w(TAG, "startCamera(): camera view not found")
+            return
+        }
+        FULogger.d(TAG, "startCamera(): forwarding to GLCameraPlatformView")
+        v.startCamera()
     }
 
     fun stopCamera() {
-        leaveCameraPage = true
-        (platformViews[CAMERA_RENDER] as? GLCameraPlatformView)?.stopCamera()
+        val v = findCameraView()
+        if (v == null) {
+            FULogger.w(TAG, "stopCamera(): camera view not found")
+            return
+        }
+        v.stopCamera()
     }
 
-    fun switchCamera(isFront: Boolean ) {
-        (platformViews[CAMERA_RENDER] as? GLCameraPlatformView)?.switchCamera(isFront)
+    fun switchCamera(isFront: Boolean) {
+        val v = findCameraView()
+        if (v == null) {
+            FULogger.w(TAG, "switchCamera(): camera view not found")
+            return
+        }
+        v.switchCamera(isFront)
     }
-
     fun switchRenderInputType(inputType: Int) {
-        (platformViews[CAMERA_RENDER] as? GLCameraPlatformView)?.switchRenderInputType(inputType)
+        val v = findCameraView() ?: return
+        v.switchRenderInputType(inputType)
     }
 
     fun switchCapturePreset(preset: Int) {
-        (platformViews[CAMERA_RENDER] as? GLCameraPlatformView)?.switchCapturePreset(preset)
+        val v = findCameraView() ?: return
+        v.switchCapturePreset(preset)
     }
 
     fun setCameraExposure(exposure: Double) {
-        (platformViews[CAMERA_RENDER] as? GLCameraPlatformView)?.setCameraExposure(exposure)
+        val v = findCameraView() ?: return
+        v.setCameraExposure(exposure)
     }
 
     fun manualFocus(dx: Double, dy: Double, focusRectSize: Int) {
-        (platformViews[CAMERA_RENDER] as? GLCameraPlatformView)?.manualFocus(dx, dy, focusRectSize)
+        val v = findCameraView() ?: return
+        v.manualFocus(dx, dy, focusRectSize)
     }
 
     fun takePhoto(takePhotoAction: (Boolean) -> Unit) {
@@ -115,9 +148,8 @@ class GLSurfaceViewPlatformViewFactory: PlatformViewFactory(StandardMessageCodec
     }
 
     fun setRenderState(isRendering: Boolean) {
-        platformViews.forEach {
-            it.value.setRenderState(isRendering)
-        }
+        val v = findCameraView() ?: return
+        v.setRenderState(isRendering)
     }
     fun setMediaPath(path: String) {
         cacheMediaPath = path

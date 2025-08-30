@@ -12,10 +12,30 @@ import 'model/fan_user.dart';
 import 'model/focus_user.dart';
 import 'model/vip_plan.dart';
 
-
 class UserRepository {
   final ApiClient _api;
   UserRepository(this._api);
+
+  /// 回傳 true 表示修改成功；false 表示失敗
+  Future<bool> modifyPassword({
+    required String oldPwd,
+    required String newPwd,
+  }) async {
+    try {
+      final Response res = await _api.post(
+        ApiEndpoints.modifyPassword,
+        data: {"old_pwd": oldPwd, "new_pwd": newPwd},
+      );
+
+      // 依你後端約定：code == 200 表示成功
+      final data = res.data is Map ? res.data as Map : {};
+      final code = data['code'];
+      return code == 200;
+    } catch (e) {
+      // 這裡可加上日誌或錯誤上報
+      return false;
+    }
+  }
 
   /// 獲取個人資訊（會更新當前使用者）
   Future<UserModel> getMemberInfo(UserModel currentUser) async {

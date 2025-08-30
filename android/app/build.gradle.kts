@@ -8,7 +8,6 @@ plugins {
 android {
     namespace = "lu.live"
     compileSdk = 36
-
     ndkVersion = "27.0.12077973"
 
     defaultConfig {
@@ -17,19 +16,75 @@ android {
         targetSdk = 34
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // FaceUnity/CNama 常見只針對 arm 平台，避免包 x86 導致缺 so 閃退
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-
-    kotlinOptions {
-        jvmTarget = "11"
+    kotlinOptions { jvmTarget = "11" }
+    aaptOptions {
+        noCompress += setOf("bundle", "js", "csv")
     }
+
+    // 讓 app module 讀到我們自製/第三方 java 原始碼
     sourceSets["main"].java.srcDirs("src/main/kotlin", "libs")
+
+    sourceSets["main"].assets.srcDirs("src/main/assets")
+
+    buildTypes {
+        debug {
+            // debug 也可以先關掉混淆，方便排查
+            isMinifyEnabled = false
+        }
+        release {
+            // 開啟 R8 混淆 & 資源壓縮
+            isMinifyEnabled = true
+            isShrinkResources = true
+            // 指定規則檔（就在 app/ 下）
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+    }
+
+
+    // ⚠️ 新增：避免資源被壓縮或打包時處理不當
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+            // 如需保留符號（只在你想要可讀崩潰堆疊時開）
+            // keepDebugSymbols += listOf("**/*.so")
+        }
+        resources {
+            // 若遇到 META-INF 衝突，可保留
+            excludes += listOf(
+                "META-INF/**",
+                "okhttp3/internal/publicsuffix/**"
+            )
+
+        }
+
+    }
+
+    // ⚠️ 新增：指定不要壓縮的副檔名（FaceUnity 常見）
+    androidResources {
+        // 依你實際資源調整：bundle / model / dat / js / tflite 等
+        noCompress += setOf("bundle", "model", "dat", "js")
+    }
 }
+
 dependencies {
+    implementation("com.google.android.play:feature-delivery:2.1.0")
+    implementation("com.google.android.play:core-common:2.0.4")
+    implementation("com.google.android.play:app-update:2.1.0")
+    implementation("com.google.android.play:review:2.0.1")
     implementation("androidx.annotation:annotation-jvm:1.9.1")
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     implementation("com.google.firebase:firebase-auth:23.2.1")

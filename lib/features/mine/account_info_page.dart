@@ -4,12 +4,12 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'modify_password_page.dart';
 
 class AccountInfoPage extends StatelessWidget {
-  final String avatarUrl;
+  final ImageProvider avatarImage;
   final String modifyType;
 
   const AccountInfoPage({
     super.key,
-    required this.avatarUrl,
+    required this.avatarImage,
     required this.modifyType,
   });
 
@@ -35,9 +35,7 @@ class AccountInfoPage extends StatelessWidget {
           // 頭像
           CircleAvatar(
             radius: 50,
-            backgroundImage: avatarUrl.isNotEmpty
-                ? NetworkImage(avatarUrl)
-                : const AssetImage('assets/default_avatar.png') as ImageProvider,
+            backgroundImage: avatarImage,
           ),
 
           const SizedBox(height: 30),

@@ -98,7 +98,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
       appBar: _isLoading
           ? null
           : AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           icon: SvgPicture.asset(

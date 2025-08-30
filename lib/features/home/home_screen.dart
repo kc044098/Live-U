@@ -104,44 +104,47 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       const MinePage(),
     ];
 
-    return Scaffold(
-      extendBody: true,
-      body: Stack(
-        children: [
-          pages[_selectedIndex],
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: Container(
-              padding: const EdgeInsets.only(bottom: 16, top: 8),
-              decoration: BoxDecoration(
-                color: _isLiveHomeTab ? Colors.transparent : Colors.white,
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: List.generate(3, (index) {
-                  final isSelected = _selectedIndex == index;
-                  return GestureDetector(
-                    onTap: () => _onItemTapped(index),
-                    behavior: HitTestBehavior.translucent,
-                    child: SizedBox(
-                      width: 60,
-                      height: 45,
-                      child: Center(
-                        child: SvgPicture.asset(
-                          _getSvgPath(index, isSelected),
-                          width: 28,
-                          height: 28,
+    return WillPopScope(
+      onWillPop: () async => false,
+      child: Scaffold(
+        extendBody: true,
+        body: Stack(
+          children: [
+            pages[_selectedIndex],
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.only(bottom: 16, top: 8),
+                decoration: BoxDecoration(
+                  color: _isLiveHomeTab ? Colors.transparent : Colors.white,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: List.generate(3, (index) {
+                    final isSelected = _selectedIndex == index;
+                    return GestureDetector(
+                      onTap: () => _onItemTapped(index),
+                      behavior: HitTestBehavior.translucent,
+                      child: SizedBox(
+                        width: 60,
+                        height: 45,
+                        child: Center(
+                          child: SvgPicture.asset(
+                            _getSvgPath(index, isSelected),
+                            width: 28,
+                            height: 28,
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                }),
+                    );
+                  }),
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

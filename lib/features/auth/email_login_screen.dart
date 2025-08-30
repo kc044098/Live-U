@@ -117,7 +117,7 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: _isLoading ? null : AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           icon: SvgPicture.asset(

@@ -20,7 +20,6 @@ class AccountManagePage extends ConsumerWidget {
     final googleStatus = _getBindStatus(user, 'google');
     final facebookStatus = _getBindStatus(user, 'facebook');
     final appleStatus = _getBindStatus(user, 'apple');
-    final isMale = user?.extra?['gender'] == 'male';
 
     return Scaffold(
       appBar: AppBar(
@@ -38,7 +37,7 @@ class AccountManagePage extends ConsumerWidget {
         padding: const EdgeInsets.all(16),
         children: [
           // ===== 帳號欄位 =====
-          if (!isMale) ...[
+          if (user?.isBroadcaster ?? false) ...[
             Container(
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -65,7 +64,7 @@ class AccountManagePage extends ConsumerWidget {
                     context,
                     MaterialPageRoute(
                         builder: (_) => AccountInfoPage(
-                              avatarUrl: user?.avatarUrl ?? '',
+                          avatarImage: user!.avatarImage,
                               modifyType: 'account',
                             )),
                   );
@@ -139,7 +138,7 @@ class AccountManagePage extends ConsumerWidget {
                     } else {
                       await Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => AccountInfoPage(avatarUrl: user!.avatarUrl ?? '', modifyType: 'email')),
+                        MaterialPageRoute(builder: (_) => AccountInfoPage(avatarImage: user!.avatarImage, modifyType: 'email')),
                       );
                     }
                   },

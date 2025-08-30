@@ -1,11 +1,17 @@
 package com.faceunity.fuliveplugin.fulive_plugin
 
 import android.content.Context
+import android.content.res.AssetManager
 import android.util.Log
 import androidx.lifecycle.Lifecycle
+import com.faceunity.core.callback.OperateCallback
 import com.faceunity.core.enumeration.FUFaceProcessorDetectModeEnum
 import com.faceunity.core.faceunity.FUAIKit
+import com.faceunity.core.faceunity.FURenderConfig
+import com.faceunity.core.faceunity.FURenderManager
 import com.faceunity.core.utils.FULogger
+import com.faceunity.faceunity_plugin.authpack
+import com.faceunity.fuliveplugin.fulive_plugin.config.FaceunityConfig
 import com.faceunity.fuliveplugin.fulive_plugin.config.FaceunityKit
 import com.faceunity.fuliveplugin.fulive_plugin.modules.BaseModulePlugin
 import com.faceunity.fuliveplugin.fulive_plugin.modules.FUFaceBeautyPlugin
@@ -31,6 +37,8 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import java.io.File
+import java.io.FileOutputStream
 import kotlin.coroutines.resume
 
 
@@ -102,7 +110,8 @@ class FulivePlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamHandle
             "setFaceProcessorDetectMode" to ::setFaceProcessorDetectMode,
             "requestAlbumForType" to ::requestAlbumForType,
             "setMaxFaceNumber" to ::setMaxFaceNumber,
-            "restrictedSkinParams" to ::restrictedSkinParams
+            "restrictedSkinParams" to ::restrictedSkinParams,
+            "initFromAssets" to ::initFromAssets
         )
     override fun methods(): Map<String, (Map<String, Any>, MethodChannel.Result) -> Any> = methods
 
@@ -126,10 +135,12 @@ class FulivePlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamHandle
         } else {
             FUAIKit.getInstance().faceProcessorSetDetectMode(FUFaceProcessorDetectModeEnum.VIDEO)
         }
+        result.success(true)
     }
 
     private fun requestAlbumForType(params: Map<String, Any>, result: MethodChannel.Result) {
         val type = params.getInt("type")?: return
+        result.success(true)
         mainScope.launch {
             glSurfaceViewPlatformViewFactory.startSelectMedia()
             val pair = suspendCancellableCoroutine { cancellableContinuation->
@@ -153,6 +164,7 @@ class FulivePlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamHandle
     private fun setMaxFaceNumber(params: Map<String, Any>, result: MethodChannel.Result) {
         val number = params.getInt("number")?: return
         FUAIKit.getInstance().maxFaces = number.coerceIn(1, 4)
+        result.success(true)
     }
 
     private fun restrictedSkinParams(params: Map<String, Any>, result: MethodChannel.Result) {
@@ -160,6 +172,103 @@ class FulivePlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamHandle
             result.success(RestrictedSkinTool.restrictedSkinParams)
         }
     }
+
+    private fun initFromAssets(params: Map<String, Any>, result: MethodChannel.Result) {
+        val subDir = (params["subDir"] as? String) ?: "faceunity"
+
+        // 重要：把 FaceunityConfig 的根目錄設成你傳進來的資料夾
+        FaceunityConfig.BASE_DIR = subDir
+
+        // 先列出幾個目錄，方便你從 log 對照 APK 內到底有什麼
+        try {
+            Log.d("FulivePlugin", "assets/$subDir/model: ${context.assets.list("$subDir/model")?.toList()}")
+            Log.d("FulivePlugin", "assets/$subDir/graphics: ${context.assets.list("$subDir/graphics")?.toList()}")
+        } catch (_: Exception) { /* ignore */ }
+
+        val mustHave = listOf(
+            FaceunityConfig.BUNDLE_CONTROLLER_CPP,
+            FaceunityConfig.BUNDLE_AI_FACE,
+            FaceunityConfig.BUNDLE_AI_HUMAN,
+            FaceunityConfig.BUNDLE_FACE_BEAUTIFICATION,
+            FaceunityConfig.BLACK_LIST
+        )
+
+        val missing = mustHave.filterNot(::assetExists)
+        if (missing.isNotEmpty()) {
+            Log.w("FulivePlugin", "FaceUnity assets not found in APK: $missing (check FaceunityConfig paths)")
+            result.error("ASSET_MISSING", "Missing FaceUnity assets: $missing", null)
+            return
+        }
+
+        FaceunityKit.setupKit(context) {
+            FaceunityKit.loadFaceBeauty()
+            result.success(true)
+        }
+    }
+
+
+    // 用 open() 驗證；不要用 assets.list()；不要有 "assets/" 前綴
+    private fun assetExists(path: String): Boolean {
+        return try {
+            context.assets.open(path).use { /* ok */ }
+            true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    // 只做除錯列印（可留著，注意不要加 "assets/" 前綴）
+    private fun assetDebugLog(dir: String) {
+        try {
+            val names = context.assets.list(dir) ?: emptyArray()
+            android.util.Log.d("FulivePlugin", "$dir: ${names.toList()}")
+        } catch (e: Throwable) {
+            android.util.Log.w("FulivePlugin", "list($dir) failed: ${e.message}")
+        }
+    }
+
+
+    /** 把整個 assets/<dir> 複製到 app 私有目錄 */
+    private fun copyAssetDir(am: AssetManager, dir: String, outDir: File) {
+        if (!outDir.exists()) outDir.mkdirs()
+        val list = am.list(dir) ?: return
+        for (name in list) {
+            val child = "$dir/$name"
+            val out = File(outDir, name)
+            val subList = am.list(child)
+            if (subList != null && subList.isNotEmpty()) {
+                copyAssetDir(am, child, out)
+            } else {
+                am.open(child).use { input ->
+                    FileOutputStream(out).use { output ->
+                        val buf = ByteArray(8 * 1024)
+                        while (true) {
+                            val n = input.read(buf)
+                            if (n <= 0) break
+                            output.write(buf, 0, n)
+                        }
+                        output.flush()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun copyAssetFile(am: AssetManager, assetPath: String, outFile: File) {
+        am.open(assetPath).use { input ->
+            FileOutputStream(outFile).use { output ->
+                val buf = ByteArray(8 * 1024)
+                var n: Int
+                while (true) {
+                    n = input.read(buf)
+                    if (n <= 0) break
+                    output.write(buf, 0, n)
+                }
+                output.flush()
+            }
+        }
+    }
+
 
     override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
         this.eventSink = events

@@ -4,6 +4,7 @@ class ApiEndpoints {
   static const String loginEmail = '/api/member/login/email';
   static const String loginAccount = '/api/member/login/pwd';
   static const String resetPassword = '/api/member/pwd/update';
+  static const String modifyPassword = '/api/member/pwd/modify';
   static const String logout = '/api/member/logout';
   static const String memberInfo = '/api/member/info';
   static const String memberInfoUpdate = '/api/member/info/update';
@@ -21,17 +22,13 @@ class ApiEndpoints {
   static const String videoUpdate = '/api/member/video/update'; // 更新動態
   static const String videoLike = '/api/member/video/like'; // 喜歡視頻
   static const String videoRecommend = '/api/member/recommend'; // 推薦視頻
+  static const String userRecommend = '/api/member/recommend/user'; // 推薦用戶
 
-  static const String liveCall = '/api/im/call'; // 撥打電話
-  static const String liveCallAccept = '/api/im/call/accept'; // 接聽電話
-  static const String liveCallReject = '/api/im/call/reject'; // 接聽拒絕
-  static const String liveCallCancel = '/api/im/call/reject'; // 接聽拒絕
+  static const String liveCall = '/api/live/call'; // 撥打電話
+  static const String liveCallAccept = '/api/live/call/accept'; // 1.接聽電話 2.拒絕電話
   static const String liveCallRenew = '/api/im/call'; // 直播token續期
 
-
-
-
-
-
+  static const String messageSend = '/api/im/send'; // 發送聊天消息
+  static const String messageHistory = '/api/im/message/history'; // 接收聊天歷史消息
 
 }

@@ -4,6 +4,7 @@ import '../../config/providers/app_config_provider.dart';
 import '../../data/network/Api_client_interface.dart';
 import '../../data/network/api_client.dart';
 import '../profile/profile_controller.dart';
+import 'friend_list_state.dart';
 import 'video_repository.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,6 +16,10 @@ final videoRepositoryProvider = Provider<VideoRepository>((ref) {
   return VideoRepository(api, config, ref);
 });
 
+final friendListProvider = StateNotifierProvider<FriendListNotifier, FriendListState>((ref) {
+  final repo = VideoRepository(ref.read(apiClientProvider), ref.watch(appConfigProvider), ref);
+  return FriendListNotifier(repo);
+});
 
 class _ApiClientAdapter implements IApiClient {
   final ApiClient _inner;

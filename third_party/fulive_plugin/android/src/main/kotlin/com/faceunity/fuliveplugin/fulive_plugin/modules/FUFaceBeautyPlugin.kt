@@ -56,6 +56,7 @@ class FUFaceBeautyPlugin : BaseModulePlugin {
             SkinEnum.FUBeautySkinClarity -> renderKit.faceBeauty?.clarityIntensity = value
             else -> {}
         }
+        result.success(true)
     }
 
     private fun setShapeIntensity(params: Map<String, Any>, result: MethodChannel.Result) {
@@ -89,6 +90,7 @@ class FUFaceBeautyPlugin : BaseModulePlugin {
             ShapeEnum.FUBeautyShapeBrowThick -> renderKit.faceBeauty?.browThickIntensity = value
             else -> {}
         }
+        result.success(true)
     }
 
     private fun selectFilter(params: Map<String, Any>, result: MethodChannel.Result) {
@@ -97,57 +99,69 @@ class FUFaceBeautyPlugin : BaseModulePlugin {
             FaceunityKit.loadFaceBeauty()
         }
         renderKit.faceBeauty?.filterName = filterName
+        result.success(true)
     }
 
     private fun setFilterLevel(params: Map<String, Any>, result: MethodChannel.Result) {
         val intensity = params.getDouble("level") ?: return
 
         renderKit.faceBeauty?.filterIntensity = intensity
+        result.success(true)
     }
 
     private fun loadBeauty(params: Map<String, Any>, result: MethodChannel.Result) {
         FaceunityKit.loadFaceBeauty()
+        result.success(true)
     }
 
     private fun unloadBeauty(params: Map<String, Any>, result: MethodChannel.Result) {
         renderKit.faceBeauty = null
         FaceunityKit.dropFaceUnityConfig()
+        result.success(true)
     }
 
     private fun setMaximumFacesNumber(params: Map<String, Any>, result: MethodChannel.Result) {
         val maxFaceNumber = params.getInt("number") ?: return
 
         FUAIKit.getInstance().maxFaces = maxFaceNumber.coerceIn(1, 4)
+        result.success(true)
     }
 
     private fun saveSkinToLocal(params: Map<String, Any>, result: MethodChannel.Result) {
         val json = params.getString("json")?: return
         FULocalStorage.saveFaceBeautySkin(json)
+        result.success(true)
     }
     private fun getLocalSkin(params: Map<String, Any>, result: MethodChannel.Result) {
         result.success(FULocalStorage.getFaceBeautySkin())
+        result.success(true)
     }
 
     private fun saveShapeToLocal(params: Map<String, Any>, result: MethodChannel.Result) {
         val json = params.getString("json")?: return
         FULocalStorage.saveFaceBeautyShape(json)
+        result.success(true)
     }
     private fun getLocalShape(params: Map<String, Any>, result: MethodChannel.Result) {
         result.success(FULocalStorage.getFaceBeautyShape())
+        result.success(true)
     }
 
     private fun saveFilterToLocal(params: Map<String, Any>, result: MethodChannel.Result) {
         val json = params.getString("json")?: return
         FULocalStorage.saveFaceBeautyFilter(json)
+        result.success(true)
     }
     private fun getLocalFilter(params: Map<String, Any>, result: MethodChannel.Result) {
         result.success(FULocalStorage.getFaceBeautyFilter())
+        result.success(true)
     }
 
     private fun setBeautyParam(params: Map<String, Any>, result: MethodChannel.Result) {
         val key = params.getString("key") ?: return
         val value = params.get("value") ?: return
         setBeautyParam(key, value)
+        result.success(true)
     }
 
     private fun setBeautyParam(key: String, value: Any) {

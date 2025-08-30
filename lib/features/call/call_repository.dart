@@ -5,51 +5,58 @@ import 'package:dio/dio.dart';
 
 import '../../data/network/api_client.dart';
 import '../../data/network/api_client_provider.dart';
-import '../../data/network/api_endpoints.dart';   // 你集中管理的 endpoints
+import '../../data/network/api_endpoints.dart';
 
 class CallRepository {
   final ApiClient _api;
   CallRepository(this._api);
 
-  /// 發起通話
-  /// Req:  { "flag": 1(視訊)|2(語音), "to_uid": 123 }
-  /// Resp: { "channel_name"/"channle_name", "from_uid", "to_uid", "token"(主叫), ... }
   Future<Map<String, dynamic>> liveCall({
-    required int flag,
+    required int flag, // 1=video, 2=audio
     required int toUid,
   }) async {
-    final payload = {"flag": flag, "to_uid": toUid};
-    final res = await _api.post(ApiEndpoints.liveCall, data: payload);
-
-    final body = (res.data is Map) ? res.data as Map : const {};
-    final rawData = (body['data'] ?? body);
-    final data = Map<String, dynamic>.from(rawData as Map);
-
-    // normalize keys
-    data['channel_name'] =
-        (data['channel_name'] ?? data['channle_name'] ?? data['channel_id'])?.toString();
-
-    // ints
-    for (final k in ['from_uid', 'to_uid', 'caller_uid', 'callee_uid', 'uid']) {
-      final v = data[k];
-      if (v is num) data[k] = v.toInt();
-    }
-
-    return data;
+    final raw = await _api.post(
+      ApiEndpoints.liveCall,
+      data: {'flag': flag, 'to_uid': toUid},
+    );
+    final dyn = (raw is Response) ? raw.data : raw;
+    return _toMap(dyn);
   }
 
-  /// 回覆來電（接聽/拒絕）
-  /// Req:  { "channel_name": "xxx", "flag": 1(接聽)|2(拒絕) }
-  /// 接聽預期 Resp: { "channel_name", "token"(被叫), "callee_uid"(或 uid) ... }
-  /// 拒絕可能只回 message 或空 data；這裡做彈性解析
-  Future<void> respondCall({
+  Future<Map<String, dynamic>> respondCall({
     required String channelName,
-    required bool accept, // true=接聽(flag=1) / false=拒絕(flag=2)
+    String? callId,
+    required bool accept, // true=1 接聽, false=2 拒絕/掛斷
   }) async {
-    await _api.post(
+    final raw = await _api.post(
       ApiEndpoints.liveCallAccept,
-      data: {'channel_name': channelName, 'flag': accept ? 1 : 2},
+      data: {
+        'channel_name': channelName,
+        'callId': callId,
+        'flag': accept ? 1 : 2,
+      },
     );
+    final dyn = (raw is Response) ? raw.data : raw;
+    return _toMap(dyn);
+  }
+
+  /// 把任意回傳(normal/Dio/JSON字串/其它)安全轉成 Map<String,dynamic>
+  Map<String, dynamic> _toMap(dynamic v) {
+    if (v is Map<String, dynamic>) return v;
+    if (v is Map) return Map<String, dynamic>.from(v);
+    if (v is String && v.isNotEmpty) {
+      try {
+        final j = json.decode(v);
+        if (j is Map<String, dynamic>) return j;
+        if (j is Map) return Map<String, dynamic>.from(j);
+        return {'data': j};
+      } catch (_) {
+        // 不是 JSON 就包起來
+        return {'data': v};
+      }
+    }
+    // 其他型別（list/bool/null...）一律包在 data 裡
+    return {'data': v};
   }
 }
 

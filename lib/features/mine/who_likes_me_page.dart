@@ -2,6 +2,7 @@
 
 import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:djs_live_stream/features/mine/user_repository_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
@@ -14,6 +15,7 @@ import '../profile/view_profile_page.dart';
 import '../wallet/payment_method_page.dart';
 import 'member_fans_provider.dart';
 import 'model/fan_user.dart';
+import 'model/vip_plan.dart';
 
 class WhoLikesMePage extends ConsumerStatefulWidget {
   const WhoLikesMePage({super.key});
@@ -22,18 +24,29 @@ class WhoLikesMePage extends ConsumerStatefulWidget {
   ConsumerState<WhoLikesMePage> createState() => _WhoLikesMePageState();
 }
 
-class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
+class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage>
+    with WidgetsBindingObserver {
   bool _showBlockLayer = false;
   final _scroll = ScrollController();
 
+  List<VipPlan> _plans = const [];
+  int _selectedPlanIndex = 1;
+  int _bestIndex = 0;
+  bool _plansLoading = true;
+  String? _plansError;
+
+  @override
   @override
   void initState() {
     super.initState();
 
-    // 進頁面抓第一頁
+    // 進頁面抓第一頁粉絲
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(memberFansProvider.notifier).loadFirstPage();
     });
+
+    // 進頁面抓 VIP 方案
+    _loadPlans();
 
     // 非 VIP 遮罩
     Future.delayed(const Duration(milliseconds: 500), () {
@@ -43,7 +56,7 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
       }
     });
 
-    // 無限滾動載入下一頁（邏輯不影響既有 UI）
+    // 無限滾動載入下一頁
     _scroll.addListener(() {
       if (!_scroll.hasClients) return;
       final pos = _scroll.position;
@@ -51,6 +64,44 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
         ref.read(memberFansProvider.notifier).loadNextPage();
       }
     });
+  }
+
+  Future<void> _loadPlans() async {
+    setState(() {
+      _plansLoading = true;
+      _plansError = null;
+    });
+    try {
+      final repo = ref.read(userRepositoryProvider);
+      final plans = await repo.fetchVipPlans();
+
+      // 「最佳選擇」：每月單價最低
+      int bestIdx = 0;
+      if (plans.isNotEmpty) {
+        double bestPer = plans.first.perMonth;
+        for (var i = 1; i < plans.length; i++) {
+          if (plans[i].perMonth < bestPer) {
+            bestPer = plans[i].perMonth;
+            bestIdx = i;
+          }
+        }
+      }
+
+      // 「預設選擇第二個」
+      int defaultIdx = (plans.length >= 2) ? 1 : (plans.isNotEmpty ? 0 : 0);
+
+      setState(() {
+        _plans = plans;
+        _bestIndex = bestIdx;
+        _selectedPlanIndex = defaultIdx;
+        _plansLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _plansError = '$e';
+        _plansLoading = false;
+      });
+    }
   }
 
   @override
@@ -195,12 +246,9 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
         // 霧化背景
         BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            color: Colors.black.withOpacity(0.6),
-          ),
+          child: Container(color: Colors.black.withOpacity(0.6)),
         ),
 
-        // 半透明漸層遮罩 + 彈窗內容
         Align(
           alignment: Alignment.center,
           child: Container(
@@ -224,7 +272,9 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('誰喜歡我', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text('誰喜歡我',
+                    style:
+                    TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
                 const Text(
                   '查看對你心動的Ta，立即聯繫不再等待',
@@ -232,7 +282,10 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
                   style: TextStyle(fontSize: 14, color: Color(0xfffb5d5d)),
                 ),
                 const SizedBox(height: 20),
-                _getSubscriptionPlan(),
+
+                // 🔻 改這裡：用動態方案
+                _plansSection(),
+
                 const SizedBox(height: 20),
                 SizedBox(
                   width: 180,
@@ -243,12 +296,26 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
                         borderRadius: BorderRadius.circular(20),
                       ),
                     ),
-                    onPressed: () async {
-                      await Navigator.push(context, MaterialPageRoute(builder: (_) => const PaymentMethodPage(amount: 10.77)));
-
+                    onPressed: (_plansLoading || _plans.isEmpty)
+                        ? null
+                        : () async {
+                      final amt = _plans[_selectedPlanIndex].payPrice;
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              PaymentMethodPage(amount: amt),
+                        ),
+                      );
+                      // 保留你原本的行為
                       Navigator.pop(context, true);
                     },
-                    child: const Text('購買VIP', style: TextStyle(color: Colors.white)),
+                    child: Text(
+                      _plansLoading || _plans.isEmpty
+                          ? '載入中...'
+                          : '購買VIP（${_fmtMoney(_plans[_selectedPlanIndex].payPrice)}）',
+                      style: const TextStyle(color: Colors.white),
+                    ),
                   ),
                 ),
               ],
@@ -259,40 +326,128 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
     );
   }
 
-  Widget _getSubscriptionPlan() {
-    final plans = [
-      {'title': '1个月', 'price': '\$3.99', 'oldPrice': '', 'monthly': '3.99美元/月'},
-      {'title': '3个月', 'price': '\$10.77', 'oldPrice': '\$11.97', 'monthly': '10.77美元/月'},
-      {'title': '6个月', 'price': '\$19.15', 'oldPrice': '\$23.94', 'monthly': '19.15美元/月'},
-      {'title': '1年', 'price': '\$33.5', 'oldPrice': '\$47.8', 'monthly': '10.77美元/月'},
-      {'title': '订阅包月', 'price': '\$9', 'oldPrice': '\$10', 'monthly': '9美元/月'},
-    ];
+  String _fmtMoney(double v) => '\$ ${v.toStringAsFixed(2)}';
+  String _fmtPerMonth(VipPlan p) => '${_fmtMoney(p.perMonth)} / 月';
 
+  Widget _plansSection() {
+    if (_plansLoading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 20),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_plansError != null) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('載入失敗：$_plansError',
+              style: const TextStyle(fontSize: 13, color: Colors.white)),
+          const SizedBox(height: 8),
+          OutlinedButton(
+            onPressed: _loadPlans,
+            child: const Text('重試'),
+          ),
+        ],
+      );
+    }
+    if (_plans.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Text('目前沒有可用方案',
+            style: TextStyle(fontSize: 13, color: Colors.white)),
+      );
+    }
+    return _plansGrid();
+  }
+
+  Widget _plansGrid() {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: plans.length,
+      itemCount: _plans.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
-        childAspectRatio: 0.9,
+        childAspectRatio: 0.8,
       ),
       itemBuilder: (context, index) {
-        final plan = plans[index];
-        return Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+        final p = _plans[index];
+        final selected = _selectedPlanIndex == index;
+
+        return GestureDetector(
+          onTap: () => setState(() => _selectedPlanIndex = index),
+          child: Stack(
+            clipBehavior: Clip.none,
             children: [
-              Text(plan['title']!, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.red)),
-              if (plan['oldPrice']!.isNotEmpty)
-                Text(plan['oldPrice']!, style: const TextStyle(fontSize: 12, color: Colors.grey, decoration: TextDecoration.lineThrough)),
-              const SizedBox(height: 2),
-              Text(plan['price']!, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 2),
-              Text(plan['monthly']!, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: selected ? Colors.pink : const Color(0xFFE0E0E0),
+                    width: selected ? 2 : 1,
+                  ),
+                  boxShadow: selected
+                      ? [
+                    BoxShadow(
+                      color: Colors.pink.withOpacity(0.15),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                      : null,
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(p.title,
+                        style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.red)),
+                    const SizedBox(height: 2),
+                    // 售價（可能是特價）
+                    Text(_fmtMoney(p.payPrice),
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 2),
+                    // 原價（固定刪除線）
+                    Text('原价 ${_fmtMoney(p.price)}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                          decoration: TextDecoration.lineThrough,
+                        )),
+                    const SizedBox(height: 2),
+                    Text(_fmtPerMonth(p),
+                        style:
+                        const TextStyle(fontSize: 12, color: Colors.grey)),
+                  ],
+                ),
+              ),
+              if (index == _bestIndex)
+                Positioned(
+                  top: -8,
+                  left: 0,
+                  child: Container(
+                    width: 60,
+                    padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFFF4D67),
+                      borderRadius: BorderRadius.only(
+                        topRight: Radius.circular(8),
+                        topLeft: Radius.circular(8),
+                        bottomRight: Radius.circular(8),
+                      ),
+                    ),
+                    child: const Text('最佳选择',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 10, color: Colors.white)),
+                  ),
+                ),
             ],
           ),
         );

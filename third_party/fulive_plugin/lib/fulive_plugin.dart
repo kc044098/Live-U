@@ -5,11 +5,27 @@ class FaceunityPlugin {
   // 声明 MethodChannel
   static const methodChannel = MethodChannel('fulive_plugin');
 
+  /// 初始化 FaceUnity：指定資源來源子資料夾（例如：'faceunity'）
+  /// 搭配方案 A：請先把所有 .bundle / .js 放到 android/app/src/main/assets/faceunity/
+  /// 原生側需實作對應的 "initFromAssets" method（我在下方補了 Kotlin 範例）
+  static Future<bool> initFromAssets(String subDir) async {
+    final ok = await methodChannel.invokeMethod('initFromAssets', {
+      "arguments": [
+        {"subDir": subDir}
+      ]
+    });
+    return ok == true;
+  }
+
   // 获取平台版本号
   static Future<String?> getPlatformVersion() async {
-    // 使用 invokeMapMethod 或者 invokeMethod 调用原生接口
-    final String version = (await methodChannel.invokeMapMethod("getPlatformVersion")) as String;
-    return version;
+    try {
+      final String? version =
+          await methodChannel.invokeMethod<String>('getPlatformVersion');
+      return version;
+    } on PlatformException {
+      return null;
+    }
   }
 
   // 设备是否高端机型
