@@ -15,37 +15,29 @@ import '../live/data_model/feed_item.dart';
 import '../live/data_model/home_feed_state.dart';
 import '../live/data_model/prefetch_manager.dart';
 import '../live/live_user_info_card.dart';
+import '../live/video_repository_provider.dart';
 import '../mine/user_repository_provider.dart';
 import '../profile/profile_controller.dart';
 import '../profile/view_profile_page.dart';
 
-class LiveListPage extends StatefulWidget {
+class LiveListPage extends ConsumerStatefulWidget {
   final ValueChanged<int>? onTabChanged;
   final bool isBroadcaster;
-
 
   const LiveListPage({
     super.key,
     this.onTabChanged,
-    required this.isBroadcaster
+    required this.isBroadcaster,
   });
 
   @override
-  State<LiveListPage> createState() => _LiveListPageState();
+  ConsumerState<LiveListPage> createState() => _LiveListPageState();
 }
 
-class _LiveListPageState extends State<LiveListPage>
+class _LiveListPageState extends ConsumerState<LiveListPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final List<Map<String, String>> mockUsers = List.generate(8, (index) {
-    final imgIndex = (index % 4) + 1;
-    return {
-      'broadcaster': 'broadcaster00$index',
-      'name': 'Ariana Flores $index',
-      'image': 'assets/pic_girl$imgIndex.png',
-      'videoPath': 'assets/demo_video$imgIndex.mp4',
-    };
-  });
+  final ScrollController _scrollController = ScrollController();
 
   late final HomeVideoTab _homeVideoTab;
 
@@ -65,9 +57,24 @@ class _LiveListPageState extends State<LiveListPage>
             setState(() {});
           }
         });
+
       WidgetsBinding.instance.addPostFrameCallback((_) {
         widget.onTabChanged?.call(_tabController.index);
       });
+    }
+
+    _scrollController.addListener(_onScroll);
+    Future.microtask(() {
+      ref.read(friendListProvider.notifier).loadFirstPage();
+    });
+  }
+
+  void _onScroll() {
+    final notifier = ref.read(friendListProvider.notifier);
+    final scroll = _scrollController;
+    if (!scroll.hasClients) return;
+    if (scroll.position.pixels >= scroll.position.maxScrollExtent - 300) {
+      notifier.loadNextPage();
     }
   }
 
@@ -76,6 +83,7 @@ class _LiveListPageState extends State<LiveListPage>
     if (widget.isBroadcaster) {
       _tabController.dispose();
     }
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -87,7 +95,6 @@ class _LiveListPageState extends State<LiveListPage>
         body: SafeArea(top: false, child: _homeVideoTab),
       );
     }
-
     // 主播 保持原本兩個 tab 的邏輯
     return Scaffold(
       body: Stack(
@@ -138,66 +145,115 @@ class _LiveListPageState extends State<LiveListPage>
   }
 
   Widget _buildFriendListView() {
-    return Container(
-      color: Colors.white,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 60),
-        child: GridView.builder(
-          padding: const EdgeInsets.only(bottom: 16, top: 56),
-          itemCount: mockUsers.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            mainAxisSpacing: 16,
-            crossAxisSpacing: 12,
-            childAspectRatio: 0.7,
-          ),
-          itemBuilder: (context, index) {
-            final user = mockUsers[index];
-            return GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ViewProfilePage(
-                      userId: 1,
-                    ),
+    final state = ref.watch(friendListProvider);
+    final cdnUrl = ref.watch(userProfileProvider)?.cdnUrl ?? '';
+
+    return SafeArea(
+      child: Container(
+        color: Colors.white,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 76, 12, 60),
+          child: Column(
+            children: [
+              Expanded(
+                child: GridView.builder(
+                  controller: _scrollController,
+                  itemCount: state.users.length,
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 16,
+                    crossAxisSpacing: 12,
+                    childAspectRatio: 0.75,
                   ),
-                );
-              },
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.asset(
-                      user['image']!,
-                      width: double.infinity,
-                      height: 200,
+                  itemBuilder: (context, index) {
+                    final user = state.users[index];
+                    final avatarRaw = user.photoURL.isNotEmpty
+                        ? user.photoURL.first
+                        : '';
+                    final avatarUrl = avatarRaw.startsWith('http')
+                        ? avatarRaw
+                        : '$cdnUrl$avatarRaw';
+      
+                    final image = (avatarUrl.isNotEmpty)
+                        ? CachedNetworkImage(
+                      imageUrl: avatarUrl,
                       fit: BoxFit.cover,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      CircleAvatar(
-                          radius: 12,
-                          backgroundImage: CachedNetworkImageProvider(user['image']!)),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          user['name']!,
-                          style: const TextStyle(fontSize: 14),
-                          overflow: TextOverflow.ellipsis,
+                      errorWidget: (_, __, ___) =>
+                          Image.asset('assets/my_icon_defult.jpeg', fit: BoxFit.cover),
+                    )
+                        : Image.asset('assets/my_icon_defult.jpeg', fit: BoxFit.cover);
+      
+                    return AspectRatio(
+                      aspectRatio: 3 / 4,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ViewProfilePage(
+                                  userId: int.parse(user.uid),
+                                ),
+                              ),
+                            );
+                          },
+                          child: Stack(
+                            children: [
+                              // 背景圖片
+                              Positioned.fill(child: image),
+      
+                              // 底部遮罩 + 名稱 + icon
+                              Positioned(
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                  decoration: const BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.bottomCenter,
+                                      end: Alignment.topCenter,
+                                      colors: [Colors.black54, Colors.transparent],
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          user.displayName ?? '用戶',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                            shadows: [
+                                              Shadow(blurRadius: 2, color: Colors.black45)
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 4),
-                      SvgPicture.asset('assets/logo_placeholder2.svg', height: 24,width: 24,),
-                    ],
-                  ),
-                ],
+                    );
+                  },
+                ),
               ),
-            );
-          },
+              if (state.isLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -505,6 +561,8 @@ class _VideoCardState extends ConsumerState<_VideoCard> with WidgetsBindingObser
     try {
       await _viewKey.currentState?.pause();
       await _viewKey.currentState?.detach();
+      // 小延遲，給原生釋放 Surface/Buffer 時間
+      await Future.delayed(const Duration(milliseconds: 50));
     } catch (_) {}
     if (mounted) {
       setState(() {
@@ -607,6 +665,7 @@ class _VideoCardState extends ConsumerState<_VideoCard> with WidgetsBindingObser
             rateText: '${widget.item.pricePerMinute}美元/分鐘',
             tags: displayTags,
             isLike: widget.item.isLike,
+            status: widget.item.onlineStatus,
             onToggleLike: (liked) async {
               final notifier = ref.read(homeFeedProvider.notifier);
               // 1) 樂觀更新（擇一：對人或對片）
@@ -656,6 +715,7 @@ class _ImageCardState extends ConsumerState<_ImageCard> with WidgetsBindingObser
           child: img != null
               ? CachedNetworkImage(
             imageUrl: img,
+            memCacheWidth: (MediaQuery.of(context).size.width * MediaQuery.of(context).devicePixelRatio).round(),
             fit: BoxFit.cover,
             placeholder: (context, url) =>
             const ColoredBox(color: Colors.black),
@@ -677,6 +737,7 @@ class _ImageCardState extends ConsumerState<_ImageCard> with WidgetsBindingObser
             rateText: '${widget.item.pricePerMinute}美元/分鐘',
             tags: displayTags,
             isLike: widget.item.isLike,
+            status: widget.item.onlineStatus,
             onToggleLike: (liked) async {
               final notifier = ref.read(homeFeedProvider.notifier);
               // 1) 樂觀更新

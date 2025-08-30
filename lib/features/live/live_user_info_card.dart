@@ -1,17 +1,14 @@
 // 首頁 - 首頁 主播資訊的部分元件
 
 import 'dart:async';
-import 'dart:io';
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../mine/user_repository_provider.dart';
 import '../profile/profile_controller.dart';
 import '../profile/view_profile_page.dart';
-import 'data_model/home_feed_state.dart';
+import 'data_model/feed_item.dart';
 
 class LiveUserInfoCard extends ConsumerStatefulWidget {
   final int uid;
@@ -21,6 +18,7 @@ class LiveUserInfoCard extends ConsumerStatefulWidget {
   final List<String> tags;
   final int isLike;
   final void Function(bool liked)? onToggleLike;
+  final OnlineStatus status;
 
   const LiveUserInfoCard( {
     super.key,
@@ -30,7 +28,8 @@ class LiveUserInfoCard extends ConsumerStatefulWidget {
     required this.rateText,
     required this.tags,
     required this.isLike,
-    required this.onToggleLike
+    required this.onToggleLike,
+    this.status = OnlineStatus.unknown,
   });
 
   @override
@@ -77,6 +76,29 @@ class _LiveUserInfoCardState extends ConsumerState<LiveUserInfoCard> {
   @override
   Widget build(BuildContext context) {
     final myUid = ref.watch(userProfileProvider)?.uid;
+
+    Color dotColor;
+    String statusText;
+    switch (widget.status) {
+      case OnlineStatus.online:
+        dotColor = Colors.greenAccent;
+        statusText = '在線';
+        break;
+      case OnlineStatus.busy:
+        dotColor = Colors.orange;
+        statusText = '忙線中';
+        break;
+      case OnlineStatus.offline:
+        dotColor = Colors.grey;
+        statusText = '離線';
+        break;
+      case OnlineStatus.unknown:
+      default:
+        dotColor = Colors.grey;
+        statusText = '';
+        break;
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -111,7 +133,7 @@ class _LiveUserInfoCardState extends ConsumerState<LiveUserInfoCard> {
                     width: 12,
                     height: 12,
                     decoration: BoxDecoration(
-                      color: Colors.greenAccent,
+                      color: dotColor,
                       shape: BoxShape.circle,
                       border: Border.all(color: Colors.white, width: 2),
                     ),

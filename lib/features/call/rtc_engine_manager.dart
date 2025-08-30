@@ -7,16 +7,33 @@ class RtcEngineManager {
 
   late final RtcEngine _engine;
   bool _inited = false;
+  bool _joined = false;
+  bool _leaving = false;
+
+  bool get isInited => _inited;
+  bool get isJoined => _joined;
 
   Future<void> init(String appId) async {
     if (_inited) return;
     _engine = createAgoraRtcEngine();
     await _engine.initialize(RtcEngineContext(appId: appId));
     await _engine.setLogLevel(LogLevel.logLevelInfo);
+
+    // 跟著事件維護 _joined 狀態
+    _engine.registerEventHandler(RtcEngineEventHandler(
+      onJoinChannelSuccess: (_, __) => _joined = true,
+      onLeaveChannel: (_, __) => _joined = false,
+    ));
+
     _inited = true;
   }
 
-  RtcEngine get engine => _engine;
+  RtcEngine get engine {
+    if (!_inited) {
+      throw StateError('RtcEngineManager not initialized. Call init() first.');
+    }
+    return _engine;
+  }
 
   Future<void> joinAs({
     required String channelId,
@@ -24,6 +41,7 @@ class RtcEngineManager {
     required String token,
     required ClientRoleType role,
   }) async {
+    if (!_inited) throw StateError('RtcEngineManager not initialized.');
     await _engine.enableVideo();
     await _engine.joinChannel(
       token: token,
@@ -44,6 +62,7 @@ class RtcEngineManager {
   }
 
   Future<void> switchToBroadcaster() async {
+    if (!_inited) return;
     await _engine.updateChannelMediaOptions(const ChannelMediaOptions(
       clientRoleType: ClientRoleType.clientRoleBroadcaster,
       publishCameraTrack: true,
@@ -53,6 +72,7 @@ class RtcEngineManager {
   }
 
   Future<void> switchToAudience() async {
+    if (!_inited) return;
     await _engine.updateChannelMediaOptions(const ChannelMediaOptions(
       clientRoleType: ClientRoleType.clientRoleAudience,
       publishCameraTrack: false,
@@ -61,12 +81,22 @@ class RtcEngineManager {
   }
 
   Future<void> leave() async {
-    await _engine.leaveChannel();
+    if (!_inited || !_joined || _leaving) return; // ✅ 沒初始化或沒進頻道就直接略過
+    _leaving = true;
+    try {
+      await _engine.leaveChannel();
+    } catch (_) {
+      // 可忽略
+    } finally {
+      _leaving = false;
+      _joined = false;
+    }
   }
 
   Future<void> dispose() async {
-    await _engine.leaveChannel();
-    await _engine.release();
+    if (!_inited) return; // ✅ 未建立引擎直接略過
+    try { await leave(); } catch (_) {}
+    try { await _engine.release(); } catch (_) {}
     _inited = false;
   }
 }

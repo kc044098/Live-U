@@ -48,6 +48,7 @@ android {
 
     defaultConfig {
         minSdkVersion 21
+        consumerProguardFiles("consumer-proguard-rules.pro")
     }
 
     dependencies {
@@ -58,6 +59,10 @@ android {
         implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.1'
         implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.1'
         implementation 'com.google.code.gson:gson:2.8.9'
+    }
+
+    aaptOptions {
+        noCompress "bundle", "js"
     }
 
     testOptions {

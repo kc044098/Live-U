@@ -1,16 +1,105 @@
+import 'package:djs_live_stream/features/mine/user_repository.dart';
+import 'package:djs_live_stream/features/mine/user_repository_provider.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:fluttertoast/fluttertoast.dart';
+
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
-class ModifyPasswordPage extends StatefulWidget {
+import 'package:flutter/material.dart';
+import 'package:fluttertoast/fluttertoast.dart';
+import 'package:dio/dio.dart';
+
+// 依你的專案實際路徑調整
+import '../../data/network/api_client.dart';
+import '../../data/network/api_endpoints.dart';
+
+class ModifyPasswordPage extends ConsumerStatefulWidget {
   const ModifyPasswordPage({super.key});
 
   @override
-  State<ModifyPasswordPage> createState() => _ModifyPasswordPageState();
+  ConsumerState<ModifyPasswordPage> createState() => _ModifyPasswordPageState();
 }
 
-class _ModifyPasswordPageState extends State<ModifyPasswordPage> {
+class _ModifyPasswordPageState extends ConsumerState<ModifyPasswordPage> {
   final TextEditingController _oldPasswordController = TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
+  late final UserRepository _repo;
+
+  bool _isSubmitting = false;
+  bool _showOld = false;
+  bool _showNew = false;
+
+  @override
+  void dispose() {
+    _oldPasswordController.dispose();
+    _newPasswordController.dispose();
+    super.dispose();
+  }
+
+  // 密碼規則：6~16 字元，允許數字/字母/常見特殊字元
+  bool _isPasswordValid(String pwd) {
+    final regex = RegExp(
+        r'''^[A-Za-z0-9!@#$%^&*()_\-+=\[\]{}|\\;:'",.<>/?`~]{6,16}$'''
+    );
+    return regex.hasMatch(pwd);
+  }
+
+  Future<void> _submit() async {
+    final oldPwd = _oldPasswordController.text.trim();
+    final newPwd = _newPasswordController.text.trim();
+
+    // 前端校驗
+    if (oldPwd.isEmpty || newPwd.isEmpty) {
+      Fluttertoast.showToast(msg: '請完整輸入密碼');
+      return;
+    }
+    if (!_isPasswordValid(newPwd)) {
+      Fluttertoast.showToast(msg: '新密碼需為 6~16 位，僅限數字/字母/特殊字符');
+      return;
+    }
+    if (oldPwd == newPwd) {
+      Fluttertoast.showToast(msg: '新密碼不可與舊密碼相同');
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+
+    // 顯示簡單的 loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      var ok  = await ref.read(userRepositoryProvider).modifyPassword(oldPwd: oldPwd, newPwd: newPwd);
+
+      if (!mounted) return;
+      Navigator.of(context).pop(); // 關閉 loading
+
+      if (ok == true) {
+        Fluttertoast.showToast(msg: '密碼修改成功');
+        if (!mounted) return;
+        Navigator.pop(context, true); // 返回上一頁並帶成功結果
+      } else {
+        Fluttertoast.showToast(msg: '密碼修改失敗');
+        // 留在本頁
+      }
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context).pop(); // 關閉 loading
+      Fluttertoast.showToast(msg: '密碼修改失敗');
+    } finally {
+      if (mounted) {
+        // 清空輸入框
+        _oldPasswordController.clear();
+        _newPasswordController.clear();
+        setState(() => _isSubmitting = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +132,8 @@ class _ModifyPasswordPageState extends State<ModifyPasswordPage> {
               controller: _oldPasswordController,
               hint: '請輸入舊密碼',
               icon: Icons.lock_outline,
+              obscure: !_showOld,
+              onToggle: () => setState(() => _showOld = !_showOld),
             ),
             const SizedBox(height: 20),
 
@@ -51,6 +142,8 @@ class _ModifyPasswordPageState extends State<ModifyPasswordPage> {
               controller: _newPasswordController,
               hint: '請輸入新密碼',
               icon: Icons.lock_outline,
+              obscure: !_showNew,
+              onToggle: () => setState(() => _showNew = !_showNew),
             ),
             const SizedBox(height: 50),
 
@@ -59,19 +152,7 @@ class _ModifyPasswordPageState extends State<ModifyPasswordPage> {
               width: double.infinity,
               height: 48,
               child: ElevatedButton(
-                onPressed: () {
-                  final oldPwd = _oldPasswordController.text.trim();
-                  final newPwd = _newPasswordController.text.trim();
-
-                  if (oldPwd.isEmpty || newPwd.isEmpty) {
-                    Fluttertoast.showToast(msg: '請完整輸入密碼');
-                    return;
-                  }
-                  // TODO: 調用修改密碼 API
-                  print('修改密碼: 舊密碼=$oldPwd, 新密碼=$newPwd');
-
-                  Navigator.pop(context, true); // 返回結果
-                },
+                onPressed: _isSubmitting ? null : _submit,
                 style: ElevatedButton.styleFrom(
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                   padding: EdgeInsets.zero,
@@ -83,8 +164,11 @@ class _ModifyPasswordPageState extends State<ModifyPasswordPage> {
                       colors: [Color(0xFFFFA770), Color(0xFFD247FE)],
                     ),
                   ),
-                  child: const Center(
-                    child: Text('確定', style: TextStyle(fontSize: 16, color: Colors.white)),
+                  child: Center(
+                    child: Text(
+                      _isSubmitting ? '處理中...' : '確定',
+                      style: const TextStyle(fontSize: 16, color: Colors.white),
+                    ),
                   ),
                 ),
               ),
@@ -99,6 +183,8 @@ class _ModifyPasswordPageState extends State<ModifyPasswordPage> {
     required TextEditingController controller,
     required String hint,
     required IconData icon,
+    required bool obscure,
+    required VoidCallback onToggle,
   }) {
     return Container(
       height: 60,
@@ -114,13 +200,17 @@ class _ModifyPasswordPageState extends State<ModifyPasswordPage> {
           Expanded(
             child: TextField(
               controller: controller,
-              obscureText: true,
+              obscureText: obscure,
               decoration: InputDecoration(
                 hintText: hint,
                 hintStyle: const TextStyle(color: Color(0xFF9E9E9E)),
                 border: InputBorder.none,
               ),
             ),
+          ),
+          IconButton(
+            icon: Icon(obscure ? Icons.visibility_off : Icons.visibility, color: Colors.black45),
+            onPressed: onToggle,
           ),
         ],
       ),

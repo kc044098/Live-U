@@ -30,10 +30,20 @@ class _LogoutConfirmDialogState extends ConsumerState<LogoutConfirmDialog> {
       debugPrint('logout api failed: $e');
     }
 
+    final user = ref.read(userProfileProvider);
+
+    // 是否 Google 登入：
+    // 1) 後端給的 google 欄位有值就當作 Google 綁定/登入
+    // 2)（可選）如果你的 LoginMethod 有 provider/type，可一起判斷
+    bool isGoogleLogin = (user?.google?.isNotEmpty ?? false);
     try {
-      // 2) 清第三方登入 Session（若有）
-      await authService.signOut();
-    } catch (_) {}
+      // 2) 只有 Google 登入才清 Google Session
+      if (isGoogleLogin) {
+        await authService.signOut();
+      }
+    } catch (_) {
+      // 忽略第三方登出例外，不阻擋本地登出流程
+    }
 
     // 3) 清本地使用者狀態 / token / 快取（依你專案的 provider 做）
     ref.read(userProfileProvider.notifier).logout();
@@ -77,21 +87,33 @@ class _LogoutConfirmDialogState extends ConsumerState<LogoutConfirmDialog> {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: GestureDetector(
-                    onTap: () => _doLogout(context),
-                    child: Container(
-                      height: 40,
-                      alignment: Alignment.center,
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Material(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(24),
+                    child: Ink(
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(24),
                         gradient: const LinearGradient(
-                          begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
                           colors: [Color(0xFFFFA770), Color(0xFFD247FE)],
                         ),
                       ),
-                      child: Text('确认',
-                          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold))
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(24),
+                        onTap: _loading ? null : () => _doLogout(context),
+                        child: const SizedBox(
+                          height: 40,
+                          child: Center(
+                            child: Text(
+                              '确认',
+                              style: TextStyle(
+                                  color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),

@@ -203,4 +203,10 @@ class GLVideoPlatformView(context: Context, private val videoPath: String, priva
         }
         mRenderFrameListener?.notifyFlutter(data)
     }
+
+    override fun onDrawFrameAfter() {
+        trackStatus()
+        benchmarkFPS()
+        notifyFlutterRenderInfo()
+    }
 }

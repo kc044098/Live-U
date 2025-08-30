@@ -1,4 +1,5 @@
 enum FeedKind { video, image }
+enum OnlineStatus { offline, online, busy, unknown }
 
 class FeedItem {
   final int id;                // 影片 ID
@@ -18,6 +19,8 @@ class FeedItem {
   final int? likes;
   final double? pricePerMinute;
 
+  final int? onlineStatusRaw;
+
   FeedItem({
     required this.id,
     required this.uid,
@@ -30,6 +33,7 @@ class FeedItem {
     this.isLike = 0,
     this.likes,
     this.pricePerMinute,
+    this.onlineStatusRaw,
   });
 
   FeedKind get kind =>
@@ -90,6 +94,8 @@ class FeedItem {
       return [];
     }
 
+    final int? status = j['status'] == null ? null : int.tryParse(j['status'].toString());
+
     return FeedItem(
       id: j['id'] is int ? j['id'] : int.tryParse(j['id']?.toString() ?? '') ?? 0,
       uid: j['uid'] is int ? j['uid'] : int.tryParse(j['uid']?.toString() ?? '') ?? 0,
@@ -104,9 +110,20 @@ class FeedItem {
       isLike: int.tryParse(j['is_like']?.toString() ?? '') ?? 0,
       likes: j['likes'] == null ? null : int.tryParse(j['likes'].toString()),
       pricePerMinute: double.tryParse(j['price']),
+      onlineStatusRaw: status,
     );
   }
-  FeedItem copyWith({int? isLike, int? likes}) {
+
+  OnlineStatus get onlineStatus {
+    final s = onlineStatusRaw;
+    if (s == null) return OnlineStatus.unknown;
+    if (s == 0) return OnlineStatus.offline;
+    if (s == 3) return OnlineStatus.busy;
+    if (s == 1 || s == 2) return OnlineStatus.online;
+    return OnlineStatus.unknown;
+  }
+
+  FeedItem copyWith({int? isLike, int? likes, int? onlineStatusRaw}) {
     return FeedItem(
       id: id,
       uid: uid,
@@ -119,6 +136,7 @@ class FeedItem {
       isLike: isLike ?? this.isLike,
       likes: likes ?? this.likes,
       pricePerMinute: pricePerMinute,
+      onlineStatusRaw: onlineStatusRaw ?? this.onlineStatusRaw,
     );
   }
 }

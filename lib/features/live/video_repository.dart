@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../config/app_config.dart';
 import '../../data/models/member_video_model.dart';
+import '../../data/models/user_model.dart';
 import '../../data/network/api_client.dart';
 import '../../data/network/api_endpoints.dart';
 import '../profile/profile_controller.dart';
@@ -60,6 +61,18 @@ class VideoRepository {
     return rawList
         .map((e) => FeedItem.fromJson(e as Map<String, dynamic>, cdnBaseUrl: base))
         .toList();
+  }
+
+  Future<List<UserModel>> fetchRecommendedUsers({int page = 1}) async {
+    final Response res = await _api.post(
+      ApiEndpoints.userRecommend,
+      data: {'page': page},
+    );
+
+    final list = (res.data['data']['list'] as List)
+        .map((e) => UserModel.fromJson(e))
+        .toList();
+    return list;
   }
 
   Future<void> updateVideo({

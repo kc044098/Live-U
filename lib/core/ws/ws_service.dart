@@ -223,10 +223,10 @@ class WsService {
           // 再派發具體型別
           _dispatch(typeStr, data);
 
-          // 若是 call，再細分（沒有 state 就當 invite）
+          // 若是 call，再細分（沒有 status 就當 invite）
           if (typeStr == 'call') {
-            final stateRaw = (data['state'] ?? '').toString().toLowerCase();
-            final derived = _mapCallStateToEventDynamic(data['state'] ?? data['data']?['state']) ?? 'invite';
+            final stateRaw = (data['status'] ?? '').toString().toLowerCase();
+            final derived = _mapCallStateToEventDynamic(data['status'] ?? data['data']?['status']) ?? 'invite';
             debugPrint('[WS] event => call.$derived payload=$data');
 
             // 也讓 onAny 再吃一次細分事件（你想追更細可以看到 __type2__）
@@ -310,7 +310,7 @@ class WsService {
     final msg = {
       'flag': 5,           // 你們分類中的 notice
       'type': 'notice',
-      'state': 'online',   // 或 'bind'，若後端要求
+      'status': 'online',   // 或 'bind'，若後端要求
       'uid': uid,
       'token': token,
       'ts': DateTime.now().millisecondsSinceEpoch,

@@ -1,6 +1,3 @@
-import 'dart:io';
-
-import 'package:djs_live_stream/features/wallet/my_wallet_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
@@ -8,6 +5,7 @@ import 'package:flutter_svg/svg.dart';
 import '../../data/models/user_model.dart';
 import '../call/call_request_page.dart';
 import '../message/message_chat_page.dart';
+import '../mine/member_fans_provider.dart';
 import '../mine/show_like_alert_dialog.dart';
 import '../profile/profile_controller.dart';
 import '../wallet/payment_method_page.dart';
@@ -38,39 +36,6 @@ class _Message {
 class _MessagePageState extends ConsumerState<MessagePage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-
-  final List<Map<String, String>> _plans = [
-    {
-      'title': '1个月',
-      'price': '\$3.99',
-      'oldPrice': '',
-      'monthly': '3.99美元/月',
-    },
-    {
-      'title': '3个月',
-      'price': '\$10.77',
-      'oldPrice': '\$11.97',
-      'monthly': '10.77美元/月',
-    },
-    {
-      'title': '6个月',
-      'price': '\$19.15',
-      'oldPrice': '\$23.94',
-      'monthly': '19.15美元/月',
-    },
-    {
-      'title': '1年',
-      'price': '\$33.5',
-      'oldPrice': '\$47.8',
-      'monthly': '10.77美元/月',
-    },
-    {
-      'title': '订阅包月',
-      'price': '\$9',
-      'oldPrice': '\$10',
-      'monthly': '9美元/月',
-    },
-  ];
 
   final List<Tab> _tabs = const [
     Tab(text: '消息'),
@@ -140,6 +105,14 @@ class _MessagePageState extends ConsumerState<MessagePage>
   void initState() {
     super.initState();
     _tabController = TabController(length: _tabs.length, vsync: this);
+
+    // ✅ 首次載入「誰喜歡我」資料（非 VIP 才抓）
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final user = ref.read(userProfileProvider);
+      if (user?.isVip != true) {
+        ref.read(memberFansProvider.notifier).loadFirstPage();
+      }
+    });
   }
 
   @override
@@ -188,6 +161,13 @@ class _MessagePageState extends ConsumerState<MessagePage>
 
   Widget _buildMessageContent(UserModel? user) {
     final messages = getMessages(user!);
+
+    // ✅ 讀取 fans 狀態
+    final fans = ref.watch(memberFansProvider);
+    // 安全拿 count 與最後一位暱稱
+    final int likeCount = fans.totalCount; // 假設你的 state 有 count 欄位（通常會有）
+    final String? lastName = (fans.items.isNotEmpty) ? fans.items.last.name : null;
+
     return Stack(
       children: [
         ListView.builder(
@@ -198,29 +178,42 @@ class _MessagePageState extends ConsumerState<MessagePage>
 
             Widget tile;
             if (index == 0 && user.isVip == false) {
-              // 固定「誰喜歡我」卡片
+              // ✅ 動態「誰喜歡我」卡片
+              final titleText = '誰喜歡我：有${likeCount > 0 ? likeCount : 0}個人新喜歡';
+              final subtitleText = (likeCount > 0 && (lastName != null && lastName.isNotEmpty))
+                  ? '[$lastName]  剛喜歡你'
+                  : '暫無新喜歡';
+
               tile = ListTile(
                 leading: SvgPicture.asset(
-                  item.avatar,
+                  item.avatar, // 'assets/message_like_1.svg'
                   width: 48,
                   height: 48,
                 ),
-                title: const Text(
-                  '誰喜歡我：有43個人新喜歡',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                title: Text(
+                  titleText,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
                 subtitle: Text(
-                  item.message,
+                  subtitleText,
                   style: const TextStyle(color: Colors.grey),
                 ),
-                  onTap: () {
-                    showLikeAlertDialog(context, ref,() async {
-                      Navigator.pop(context); // 關閉彈窗
-                    });
-                  }
+                onTap: () {
+                  showLikeAlertDialog(
+                    context,
+                    ref,
+                        () {}, // 舊 onConfirm 保留即可
+                    onConfirmWithAmount: (amount) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => PaymentMethodPage(amount: amount)),
+                      );
+                    },
+                  );
+                },
               );
             } else {
-              // 普通訊息卡片
+              // 其餘項維持原樣
               tile = ListTile(
                 leading: Stack(
                   children: [
@@ -247,9 +240,9 @@ class _MessagePageState extends ConsumerState<MessagePage>
                   item.name,
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
-                subtitle: Text(
-                  item.message,
-                  style: const TextStyle(color: Colors.grey),
+                subtitle: const Text(
+                  '您好啊',
+                  style: TextStyle(color: Colors.grey),
                 ),
                 trailing: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -261,16 +254,14 @@ class _MessagePageState extends ConsumerState<MessagePage>
                     const SizedBox(height: 4),
                     if (item.unreadCount > 0)
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: const BoxDecoration(
                           color: Colors.pink,
                           shape: BoxShape.circle,
                         ),
                         child: Text(
                           '${item.unreadCount}',
-                          style: const TextStyle(
-                              color: Colors.white, fontSize: 12),
+                          style: const TextStyle(color: Colors.white, fontSize: 12),
                         ),
                       ),
                   ],
@@ -282,8 +273,9 @@ class _MessagePageState extends ConsumerState<MessagePage>
                       builder: (context) => MessageChatPage(
                         partnerName: item.name,
                         partnerAvatar: item.avatar,
-                        isVip: true, // 假設全部是 VIP，用條件決定也可
-                        statusText: '當前在線', // 可依需要傳不同文字
+                        isVip: true,
+                        statusText: '當前在線',
+                        partnerUid: 5,
                       ),
                     ),
                   );
@@ -291,44 +283,25 @@ class _MessagePageState extends ConsumerState<MessagePage>
               );
             }
 
-            // 回傳含分隔線的組件
             return Column(
               children: [
                 tile,
-                const Divider(
-                  indent: 20,
-                  endIndent: 20,
-                ),
+                const Divider(indent: 20, endIndent: 20),
               ],
             );
           },
         ),
 
-        // 底部提示
+        // 底部提示保留
         Positioned(
           left: 16,
           right: 16,
           bottom: 96,
           child: Row(
-            children: [
-              const Expanded(
-                child: Divider(
-                  color: Colors.grey,
-                  thickness: 0.5,
-                  endIndent: 8,
-                ),
-              ),
-              const Text(
-                '共13條消息未讀',
-                style: TextStyle(color: Colors.grey, fontSize: 12),
-              ),
-              const Expanded(
-                child: Divider(
-                  color: Colors.grey,
-                  thickness: 0.5,
-                  indent: 8,
-                ),
-              ),
+            children: const [
+              Expanded(child: Divider(color: Colors.grey, thickness: 0.5, endIndent: 8)),
+              Text('共13條消息未讀', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              Expanded(child: Divider(color: Colors.grey, thickness: 0.5, indent: 8)),
             ],
           ),
         ),

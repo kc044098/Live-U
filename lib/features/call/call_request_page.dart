@@ -1,7 +1,5 @@
 import 'dart:async';
 
-import 'package:agora_rtc_engine/agora_rtc_engine.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:djs_live_stream/features/call/rtc_engine_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,15 +10,15 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
-import '../../config/app_config.dart';
 import '../../core/ws/ws_provider.dart';
-import '../../core/ws/ws_service.dart';
 import '../../routes/app_routes.dart';
 import '../profile/profile_controller.dart';
 import 'call_repository.dart';
 
+import 'package:flutter_svg/flutter_svg.dart';
+
 class CallRequestPage extends ConsumerStatefulWidget {
-  final String broadcasterId;     // to_uid
+  final String broadcasterId;     // 對方 uid（顯示用）
   final String broadcasterName;
   final String broadcasterImage;
 
@@ -37,29 +35,32 @@ class CallRequestPage extends ConsumerStatefulWidget {
 
 class _CallRequestPageState extends ConsumerState<CallRequestPage> {
   final AudioPlayer _audioPlayer = AudioPlayer();
-  Timer? _timeoutTimer;
-  String? _channelName;
-  String? _callerToken;
-  int? _callerUid;
-  int? _calleeUid;
-
   final List<VoidCallback> _wsUnsubs = [];
-
-  // 依你的專案抽象（可改成你現有的單例/Provider）
   final _rtc = RtcEngineManager();
 
+  Timer? _timeoutTimer;
+
+  String? _channelId;     // 新：一律使用 data.channel_id / data.channel_name
+  String? _callerToken;   // 主叫 token（liveCall 回來）
+  int? _callerUid;        // 我方 uid（若後端有回）
+  int? _calleeUid;        // 對方 uid
+
   bool _finished = false;
+  bool _cancelled = false;
+  bool _sentCancel = false;
+
+  static const String _kToastTimeout = '電話撥打超時，對方無回應';
 
   @override
   void initState() {
     super.initState();
     _playRingtone();
-    _initiateCall();    // ① 發起呼叫（向後端建房+拿主叫Token）
-    _listenSignaling(); // ② 監聽被叫 accept/reject/cancel/timeout
+    _initiateCall();
+    _listenSignaling();
   }
 
   Future<void> _playRingtone() async {
-    await Future.delayed(const Duration(milliseconds: 300));
+    await Future.delayed(const Duration(milliseconds: 200));
     await _audioPlayer.setReleaseMode(ReleaseMode.loop);
     await _audioPlayer.play(AssetSource('ringtone.wav'));
   }
@@ -69,145 +70,184 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage> {
       await [Permission.microphone, Permission.camera].request();
       await WakelockPlus.enable();
 
-      // ① 建房 + 撥打方 token
-      final data = await ref.read(callRepositoryProvider).liveCall(
-        flag: 1,
+      final resp = await ref.read(callRepositoryProvider).liveCall(
+        flag: 1, // 1=視頻
         toUid: int.parse(widget.broadcasterId),
       );
 
-      _channelName = (data['channel_name'] ?? data['channle_name']) as String;
-      _callerToken = data['token'] as String;             // 撥打方 token
-      _callerUid   = (data['from_uid'] as num).toInt();
-      _calleeUid   = (data['to_uid'] as num).toInt();
+      final Map<String, dynamic> data =
+      (resp['data'] is Map) ? Map<String, dynamic>.from(resp['data']) : Map<String, dynamic>.from(resp);
 
-      // ② 不導頁，維持「等待接聽」UI；由 _listenSignaling() 處理 accept
-      debugPrint('[CALL] liveCall ok, waiting accept... channel=$_channelName tokenLen=${_callerToken?.length}');
+      _channelId   = (data['channel_id'] ?? data['channel_name'] ?? data['channle_name'])?.toString();
+      _callerToken = (data['string'] ?? data['token'])?.toString();
+      _callerUid   = (data['from_uid'] as num?)?.toInt() ?? (data['uid'] as num?)?.toInt();
+      _calleeUid   = (data['to_uid'] as num?)?.toInt();
+
+      if (_channelId == null || _channelId!.isEmpty || _callerToken == null || _callerToken!.isEmpty) {
+        throw '呼叫返回缺少必要欄位(channel/token)';
+      }
 
       _startTimeout();
     } catch (e) {
+      if (_cancelled) return;
       Fluttertoast.showToast(msg: "發起呼叫失敗：$e");
       if (mounted) Navigator.pop(context);
     }
   }
 
+  // ---- WS helpers（只看 data.*）----
+  Map<String, dynamic> _dataOf(Map p) =>
+      (p['data'] is Map) ? Map<String, dynamic>.from(p['data']) : const {};
+
+  int? _asInt(dynamic v) => (v is num) ? v.toInt() : int.tryParse(v?.toString() ?? '');
+
+  String _ch(Map p) => _dataOf(p)['channel_id']?.toString() ?? '';
+  int? _status(Map p) => _asInt(_dataOf(p)['status']); // 1=對方接通, 2=對方拒絕
+  int? _peerUid(Map p) => _asInt(_dataOf(p)['uid']);
+
+  bool _sameCall(Map p) {
+    final ch = _ch(p);
+    if (_channelId != null && _channelId!.isNotEmpty && ch.isNotEmpty) {
+      return ch == _channelId;
+    }
+    // 退而求其次：用對方 uid（理論上不會走到）
+    final peer = _peerUid(p);
+    return (_calleeUid != null && peer == _calleeUid);
+  }
+
+  void _debugCallArgs({
+    required String from,
+    required String channelId,
+    required String? token,
+    required int myUid,
+    required int remoteUid,
+    String? uuid,
+  }) {
+    debugPrint('🔎[$from] JOIN PRECHECK '
+        'uuid=$uuid ch=$channelId myUid=$myUid remoteUid=$remoteUid tokenLen=${token?.length ?? 0}');
+    assert(channelId.isNotEmpty, 'channel_id 不可為空');
+    assert(myUid != 0, 'myUid 不可為 0');
+  }
+
   void _listenSignaling() {
     final ws = ref.read(wsProvider);
-
     bool _navigated = false;
-    // 在 _initiateCall() 內：_calleeUid = (data['to_uid'] as num).toInt();
 
     Future<void> _goToRoom() async {
-      if (_finished || _navigated || !mounted) return;
-      _finished = true;
+      if (_cancelled || _finished || _navigated || !mounted) return;
       _navigated = true;
+      _finished  = true;
       await _audioPlayer.stop();
       _timeoutTimer?.cancel();
-
       final myName = ref.read(userProfileProvider)?.displayName ?? '';
+
+      _debugCallArgs(
+        from: 'CALLER', // 或 'CALLEE'
+        channelId: _channelId!,
+        token: _callerToken, // 接收端用 invite.data.string；若空就沿用舊值
+        myUid: _callerUid ?? 0,
+        remoteUid: _calleeUid!,
+      );
+
+
       Navigator.pushReplacementNamed(
         context,
         AppRoutes.broadcaster,
         arguments: {
-          'roomId'       : _channelName,
-          'token'        : _callerToken, // ← 主叫 token（liveCall 回來的）
-          'uid'          : _callerUid,   // ← 主叫自己的 uid
+          'roomId'       : _channelId,       // 用 channel_id 當房號
+          'token'        : _callerToken,     // 主叫 token（liveCall 回）
+          'uid'          : _callerUid ?? 0,
           'title'        : widget.broadcasterName,
           'hostName'     : myName,
           'isCallMode'   : true,
           'asBroadcaster': true,
-          'remoteUid'    : _calleeUid,   // 可選
+          'remoteUid'    : _calleeUid,
         },
       );
     }
 
-    bool _isThisCall(Map p) {
-      // server 沒帶 channel 時，用 uid 對應：
-      //   uid     = 對方（被叫）
-      //   to_uid  = 我（主叫）
-      final uid    = (p['uid'] as num?)?.toInt();
-      final toUid  = (p['to_uid'] as num?)?.toInt();
-      if (_callerUid == null) return true; // 沒取到自己 uid 就放行
-      if (toUid != null && toUid != _callerUid) return false;
-      // 也順便記住 callee
-      if (uid != null) _calleeUid = uid;
-      return true;
-    }
-
-    bool _isAccepted(Map p) {
-      final s = p['state'] ?? p['data']?['state'];
-      if (s == null) return false;
-      if (s is num) return s.toInt() == 1;
-      final ss = s.toString().toLowerCase();
-      return ss == '1' || ss == 'accept' || ss == 'accepted';
-    }
-
-    // ✅ 情境 A：標準 accept 事件（若後端有派發）
+    // 只處理新事件：call.accept（status=1/2）
     _wsUnsubs.add(ws.on('call.accept', (p) async {
-      if (!_isThisCall(p)) return;
-      debugPrint('[CALL][DIALER] call.accept → goToRoom');
-      await _goToRoom();
+      if (_cancelled || !_sameCall(p)) return;
+      final st = _status(p);
+      if (st == 1) {
+        await _goToRoom();
+      } else if (st == 2) {
+        await _endWithToast('對方已拒絕');
+      }
     }));
 
-    // ✅ 情境 B：你的案例：call.invite + data.state=1 代表「開始通話」
+    // 若後端仍可能用 invite 通知拒絕（status=2），也一併處理
     _wsUnsubs.add(ws.on('call.invite', (p) async {
-      if (!_isThisCall(p)) return;
-      if (_isAccepted(p)) {
-        debugPrint('[CALL][DIALER] call.invite(state=1) → goToRoom');
-        await _goToRoom();
+      if (_cancelled || !_sameCall(p)) return;
+      if (_status(p) == 2) {
+        await _endWithToast('對方已拒絕');
       }
     }));
+  }
 
-    // 🔁 Fallback：有些服務只發 type=call + state=1
-    _wsUnsubs.add(ws.on('call', (p) async {
-      if (!_isThisCall(p)) return;
-      if (_isAccepted(p)) {
-        debugPrint('[CALL][DIALER] call(state=1) → goToRoom');
-        await _goToRoom();
-      }
-    }));
+  Future<void> _notifyCancelOnce() async {
+    if (_sentCancel) return;
+    _sentCancel = true;
 
-    // ❌ 拒絕 / 取消 / 逾時
-    _wsUnsubs.add(ws.on('call.reject', (_) => _endWithToast('對方已拒絕')));
-    _wsUnsubs.add(ws.on('call.cancel', (_) => _endWithToast('對方已取消')));
-    _wsUnsubs.add(ws.on('call.timeout', (_) => _endWithToast('對方未接聽')));
+    final channel = _channelId;
+    if (channel == null || channel.isEmpty) return;
+
+    try {
+      await ref.read(callRepositoryProvider).respondCall(
+        channelName: channel,
+        callId: null,
+        accept: false, // flag=2
+      );
+    } catch (_) {/* ignore */}
   }
 
   void _startTimeout() {
     _timeoutTimer?.cancel();
     _timeoutTimer = Timer(const Duration(seconds: 30), () async {
-      // 可選：通知後端取消通話
-      // await ref.read(callRepositoryProvider).cancelCall(channelName: _channelName);
-      await _endWithToast("對方未接聽");
+      if (_cancelled) return;
+      await _endWithToast(_kToastTimeout);
     });
   }
 
   Future<void> _endWithToast(String msg) async {
     if (_finished) return;
+    _finished = true;
 
     for (final u in _wsUnsubs) { try { u(); } catch (_) {} }
     _wsUnsubs.clear();
+    _timeoutTimer?.cancel();
 
-    Fluttertoast.showToast(msg: msg);
+    if (!_cancelled && msg.isNotEmpty) {
+      Fluttertoast.showToast(msg: msg);
+    }
     await _audioPlayer.stop();
     await _rtc.leave();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final nav = Navigator.of(context);
-      if (nav.canPop()) {
-        nav.pop();
-      } else {
-        // 假如這頁有時是第一層（例如由通知直接進來），pop 會是 no-op
-        // 這裡做個保底導回首頁/列表（把路由名換成你專案的）
-        nav.pushReplacementNamed(AppRoutes.home);
-      }
-    });
+
+    if (!mounted) return;
+    final nav = Navigator.of(context);
+    if (nav.canPop()) {
+      nav.pop();
+    } else {
+      nav.pushReplacementNamed(AppRoutes.home);
+    }
+  }
+
+  Future<void> _cancelByUser() async {
+    if (_finished) return;
+    _cancelled = true;
+    await _notifyCancelOnce();  // fire-and-forget 也可
+    await _endWithToast('');
   }
 
   @override
   void dispose() {
-    _timeoutTimer?.cancel();
-    for (final u in _wsUnsubs) {
-      try { u(); } catch (_) {}
+    if (_cancelled && !_sentCancel) {
+      // 保底通知一次
+      unawaited(_notifyCancelOnce());
     }
+    _timeoutTimer?.cancel();
+    for (final u in _wsUnsubs) { try { u(); } catch (_) {} }
     _wsUnsubs.clear();
 
     _audioPlayer.stop();
@@ -221,52 +261,49 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage> {
     final topPadding = MediaQuery.of(context).padding.top;
     final imgProvider = (widget.broadcasterImage.isEmpty)
         ? const AssetImage('assets/my_icon_defult.jpeg') as ImageProvider
-        : CachedNetworkImageProvider(widget.broadcasterImage);
+        : NetworkImage(widget.broadcasterImage);
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Stack(
-        children: [
-          Positioned.fill(child: Image.asset('assets/bg_calling.png', fit: BoxFit.cover)),
-          Positioned.fill(child: Container(color: Colors.black.withOpacity(0.4))),
-          Positioned.fill(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.only(top: topPadding + 24, bottom: 32),
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SizedBox(height: 160),
-                    CircleAvatar(radius: 60, backgroundImage: imgProvider),
-                    const SizedBox(height: 32),
-                    Text(widget.broadcasterName, style: const TextStyle(fontSize: 18, color: Colors.white)),
-                    const SizedBox(height: 24),
-                    const Text('正在接通中...', style: TextStyle(fontSize: 18, color: Colors.white)),
-                    const SizedBox(height: 240),
-                    GestureDetector(
-                      onTap: () {
-                        // ref.read(callRepositoryProvider).cancelCall(); 尚未實作 cancelCall
-                        Navigator.pop(context);
-                      },
-                      child: SvgPicture.asset('assets/call_end.svg', width: 64, height: 64,),
-                    ),
-                  ],
+    return WillPopScope(
+      onWillPop: () async { await _cancelByUser(); return false; },
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        body: Stack(
+          children: [
+            Positioned.fill(child: Image.asset('assets/bg_calling.png', fit: BoxFit.cover)),
+            Positioned.fill(child: Container(color: Colors.black.withOpacity(0.4))),
+            Positioned.fill(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.only(top: topPadding + 24, bottom: 32),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(height: 160),
+                      CircleAvatar(radius: 60, backgroundImage: imgProvider),
+                      const SizedBox(height: 32),
+                      Text(widget.broadcasterName, style: const TextStyle(fontSize: 18, color: Colors.white)),
+                      const SizedBox(height: 24),
+                      const Text('正在接通中...', style: TextStyle(fontSize: 18, color: Colors.white)),
+                      const SizedBox(height: 240),
+                      GestureDetector(
+                        onTap: _cancelByUser,
+                        child: SvgPicture.asset('assets/call_end.svg', width: 64, height: 64),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-          Positioned(
-            top: topPadding + 8, left: 8,
-            child: IconButton(
-              icon: const Icon(Icons.close, color: Colors.white),
-              onPressed: () {
-                // ref.read(callRepositoryProvider).cancelCall(); 尚未實作 cancelCall
-                Navigator.pop(context);
-              },
-              tooltip: '取消通話',
+            Positioned(
+              top: topPadding + 8, left: 8,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: _cancelByUser,
+                tooltip: '取消通話',
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

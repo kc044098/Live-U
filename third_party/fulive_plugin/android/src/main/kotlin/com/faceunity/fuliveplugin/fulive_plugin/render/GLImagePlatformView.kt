@@ -52,4 +52,11 @@ class GLImagePlatformView(
         FULogger.d(tag(), "onDestroy: ")
         renderer.onDestroy()
     }
+
+    override fun onDrawFrameAfter() {
+        // 和 GLCameraPlatformView 一樣，完成一次渲染後做統計並回傳 debug 資訊
+        trackStatus()
+        benchmarkFPS()
+        notifyFlutterRenderInfo()
+    }
 }

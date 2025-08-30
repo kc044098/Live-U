@@ -6,52 +6,61 @@ import '../../features/profile/profile_controller.dart';
 import '../ws/ws_service.dart';
 import 'package:flutter/material.dart';
 
-
 final wsProvider = Provider<WsService>((ref) {
   const wsUrl = 'wss://api.ludev.shop/api/im/index';
   debugPrint('[WS-PROVIDER] create instance');
 
-  final locale = ref.read(localeProvider);
-  final user   = ref.read(userProfileProvider);
-
   final s = WsService(url: wsUrl, headers: const {});
 
-  final initToken = user?.primaryLogin?.token?.trim();
-  final initUid   = user?.uid;
-  final initHeaders = <String, String>{
-    if (initToken != null && initToken.isNotEmpty) 'Token': initToken,
-    if (initUid != null && initUid.isNotEmpty)     'X-UID': initUid,
-    'Accept-Language': locale.languageCode,
-  };
-  debugPrint('[WS-PROVIDER] init headers=$initHeaders');
-  s.updateHeaders(initHeaders);
-  s.ensureConnected(); // 若沒有 Token/UID 會 skip，log 會顯示
+  Map<String, String> _lastHeaders = const {};
+  DateTime _lastEnsureAt = DateTime.fromMillisecondsSinceEpoch(0);
 
-  ref.listen(userProfileProvider, (prev, next) {
-    final t = next?.primaryLogin?.token?.trim();
-    final u = next?.uid;
-    final newHeaders = <String, String>{
+  bool _mapEquals(Map a, Map b) {
+    if (a.length != b.length) return false;
+    for (final e in a.entries) {
+      if (b[e.key] != e.value) return false;
+    }
+    return true;
+  }
+
+  void ensureConnectedThrottled() {
+    final now = DateTime.now();
+    if (now.difference(_lastEnsureAt).inMilliseconds < 1500) {
+      // 1.5 秒內不要重複要求重連
+      return;
+    }
+    _lastEnsureAt = now;
+    s.ensureConnected(); // ⚠️ 確保 WsService 內部是冪等：OPEN/CONNECTING 直接 return
+  }
+
+  void updateHeadersIfChanged() {
+    final locale = ref.read(localeProvider);
+    final user   = ref.read(userProfileProvider);
+
+    final t = user?.primaryLogin?.token?.trim();
+    final u = user?.uid;
+    final headers = <String, String>{
       if (t != null && t.isNotEmpty) 'Token': t,
       if (u != null && u.isNotEmpty) 'X-UID': u,
-      'Accept-Language': ref.read(localeProvider).languageCode,
+      'Accept-Language': locale.languageCode,
     };
-    debugPrint('[WS-PROVIDER] user changed -> update headers=$newHeaders');
-    s.updateHeaders(newHeaders);
-    s.ensureConnected();
-  });
 
-  ref.listen(localeProvider, (prev, next) {
-    if (next == null) return;
-    final currentToken = ref.read(userProfileProvider)?.primaryLogin?.token?.trim();
-    final currentUid   = ref.read(userProfileProvider)?.uid;
-    final newHeaders = <String, String>{
-      if (currentToken != null && currentToken.isNotEmpty) 'Token': currentToken,
-      if (currentUid != null && currentUid.isNotEmpty)     'X-UID': currentUid,
-      'Accept-Language': next.languageCode,
-    };
-    debugPrint('[WS-PROVIDER] locale changed -> update headers=$newHeaders');
-    s.updateHeaders(newHeaders);
-  });
+    if (!_mapEquals(headers, _lastHeaders)) {
+      _lastHeaders = Map.unmodifiable(headers);
+      debugPrint('[WS-PROVIDER] headers changed -> $headers');
+      s.updateHeaders(headers); // ⚠️ 確保這裡不要「無條件重連」，只更新內部狀態
+      ensureConnectedThrottled();
+    } else {
+      // 不變就什麼都不做，避免無意義重連
+    }
+  }
+
+  // 初始
+  updateHeadersIfChanged();
+
+  // 僅當「相關值真的改變」時才動作
+  ref.listen(userProfileProvider, (prev, next) => updateHeadersIfChanged());
+  ref.listen(localeProvider,      (prev, next) => updateHeadersIfChanged());
 
   ref.onDispose(() => s.close());
   return s;

@@ -40,7 +40,6 @@ public class DeviceCpuUtils {
             }
             br.close();
         } catch (IOException e) {
-            e.printStackTrace();
         }
 
         return sb.toString();
