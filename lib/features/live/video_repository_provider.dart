@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../../config/providers/app_config_provider.dart';
-import '../../data/network/Api_client_interface.dart';
+import '../../data/network/api_client_interface.dart';
 import '../../data/network/api_client.dart';
 import '../profile/profile_controller.dart';
 import 'friend_list_state.dart';

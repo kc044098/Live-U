@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import '../../l10n/l10n.dart';
 import '../live/data_model/home_feed_state.dart';
+import '../wallet/wallet_repository.dart';
 import 'live_list_page.dart';
 import 'mine_page.dart';
 import 'message_page.dart';
@@ -50,7 +51,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void initState() {
     super.initState();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        // 獲取錢包狀態
+        final repo = ref.read(walletRepositoryProvider);
+        final (gold, vipExpire) = await repo.fetchMoneyCash();
+
+        final user = ref.read(userProfileProvider);
+        if (user != null) {
+          ref.read(userProfileProvider.notifier).state =
+              user.copyWith(gold: gold, vipExpire: vipExpire);
+        }
+      } catch (e) {
+      }
+
       _checkUserGender();
     });
   }

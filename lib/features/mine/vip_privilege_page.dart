@@ -160,10 +160,10 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                                       style: const TextStyle(
                                           fontSize: 14, color: Colors.black)),
                                   const Spacer(),
-                                  user?.isVip == true
-                                      ? const Text(
-                                          '2025-10-22 23:59:59 到期',
-                                          style: TextStyle(
+                                  (user?.isVipEffective ?? false)
+                                      ? Text(
+                                          _fmtExpire(user?.vipExpireAt),
+                                          style: const TextStyle(
                                               fontSize: 12,
                                               color: Color(0xFF9E9E9E)),
                                         )
@@ -436,5 +436,18 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                   ),
                 ),
     );
+  }
+
+  // 放在 _State 裡（工具函式）
+  String _fmtExpire(DateTime? dt) {
+    if (dt == null) return '';
+    // 簡單格式化：yyyy-MM-dd HH:mm:ss
+    final y = dt.year.toString().padLeft(4, '0');
+    final m = dt.month.toString().padLeft(2, '0');
+    final d = dt.day.toString().padLeft(2, '0');
+    final hh = dt.hour.toString().padLeft(2, '0');
+    final mm = dt.minute.toString().padLeft(2, '0');
+    final ss = dt.second.toString().padLeft(2, '0');
+    return '$y-$m-$d $hh:$mm:$ss 到期';
   }
 }

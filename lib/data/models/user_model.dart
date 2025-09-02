@@ -28,6 +28,8 @@ class UserModel {
   bool isVip;                        // 會員狀態 (vip)
   final bool isBroadcaster;          // 是否為主播 (flag = 2 代表主播)
 
+  bool isVideoCall; // default: true
+
   /// 多登入方式
   final List<LoginMethod> logins;
 
@@ -59,6 +61,9 @@ class UserModel {
   final String? password;            // pwd
   final int? createAt;               // 註冊時間
   final int? loginTime;              // 登錄時間
+
+  final int? gold;               // 目前金幣餘額（從 moneyCash 取得）
+  final int? vipExpire;         // VIP 到期時間（Unix seconds, 例如 1759981616）
 
   UserModel({
     required this.uid,
@@ -92,6 +97,9 @@ class UserModel {
     this.password,
     this.createAt,
     this.loginTime,
+    this.gold,
+    this.vipExpire,
+    this.isVideoCall = true,
   });
 
   /// 取得主要頭像的 ImageProvider
@@ -122,6 +130,17 @@ class UserModel {
     return logins.firstWhere((e) => e.isPrimary, orElse: () => logins.first);
   }
 
+  /// VIP 到期的 DateTime（若無或為 0 則回傳 null）
+  DateTime? get vipExpireAt =>
+      (vipExpire == null || vipExpire == 0) ? null : DateTime.fromMillisecondsSinceEpoch(vipExpire! * 1000);
+
+  /// 依到期時間判斷 VIP 是否仍有效（不覆蓋原 isVip；供 UI 顯示參考）
+  bool get isVipActiveByExpire =>
+      vipExpireAt == null ? false : vipExpireAt!.isAfter(DateTime.now());
+
+  /// 供 UI 使用的最終 VIP 狀態（任一為真就當 VIP）
+  bool get isVipEffective => isVip || isVipActiveByExpire;
+
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
       uid: (json['uid'] ?? json['id'] ?? '').toString(),
@@ -129,6 +148,11 @@ class UserModel {
       photoURL: (json['avatar'] as List? ?? []).map((e) => e.toString()).toList(),
       isVip: (json['vip'] ?? 0) == 1,
       isBroadcaster: (json['flag'] ?? 1) == 2,
+      isVideoCall: json['is_video_call'] is bool
+          ? (json['is_video_call'] as bool)
+          : (json['is_video_call'] is num
+          ? (json['is_video_call'] as num) != 0
+          : true),
       logins: (json['logins'] as List? ?? [])
           .map((e) => LoginMethod.fromJson(e))
           .toList(),
@@ -158,6 +182,8 @@ class UserModel {
       password: json['pwd']?.toString(),
       createAt: json['create_at'],
       loginTime: json['update_at'],
+      gold: json['gold'] is num ? (json['gold'] as num).toInt() : (json['gold'] ?? 0),
+      vipExpire: json['vip_expire'] is num ? (json['vip_expire'] as num).toInt() : json['vip_expire'],
     );
   }
 
@@ -168,6 +194,7 @@ class UserModel {
       'avatar': photoURL,
       'vip': isVip ? 1 : 0,
       'flag': isBroadcaster ? 2 : 1,
+      'is_video_call': isVideoCall,
       'logins': logins.map((e) => e.toJson()).toList(),
       'detail': extra,
       'account': account,
@@ -193,6 +220,8 @@ class UserModel {
       'pwd': password,
       'create_at': createAt,
       'update_at': loginTime,
+      'gold': gold,
+      'vip_expire': vipExpire,
     };
   }
 
@@ -202,6 +231,7 @@ class UserModel {
     List<String>? photoURL,
     bool? isVip,
     bool? isBroadcaster,
+    bool? isVideoCall,
     List<LoginMethod>? logins,
     Map<String, dynamic>? extra,
     String? account,
@@ -228,6 +258,8 @@ class UserModel {
     String? password,
     int? createAt,
     int? loginTime,
+    int? gold,
+    int? vipExpire,
   }) {
     return UserModel(
       uid: uid ?? this.uid,
@@ -235,6 +267,7 @@ class UserModel {
       photoURL: photoURL ?? this.photoURL,
       isVip: isVip ?? this.isVip,
       isBroadcaster: isBroadcaster ?? this.isBroadcaster,
+      isVideoCall: isVideoCall ?? this.isVideoCall,
       logins: logins ?? this.logins,
       extra: extra ?? this.extra,
       account: account ?? this.account,
@@ -261,6 +294,8 @@ class UserModel {
       password: password ?? this.password,
       createAt: createAt ?? this.createAt,
       loginTime: loginTime ?? this.loginTime,
+      gold: gold ?? this.gold,
+      vipExpire: vipExpire ?? this.vipExpire,
     );
   }
 }
