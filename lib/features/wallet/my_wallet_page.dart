@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:djs_live_stream/features/wallet/payment_method_page.dart';
 import 'package:djs_live_stream/features/wallet/wallet_detail_page.dart';
+import 'package:djs_live_stream/features/wallet/wallet_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,6 +21,7 @@ class MyWalletPage extends ConsumerStatefulWidget {
 
 class _MyWalletPageState extends ConsumerState<MyWalletPage> {
   int selectedIndex = 0;
+  int? _gold;        // ← 從 moneyCash 取得後暫存於此
   final TextEditingController _customAmountController = TextEditingController();
 
   final List<Map<String, dynamic>> rechargeOptions = [
@@ -32,14 +34,39 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    // 首次進入頁面時載入餘額（最小頻率，不做即時刷新）
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        final repo = ref.read(walletRepositoryProvider);
+        final (gold, vipExpire) = await repo.fetchMoneyCash();
+        if (!mounted) return;
+        setState(() {
+          _gold = gold;
+        });
+
+        final user = ref.read(userProfileProvider);
+        if (user != null) {
+          ref.read(userProfileProvider.notifier).state =
+              user.copyWith(gold: gold, vipExpire: vipExpire);
+        }
+      } catch (e) {
+        // 靜默失敗即可，避免打擾 UI；需要時可加上 toast
+        Fluttertoast.showToast(msg: '讀取錢包失敗');
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final user = ref.watch(userProfileProvider);
     if (user == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    // final String nickname = user.displayName ?? '未知';
-    final int coinAmount = 1000; // TODO: 後續從 user 資料取得
+    // 以 moneyCash 結果優先，其次用 user.gold，最後 fallback 0
+    final int coinAmount = _gold ?? (user.gold ?? 0);
 
     return Scaffold(
       appBar: AppBar(
@@ -61,9 +88,8 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
           ),
         ],
       ),
-
       body: SingleChildScrollView(
-        padding: const EdgeInsets.only(bottom: 100), // 預留底部按鈕空間
+        padding: const EdgeInsets.only(bottom: 100),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -73,7 +99,6 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
           ],
         ),
       ),
-
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         child: SizedBox(
@@ -96,8 +121,10 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
                 borderRadius: BorderRadius.all(Radius.circular(24)),
               ),
               child: const Center(
-                child: Text('立即充值',
-                    style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                child: Text(
+                  '立即充值',
+                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                ),
               ),
             ),
           ),
@@ -274,6 +301,17 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
         ],
       ),
     );
+  }
+
+  String formatNumber(int n) {
+    final s = n.toString();
+    final buf = StringBuffer();
+    for (int i = 0; i < s.length; i++) {
+      final idxFromEnd = s.length - i;
+      buf.write(s[i]);
+      if (idxFromEnd > 1 && idxFromEnd % 3 == 1) buf.write(',');
+    }
+    return buf.toString();
   }
 
   void _onRechargePressed() {
