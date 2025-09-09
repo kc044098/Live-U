@@ -42,6 +42,13 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
   int? _peerUid(Map p) => _asInt(_dataOf(p)['uid']);
   String _nick(Map p) => _dataOf(p)['nick_name']?.toString() ?? '來電';
   dynamic _avatarRaw(Map p) => _dataOf(p)['avatar'];
+  int _flag(Map p) {
+    final d = _dataOf(p);
+    final v = d.containsKey('flag') ? d['flag'] : d['Flag']; // 兼容大小寫
+    if (v == null) return 1;                   // 預設視訊
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString()) ?? 1;
+  }
 
   String? _firstAvatarPath(dynamic v) {
     if (v == null) return null;
@@ -78,6 +85,7 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
     final avatarPath = _firstAvatarPath(_avatarRaw(p));
     final avatarUrl  = (avatarPath == null) ? '' : _joinCdn(cdn, avatarPath);
     final token = _token(p); // 被叫 token（可能有值，若空就代表先別更新）
+    final int flag = _flag(p);
 
     _showingIncoming = true;
     Future.microtask(() async {
@@ -90,8 +98,9 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
             toUid       : int.parse(meUid),    // 自己
             callerName  : name,
             callerAvatar: avatarUrl,
-            rtcToken    : token ?? '',  // 可能為空 → 進頁後再按接受去拿
+            rtcToken    : token,  // 可能為空 → 進頁後再按接受去拿
             callId      : null,
+            callerFlag  : flag,
           ),
         );
         await rootNavigatorKey.currentState!.push(route);

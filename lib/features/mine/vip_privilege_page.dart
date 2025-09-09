@@ -192,97 +192,93 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
 
                       const SizedBox(height: 16),
 
-                      // 🟣 三個方案卡片（固定顯示原價刪除線）
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: List.generate(_plans.length, (index) {
-                          final p = _plans[index];
-                          final selected = selectedIndex == index;
+                      // 🟣 方案卡片（可橫向捲動；每個 item 最小間距 10）
+                      SizedBox(
+                        height: 146, // 卡片120 + 上方徽標空間6 + 一點餘裕
+                        child: ListView.separated(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          scrollDirection: Axis.horizontal,
+                          physics: const BouncingScrollPhysics(),
+                          itemCount: _plans.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 10), // 最小水平間隔 10
+                          itemBuilder: (context, index) {
+                            final p = _plans[index];
+                            final selected = selectedIndex == index;
 
-                          return GestureDetector(
-                            onTap: () => setState(() => selectedIndex = index),
-                            child: Stack(
-                              clipBehavior: Clip.none,
-                              children: [
-                                Container(
-                                  width: 115,
-                                  height: 120,
-                                  padding:
-                                      const EdgeInsets.fromLTRB(12, 6, 12, 6),
-                                  decoration: BoxDecoration(
-                                    color: selected
-                                        ? const Color(0xFFFFF5F5)
-                                        : Colors.white,
-                                    border: Border.all(
-                                      color: selected
-                                          ? Colors.red
-                                          : const Color(0xFFE0E0E0),
-                                      width: selected ? 2 : 1,
-                                    ),
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        p.title, // "1个月"/"3个月"/...
-                                        style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        _fmtMoney(p.payPrice), // 目前售價（特價或原價）
-                                        style: const TextStyle(
-                                            fontSize: 16, color: Colors.black),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      // ✅ 不管有沒有打折，都顯示原價（刪除線）
-                                      Text(
-                                        '原价 ${_fmtMoney(p.price)}',
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey,
-                                          decoration:
-                                              TextDecoration.lineThrough,
+                            return GestureDetector(
+                              onTap: () => setState(() => selectedIndex = index),
+                              child: SizedBox(
+                                width: 115,
+                                child: Stack(
+                                  children: [
+                                    // 把卡片整體往下 6px，留出徽標空間
+                                    Positioned(
+                                      top: 6,
+                                      left: 0,
+                                      right: 0,
+                                      child: Container(
+                                        height: 120,
+                                        padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+                                        decoration: BoxDecoration(
+                                          color: selected ? const Color(0xFFFFF5F5) : Colors.white,
+                                          border: Border.all(
+                                            color: selected ? Colors.red : const Color(0xFFE0E0E0),
+                                            width: selected ? 2 : 1,
+                                          ),
+                                          borderRadius: BorderRadius.circular(16),
+                                        ),
+                                        child: Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Text(p.title,
+                                                style: const TextStyle(
+                                                    fontSize: 16, fontWeight: FontWeight.bold)),
+                                            const SizedBox(height: 4),
+                                            Text(_fmtMoney(p.payPrice),
+                                                style: const TextStyle(fontSize: 16, color: Colors.black)),
+                                            const SizedBox(height: 4),
+                                            Text('原价 ${_fmtMoney(p.price)}',
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey,
+                                                  decoration: TextDecoration.lineThrough,
+                                                )),
+                                            const SizedBox(height: 4),
+                                            Text(_fmtPerMonth(p),
+                                                style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                          ],
                                         ),
                                       ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        _fmtPerMonth(p), // 每月單價
-                                        style: const TextStyle(
-                                            fontSize: 12, color: Colors.grey),
+                                    ),
+
+                                    // 徽標放在 top: 0（不再使用負位移）
+                                    if (index == _bestIndex)
+                                      Positioned(
+                                        top: 0,
+                                        left: 0,
+                                        child: Container(
+                                          width: 60,
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                          decoration: const BoxDecoration(
+                                            color: Color(0xFFFF4D67),
+                                            borderRadius: BorderRadius.only(
+                                              topRight: Radius.circular(8),
+                                              topLeft: Radius.circular(8),
+                                              bottomRight: Radius.circular(8),
+                                            ),
+                                          ),
+                                          child: const Text(
+                                            '最佳选择',
+                                            style: TextStyle(fontSize: 10, color: Colors.white),
+                                          ),
+                                        ),
                                       ),
-                                    ],
-                                  ),
+                                  ],
                                 ),
-                                if (index == _bestIndex)
-                                  Positioned(
-                                    top: -6,
-                                    left: 0,
-                                    child: Container(
-                                      width: 60,
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 8, vertical: 2),
-                                      decoration: const BoxDecoration(
-                                        color: Color(0xFFFF4D67),
-                                        borderRadius: BorderRadius.only(
-                                          topRight: Radius.circular(8),
-                                          topLeft: Radius.circular(8),
-                                          bottomRight: Radius.circular(8),
-                                        ),
-                                      ),
-                                      child: const Text(
-                                        '最佳选择',
-                                        style: TextStyle(
-                                            fontSize: 10, color: Colors.white),
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          );
-                        }),
+                              ),
+                            );
+                          },
+                        ),
                       ),
                       const SizedBox(height: 16),
                       // 🟣 專屬特權清單（不變）

@@ -321,7 +321,6 @@ class UserRepository {
     if (res.statusCode != 200) {
       throw Exception('S3 上傳失敗: ${res.statusCode}');
     }
-    Fluttertoast.showToast(msg: "上傳成功～");
     return fileUrl;
   }
 
@@ -364,3 +363,5 @@ extension FirstNonEmpty on List<String> {
     return '';
   }
 }
+
+

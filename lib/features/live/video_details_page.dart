@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -11,6 +12,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../data/network/api_client_provider.dart';
 import '../../data/network/api_endpoints.dart';
 import '../mine/user_repository_provider.dart';
+import '../profile/profile_controller.dart';
 
 class VideoDetailsPage extends ConsumerStatefulWidget {
   final String videoPath;
@@ -34,8 +36,10 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
 
   // 上傳狀態
   bool _isUploading = false;
-  double _progress = 0;  // 0.0 - 1.0
+  double _progress = 0; // 0.0 - 1.0
   CancelToken? _cancelToken;
+
+  static const int _kMaxTitleLen = 300;
 
   @override
   void dispose() {
@@ -92,7 +96,9 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
 
         // 2) 上傳封面（可選，85% ~ 100%）
         final coverPath = _coverPath ?? widget.thumbnailPath;
-        if (coverPath != null && coverPath.isNotEmpty && await File(coverPath).exists()) {
+        if (coverPath != null &&
+            coverPath.isNotEmpty &&
+            await File(coverPath).exists()) {
           coverUrl = await repo.uploadToS3(
             file: File(coverPath),
             cancelToken: _cancelToken,
@@ -135,6 +141,7 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
       }
 
       if (!mounted) return;
+      Fluttertoast.showToast(msg: "上傳成功～");
       Navigator.pop(context, 'resume');
     } on DioException catch (e) {
       if (CancelToken.isCancel(e)) {
@@ -157,6 +164,7 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
   @override
   Widget build(BuildContext context) {
     final displayPath = _coverPath ?? widget.thumbnailPath;
+    final isBroadcaster = ref.watch(userProfileProvider)?.isBroadcaster == true;
 
     return Stack(
       children: [
@@ -166,7 +174,8 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
             backgroundColor: Colors.white,
             elevation: 0,
             leading: IconButton(
-              icon: const Icon(Icons.arrow_back_ios, color: Colors.black87, size: 20),
+              icon: const Icon(Icons.arrow_back_ios,
+                  color: Colors.black87, size: 20),
               onPressed: () => Navigator.pop(context, 'resume'),
             ),
             actions: [
@@ -177,14 +186,16 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
                   child: Opacity(
                     opacity: _isUploading ? 0.6 : 1,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 6),
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
                           colors: [Color(0xFFFFB56B), Color(0xFFDF65F8)],
                         ),
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Text('發布', style: TextStyle(color: Colors.white, fontSize: 14)),
+                      child: const Text('發布',
+                          style: TextStyle(color: Colors.white, fontSize: 14)),
                     ),
                   ),
                 ),
@@ -198,18 +209,25 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
               children: [
                 // 描述
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
                     color: const Color(0xFFF8F8F8),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: TextField(
                     controller: _descController,
-                    maxLines: 4,
+                    inputFormatters: [
+                      LengthLimitingTextInputFormatter(_kMaxTitleLen),
+                    ],
+                    maxLength: _kMaxTitleLen,
+                    maxLengthEnforcement: MaxLengthEnforcement.enforced,
                     decoration: const InputDecoration(
                       border: InputBorder.none,
                       hintText: '記錄這一刻',
-                      hintStyle: TextStyle(color: Color(0xFF999999), fontSize: 14),
+                      hintStyle:
+                          TextStyle(color: Color(0xFF999999), fontSize: 14),
+                      counterText: '',
                     ),
                   ),
                 ),
@@ -221,8 +239,10 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
                   child: Stack(
                     children: [
                       displayPath != null
-                          ? Image.file(File(displayPath), width: 100, height: 100, fit: BoxFit.cover)
-                          : const Icon(Icons.image, size: 100, color: Colors.grey),
+                          ? Image.file(File(displayPath),
+                              width: 100, height: 100, fit: BoxFit.cover)
+                          : const Icon(Icons.image,
+                              size: 100, color: Colors.grey),
                       Positioned(
                         bottom: 4,
                         left: 4,
@@ -231,27 +251,33 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
                           padding: const EdgeInsets.symmetric(vertical: 2),
                           color: Colors.black45,
                           alignment: Alignment.center,
-                          child: const Text('編輯封面', style: TextStyle(color: Colors.white, fontSize: 12)),
+                          child: const Text('編輯封面',
+                              style:
+                                  TextStyle(color: Colors.white, fontSize: 12)),
                         ),
                       )
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
-
-                // 分類
-                GestureDetector(
-                  onTap: _isUploading ? null : () => _showCategoryBottomSheet(context),
-                  child: Row(
-                    children: [
-                      SvgPicture.asset('assets/icon_paper.svg'),
-                      const SizedBox(width: 8),
-                      Text(_selectedCategory, style: const TextStyle(fontSize: 16)),
-                      const Spacer(),
-                      const Icon(Icons.chevron_right, color: Colors.black38),
-                    ],
+                if (isBroadcaster) ...[
+                  const SizedBox(height: 24),
+                  // 分類
+                  GestureDetector(
+                    onTap: _isUploading
+                        ? null
+                        : () => _showCategoryBottomSheet(context),
+                    child: Row(
+                      children: [
+                        SvgPicture.asset('assets/icon_paper.svg'),
+                        const SizedBox(width: 8),
+                        Text(_selectedCategory,
+                            style: const TextStyle(fontSize: 16)),
+                        const Spacer(),
+                        const Icon(Icons.chevron_right, color: Colors.black38),
+                      ],
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),

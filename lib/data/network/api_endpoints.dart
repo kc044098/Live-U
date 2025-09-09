@@ -30,6 +30,7 @@ class ApiEndpoints {
 
   static const String messageSend = '/api/im/send'; // 發送聊天消息
   static const String messageHistory = '/api/im/message/history'; // 接收聊天歷史消息
+  static const String userMessageList = '/api/im/message/user'; // 接收用戶聊天記錄列表
 
   static const String moneyCash = '/api/member/cash'; // 獲取金幣
 

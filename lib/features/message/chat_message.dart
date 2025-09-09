@@ -4,12 +4,7 @@ enum MessageType {
   system,  // 系統訊息
 }
 
-enum ChatContentType {
-  text,
-  voice,
-  call,
-  system,
-}
+enum ChatContentType { text, voice, image, call, system }
 
 enum SendState { sending, sent, failed }
 
@@ -21,8 +16,10 @@ class ChatMessage {
   final String? avatar;
   final String? audioPath;
   final int? duration;
+  final int? createAt;
   bool isPlaying;
   int currentPosition;
+  final String? imagePath;
 
   // === ✅ 新增協議欄位（全部可選） ===
   final String? uuid;                 // 後端協議用訊息ID
@@ -39,8 +36,10 @@ class ChatMessage {
     this.avatar,
     this.audioPath,
     this.duration,
+    this.createAt,
     this.isPlaying = false,
     this.currentPosition = 0,
+    this.imagePath,
 
     // 新增參數（可選）
     this.uuid,
@@ -63,8 +62,10 @@ class ChatMessage {
     String? avatar,
     String? audioPath,
     int? duration,
+    int? createAt,
     bool? isPlaying,
     int? currentPosition,
+    String? imagePath,
   }) {
     return ChatMessage(
       type: type ?? this.type,
@@ -73,6 +74,7 @@ class ChatMessage {
       avatar: avatar ?? this.avatar,
       audioPath: audioPath ?? this.audioPath,
       duration: duration ?? this.duration,
+      createAt: createAt ?? this.createAt,
       isPlaying: isPlaying ?? this.isPlaying,
       currentPosition: currentPosition ?? this.currentPosition,
       uuid: uuid ?? this.uuid,
@@ -80,6 +82,7 @@ class ChatMessage {
       toUid: toUid ?? this.toUid,
       data: data ?? this.data,
       sendState: sendState ?? this.sendState,
+      imagePath: imagePath ?? this.imagePath,
     );
   }
 }

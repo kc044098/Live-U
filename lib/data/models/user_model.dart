@@ -55,7 +55,7 @@ class UserModel {
   final int? sex;                    // 1=男,2=女,3=不願透露,0=未設置
   final int? fans;                   // 粉絲數
   final int? isLike;                 // 是否喜欢:1=喜欢,2=否
-  final int? status;                 // 用户状态：1=在线,2=忙碌,3=离线
+  final int? status;                 // 用户状态：1=在线,2=在线,3=忙碌
   final List<String>? tags;          // 標籤
   final String? email;               // 邮箱
   final String? password;            // pwd
@@ -190,7 +190,7 @@ class UserModel {
   Map<String, dynamic> toJson() {
     return {
       'id': uid,
-      'nick_name': displayName,
+      'nick_name': displayName ?? 'user',
       'avatar': photoURL,
       'vip': isVip ? 1 : 0,
       'flag': isBroadcaster ? 2 : 1,

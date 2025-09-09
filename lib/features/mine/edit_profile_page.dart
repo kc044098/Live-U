@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:djs_live_stream/data/network/background_api_service.dart';
 import 'package:djs_live_stream/features/mine/user_repository_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
@@ -409,6 +410,9 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                     controller: controller,
                     textAlign: TextAlign.center,
                     keyboardType: TextInputType.text,
+                    inputFormatters: [
+                      LengthLimitingTextInputFormatter(16),
+                    ],
                     decoration: InputDecoration(
                       hintText: '请输入昵称',
                       enabledBorder: OutlineInputBorder(
@@ -441,7 +445,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                         Fluttertoast.showToast(msg: '請輸入暱稱');
                         return;
                       }
-                      if (nickname.length > 20) {
+                      if (nickname.length > 16) {
                         Fluttertoast.showToast(msg: '暱稱長度過長, 請重新輸入');
                         return;
                       }
@@ -540,6 +544,10 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                     controller: controller,
                     keyboardType: TextInputType.number,
                     textAlign: TextAlign.center,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(3),
+                    ],
                     decoration: InputDecoration(
                       suffixText: 'cm',
                       enabledBorder: OutlineInputBorder(
@@ -571,6 +579,10 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                       final heightValue = int.tryParse(controller.text);
                       if (heightValue == null || heightValue <= 0) {
                         Fluttertoast.showToast(msg: '請輸入正確的身高');
+                        return;
+                      }
+                      if (heightValue == null || heightValue <= 0 || heightValue > 999) {
+                        Fluttertoast.showToast(msg: '請輸入 1–999 的身高');
                         return;
                       }
                       showDialog(
@@ -674,6 +686,10 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                     controller: controller,
                     keyboardType: TextInputType.number,
                     textAlign: TextAlign.center,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(3),
+                    ],
                     decoration: InputDecoration(
                       suffixText: '磅',
                       enabledBorder: OutlineInputBorder(
@@ -703,6 +719,10 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                       final weightValue = int.tryParse(controller.text);
                       if (weightValue == null || weightValue <= 0) {
                         Fluttertoast.showToast(msg: '請輸入正確的體重');
+                        return;
+                      }
+                      if (weightValue == null || weightValue <= 0 || weightValue > 999) {
+                        Fluttertoast.showToast(msg: '請輸入 1–999 的體重');
                         return;
                       }
                       showDialog(
@@ -1087,6 +1107,13 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                       final waist = '${int.tryParse(waistController.text) ?? 0}cm';
                       final hip = '${int.tryParse(hipController.text) ?? 0}cm';
 
+                      bool invalid(num? v) => v == null || v <= 0 || v > 999;
+
+                      if (invalid(int.tryParse(bustController.text)) || invalid(int.tryParse(waistController.text)) || invalid(int.tryParse(hipController.text))) {
+                        Fluttertoast.showToast(msg: '三圍每一項請輸入 1–999 的數值');
+                        return;
+                      }
+
                       // 存 extra (同時存三個欄位)
                       _updateExtra('bust', bust);
                       _updateExtra('waist', waist);
@@ -1198,6 +1225,9 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                     controller: controller,
                     textAlign: TextAlign.center,
                     keyboardType: TextInputType.text,
+                    inputFormatters: [
+                      LengthLimitingTextInputFormatter(12),
+                    ],
                     decoration: InputDecoration(
                       hintText: '请输入职业',
                       enabledBorder: OutlineInputBorder(
@@ -1227,6 +1257,11 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                     ),
                     onPressed: () async {
                       final job = controller.text.trim();
+                      if (job.length > 12) {
+                        Fluttertoast.showToast(msg: '職業最多輸入 12 個字元');
+                        return;
+                      }
+
                       if (job.isNotEmpty) {
                         _updateExtra('job', job);
                       }
@@ -1294,6 +1329,10 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
             controller: controller,
             keyboardType: TextInputType.number,
             textAlign: TextAlign.center,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(3),
+            ],
             decoration: InputDecoration(
               suffixText: 'cm',
               enabledBorder: OutlineInputBorder(

@@ -1,4 +1,5 @@
 import 'package:djs_live_stream/features/auth/providers/auth_repository_provider.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -7,6 +8,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 import '../../core/user_local_storage.dart';
 import '../mine/user_repository_provider.dart';
 import '../profile/profile_controller.dart';
+import 'auth_repository.dart';
 import 'google_auth_service.dart';
 
 // 通过账号密码登录
@@ -65,7 +67,11 @@ class _AccountLoginScreenState extends ConsumerState<AccountLoginScreen> {
       Fluttertoast.showToast(msg: '登錄成功');
       Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {
-      Fluttertoast.showToast(msg: '登錄失敗: $e');
+      if (e is BadCredentialsException) {
+        Fluttertoast.showToast(msg: '登錄失敗: 帳號或密碼錯誤');
+      } else {
+        Fluttertoast.showToast(msg: '登錄失敗: $e');
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -251,6 +257,12 @@ class _AccountLoginScreenState extends ConsumerState<AccountLoginScreen> {
   }
 
   Future<void> _handleGoogleLogin() async {
+
+    if (Firebase.apps.isEmpty) {
+      Fluttertoast.showToast(msg: '初始化中，請稍後再試');
+      return;
+    }
+
     setState(() => _isLoading = true);
     final user = await _googleAuthService.signInWithGoogle(ref);
     setState(() => _isLoading = false);

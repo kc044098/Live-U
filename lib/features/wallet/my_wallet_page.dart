@@ -215,9 +215,23 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
                                 ? Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                SvgPicture.asset('assets/icon_edit1.svg', width: 36),
+                                SvgPicture.asset(
+                                  'assets/icon_edit1.svg',
+                                  width: 36,
+                                  colorFilter: ColorFilter.mode(
+                                    isSelected ? Colors.red : Colors.grey,
+                                    BlendMode.srcIn,
+                                  ),
+                                  // 如果你的 flutter_svg 很旧，也可用 `color: ...`（但已弃用）
+                                ),
                                 const SizedBox(height: 6),
-                                const Text('自定义金额', style: TextStyle(fontSize: 14)),
+                                Text(
+                                  '自定义金额',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: isSelected ? Colors.red : Colors.grey,
+                                  ),
+                                ),
                               ],
                             )
                                 : Column(

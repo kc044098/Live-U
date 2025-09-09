@@ -8,6 +8,7 @@ import 'package:flutter_svg/svg.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../data/network/avatar_cache.dart';
+import '../../routes/app_routes.dart';
 import '../live/data_model/feed_item.dart';
 import '../live/data_model/home_feed_state.dart';
 import '../mine/user_repository_provider.dart';
@@ -40,15 +41,18 @@ class ViewOtherVideoPage extends ConsumerStatefulWidget {
 }
 
 class _ViewOtherVideoPageState extends ConsumerState<ViewOtherVideoPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver, RouteAware {
   late VideoPlayerController _controller;
   bool isLiked = false;
   double _scale = 1.0;
   late final int _intUid;
+  bool _showSpinner = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
     _intUid = int.tryParse(widget.uid) ?? -1;
     final likedFromList = _selectLikeFromHomeFeed(ref, _intUid);
     isLiked = likedFromList ?? widget.isLike;
@@ -65,12 +69,16 @@ class _ViewOtherVideoPageState extends ConsumerState<ViewOtherVideoPage>
       _controller = VideoPlayerController.asset(p);
     }
 
+    _controller.addListener(_videoValueListener);
+
     _controller.initialize().then((_) {
       if (!mounted) return;
       setState(() {});           // 顯示第一幀
       _controller.setLooping(true);
       _controller.play();        // 自動播放，無暫停手勢
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _videoValueListener());
+
   }
 
   /// 從首頁列表讀取某個 uid 的「是否被我按讚」
@@ -87,18 +95,58 @@ class _ViewOtherVideoPageState extends ConsumerState<ViewOtherVideoPage>
     return liked;
   }
 
+  void _videoValueListener() {
+    final v = _controller.value;
+    final need = !v.isInitialized || (v.isPlaying && v.isBuffering);
+    if (mounted && need != _showSpinner) {
+      setState(() => _showSpinner = need);
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // App 前/後景切換時處理：離開時記錄狀態並暫停，回來時必要時續播
+    if (!_controller.value.isInitialized) return;
+    switch (state) {
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.paused:
+        _controller.pause();
+        break;
+      case AppLifecycleState.resumed:
+        WidgetsBinding.instance.addPostFrameCallback((_) => _resumeVideo());
+        break;
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+      break;
+    }
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+
+    // 訂閱 Route 變化（只需一次）
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) {
+      routeObserver.subscribe(this, route);
+    }
+
     // 讓詳情頁在顯示中也能跟著首頁變化（例如從別處改了讚）
     final latest = _selectLikeFromHomeFeed(ref, _intUid);
     if (latest != null && latest != isLiked) {
       setState(() => isLiked = latest);
     }
+
+    if (_controller.value.isInitialized && !_controller.value.isPlaying) {
+      _controller.play();
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    routeObserver.unsubscribe(this);
+    _controller.removeListener(_videoValueListener);
     _controller.dispose();
     super.dispose();
   }
@@ -131,6 +179,35 @@ class _ViewOtherVideoPageState extends ConsumerState<ViewOtherVideoPage>
     );
   }
 
+  void _resumeVideo() {
+    _videoValueListener();
+    if (!_controller.value.isInitialized) {
+      _controller.initialize().then((_) {
+        if (!mounted) return;
+        setState(() {});
+        _controller.setLooping(true);
+        _controller.play();
+      });
+    } else {
+      // 某些機型需要延一個 microtask
+      Future.microtask(() => _controller.play());
+    }
+  }
+
+  @override
+  void didPushNext() {
+    // 這個頁面被別的頁蓋住（例如來電頁）
+    if (_controller.value.isInitialized) {
+      _controller.pause();
+    }
+  }
+
+  @override
+  void didPopNext() {
+    // 從上層頁回來
+    _resumeVideo();
+  }
+
   @override
   Widget build(BuildContext context) {
     final myUid = ref.watch(userProfileProvider)?.uid;
@@ -152,6 +229,19 @@ class _ViewOtherVideoPageState extends ConsumerState<ViewOtherVideoPage>
             )
           else
             const Center(child: CircularProgressIndicator()),
+
+          // 🔽讀取/緩衝時的轉圈圈覆蓋層
+          IgnorePointer(
+            ignoring: true, // 不擋點擊
+            child: AnimatedOpacity(
+              opacity: _showSpinner ? 1 : 0,
+              duration: const Duration(milliseconds: 180),
+              child: Container(
+                alignment: Alignment.center,
+                child: const CircularProgressIndicator(),
+              ),
+            ),
+          ),
 
           /// **返回鍵**
           SafeArea(

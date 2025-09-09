@@ -467,6 +467,7 @@ class _CallButton extends StatelessWidget {
           broadcasterId: broadcasterId,
           broadcasterName: broadcasterName,
           broadcasterImage: broadcasterImage,
+          //isBusy: item.onlineStatusRaw == 3,
         ),
       ),
     );
