@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
+import 'auth_repository.dart';
+
 class ResetPasswordScreen extends ConsumerStatefulWidget {
   const ResetPasswordScreen({super.key});
 
@@ -18,6 +20,8 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
 
   bool _isLoading = false;
 
+  bool _obscurePassword = true;
+
   Future<void> _onSendCode() async {
     final email = _emailController.text.trim();
     if (email.isEmpty) {
@@ -31,7 +35,11 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
       await authRepo.sendEmailCode(email);
       Fluttertoast.showToast(msg: '驗證碼已發送');
     } catch (e) {
-      Fluttertoast.showToast(msg: '發送失敗: $e');
+      if (e is EmailFormatException) {
+        Fluttertoast.showToast(msg: 'Email 格式錯誤');
+      } else {
+        Fluttertoast.showToast(msg: '發送失敗: $e');
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -173,11 +181,21 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                   // 新密碼
                   TextField(
                     controller: _newPasswordController,
-                    obscureText: true,
+                    obscureText: _obscurePassword,
                     decoration: InputDecoration(
                       prefixIcon: Padding(
                         padding: const EdgeInsets.all(12),
                         child: SvgPicture.asset('assets/icon_password.svg'),
+                      ),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                        ),
+                        onPressed: () =>
+                            setState(() => _obscurePassword = !_obscurePassword),
+                        tooltip: _obscurePassword ? '顯示密碼' : '隱藏密碼',
                       ),
                       hintText: '请输入新密码',
                       filled: true,

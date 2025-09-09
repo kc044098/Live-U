@@ -6,6 +6,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 
 import '../../core/user_local_storage.dart';
 import '../profile/profile_controller.dart';
+import 'auth_repository.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -18,6 +19,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _codeController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+
+  bool _obscurePassword = true;
 
   bool _isLoading = false;
 
@@ -34,7 +37,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       await authRepo.sendEmailCode(email);
       Fluttertoast.showToast(msg: '驗證碼已發送');
     } catch (e) {
-      Fluttertoast.showToast(msg: '發送失敗: $e');
+      if (e is EmailFormatException) {
+        Fluttertoast.showToast(msg: 'Email 格式錯誤');
+      } else {
+        Fluttertoast.showToast(msg: '發送失敗: $e');
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -159,11 +166,21 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   // 新密碼
                   TextField(
                     controller: _passwordController,
-                    obscureText: true,
+                    obscureText: _obscurePassword,
                     decoration: InputDecoration(
                       prefixIcon: Padding(
                         padding: const EdgeInsets.all(12),
                         child: SvgPicture.asset('assets/icon_password.svg'),
+                      ),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                        ),
+                        onPressed: () =>
+                            setState(() => _obscurePassword = !_obscurePassword),
+                        tooltip: _obscurePassword ? '顯示密碼' : '隱藏密碼',
                       ),
                       hintText: '请输入新密码',
                       filled: true,

@@ -180,6 +180,7 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
 
   Widget buildButtonView(UserModel? u, bool effectiveIsLike) {
     final myUid = ref.watch(userProfileProvider)?.uid;
+
     if (u == null) return const SizedBox.shrink();
     final liked = effectiveIsLike;
 
@@ -226,10 +227,11 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
                     context,
                     MaterialPageRoute(
                       builder: (context) => MessageChatPage(
-                        partnerName: u.displayName ?? '',
+                        partnerName: _partnerName(u),
                         partnerAvatar: u.avatarUrl,
-                        isVip: u.isVip,
-                        statusText: '當前在線',
+                        vipLevel: (u.isVip ==true)? 1:0,
+                        statusText: u.status ?? 0,
+                        partnerUid: int.parse(u.uid),
                       ),
                     ),
                   );
@@ -481,6 +483,8 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
                         child: _fallbackBox());
                   }
 
+                  final avatarUrl = u.avatarUrl.startsWith('http') ? u.avatarUrl : '$myCdnBase${u.avatarUrl}';
+
                   return GestureDetector(
                     onTap: () {
                       if (isVideo) {
@@ -490,7 +494,7 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
                             builder: (_) => ViewOtherVideoPage(
                               videoPath: item.videoUrl,
                               displayName: u.displayName,
-                              avatarPath: '$myCdnBase${u.avatarUrl}',
+                              avatarPath: avatarUrl,
                               isVip: u.isVip,
                               isLike: u.isLike == 1,
                               message: item.title,
@@ -501,13 +505,15 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
                       } else {
                         final imgPath = cover ?? '';
                         if (imgPath.isEmpty) return;
+                        final avatarUrl = u.avatarUrl.startsWith('http') ? u.avatarUrl : '$myCdnBase${u.avatarUrl}';
+
                         Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (_) => ViewOtherImagePage(
                               imagePath: imgPath,
                               displayName: u.displayName,
-                              avatarPath: '$myCdnBase${u.avatarUrl}',
+                              avatarPath: avatarUrl,
                               isVip: u.isVip,
                               isLike: u.isLike == 1,
                               message: item.title,
@@ -645,9 +651,9 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
         final displayName = (current.displayName?.isNotEmpty == true)
             ? current.displayName!
             : '用戶';
-        final headerPhotos = current.photoURL.isNotEmpty
-            ? current.photoURL.map((p) => _cdnJoin(myCdnBase, p)).toList()
-            : ['assets/pic_girl1.png'];
+        final headerPhotos = current.photoURL.isEmpty
+            ? ['assets/pic_girl1.png']
+            : current.photoURL.map((p) => p.startsWith('http') ? p : _cdnJoin(myCdnBase, p)).toList();
         final likesDisplay = (current.fans ?? 0) + 11; // ← fans + 11
         final effectiveIsLike = likeFromHome ?? (u.isLike == 1);
 
@@ -790,6 +796,12 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
         );
       },
     );
+  }
+
+  String _partnerName(UserModel user) {
+    // 先用後端給的暱稱，沒有就 fallback
+    if ((user.displayName ?? '').isNotEmpty) return user.displayName!;
+    return '用戶 ${user.uid}';
   }
 
   String _cdnJoin(String? base, String path) {

@@ -14,8 +14,17 @@ class AuthRepository {
   Future<void> sendEmailCode(String email) async {
     final response = await _api.post(ApiEndpoints.sendEmailCode, data: {'email': email});
     final raw = response.data is String ? jsonDecode(response.data) : response.data;
-    if (raw is! Map || raw['code'] != 200) {
-      throw Exception('發送驗證碼失敗: ${raw['message'] ?? '未知錯誤'}');
+
+    final code = raw is Map ? raw['code'] : null;
+    final msg  = raw is Map ? (raw['message']?.toString() ?? '') : '';
+
+    if (code != 200) {
+      // ✅ 指定情況 => 拋出可辨識例外
+      if (code == 100 && msg == 'Email Format Error') {
+        throw const EmailFormatException();
+      }
+      // 其他錯誤維持原本行為
+      throw Exception('發送驗證碼失敗: ${msg.isEmpty ? '未知錯誤' : msg}');
     }
   }
 
@@ -35,12 +44,28 @@ class AuthRepository {
   }
 
   // 郵箱密碼登入
-  Future<UserModel> loginWithAccountPassword({required String account, required String password}) async {
-    final response = await _api.post(ApiEndpoints.loginAccount, data: {'account': account, 'pwd': password});
+  Future<UserModel> loginWithAccountPassword({
+    required String account,
+    required String password,
+  }) async {
+    final response = await _api.post(
+      ApiEndpoints.loginAccount,
+      data: {'account': account, 'pwd': password},
+    );
     final raw = response.data is String ? jsonDecode(response.data) : response.data;
-    if (raw is! Map || raw['code'] != 200 || raw['data'] == null) {
-      throw Exception("回傳格式錯誤: $raw");
+
+    // ✅ 明確處理帳密錯誤
+    final code = raw['code'];
+    final msg  = (raw['message'] ?? '').toString();
+    if (code == 100 && msg.toLowerCase() == 'account or password error'.toLowerCase()) {
+      throw const BadCredentialsException();
     }
+
+    // 其他非 200 都視為失敗，丟出後端訊息（若有）
+    if (code != 200 || raw['data'] == null) {
+      throw Exception(msg.isNotEmpty ? msg : '登入失敗');
+    }
+
     return _parseUser(
       raw['data'],
       loginProvider: 'email',
@@ -111,4 +136,17 @@ class AuthRepository {
     final newData = {...data, 'logins': logins};
     return UserModel.fromJson(newData);
   }
+}
+
+class BadCredentialsException implements Exception {
+  const BadCredentialsException();
+  @override
+  String toString() => 'BadCredentialsException';
+}
+
+class EmailFormatException implements Exception {
+  final String message;
+  const EmailFormatException([this.message = 'Email Format Error']);
+  @override
+  String toString() => message;
 }

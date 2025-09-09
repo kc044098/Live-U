@@ -57,156 +57,152 @@ void showLikeAlertDialog(
                     right: 0,
                     child: Image.asset('assets/message_like_2.png', width: 60, height: 60),
                   ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text('誰喜歡我',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 20),
-                      const Align(
-                        alignment: Alignment.center,
-                        child: Text(
-                          '查看對你心動的Ta，立即聯繫不再等待',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 14, color: Color(0xfffb5d5d)),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
+// 🔽 用「最大高度 + 可捲動」包住原本的 Column
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      // 視需要微調 0.7~0.8
+                      maxHeight: MediaQuery.of(context).size.height * 0.75,
+                    ),
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('誰喜歡我',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 20),
+                          const Align(
+                            alignment: Alignment.center,
+                            child: Text(
+                              '查看對你心動的Ta，立即聯繫不再等待',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 14, color: Color(0xfffb5d5d)),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
 
-                      // 🔽 真數據（不會因為點選而重取）
-                      FutureBuilder<List<VipPlan>>(
-                        future: futurePlans,
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting) {
-                            return const Center(child: CircularProgressIndicator());
-                          } else if (snapshot.hasError) {
-                            return Center(child: Text('載入失敗: ${snapshot.error}'));
-                          }
+                          // ✅ 重點：移除原本的 SizedBox(height: 200)
+                          FutureBuilder<List<VipPlan>>(
+                            future: futurePlans,
+                            builder: (context, snapshot) {
+                              if (snapshot.connectionState == ConnectionState.waiting) {
+                                return const Center(child: CircularProgressIndicator());
+                              } else if (snapshot.hasError) {
+                                return Center(child: Text('載入失敗: ${snapshot.error}'));
+                              }
 
-                          final plans = snapshot.data ?? [];
-                          cachedPlans = plans;
+                              final plans = snapshot.data ?? [];
+                              cachedPlans = plans;
 
-                          if (!defaultFixed) {
-                            if (plans.length < 2) selectedIndexNotifier.value = 0;
-                            defaultFixed = true;
-                          }
-                          if (plans.isEmpty) {
-                            return const Text('暫無可用方案');
-                          }
+                              if (!defaultFixed) {
+                                if (plans.length < 2) selectedIndexNotifier.value = 0;
+                                defaultFixed = true;
+                              }
+                              if (plans.isEmpty) {
+                                return const Text('暫無可用方案');
+                              }
 
-                          return SizedBox(
-                            height: 200,
-                            child: GridView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: plans.length,
-                              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 3,
-                                mainAxisSpacing: 12,
-                                crossAxisSpacing: 12,
-                                childAspectRatio: 0.78,
-                              ),
-                              itemBuilder: (context, index) {
-                                final p = plans[index];
-
-                                // ✅ 只有這一格跟著選中值重繪
-                                return ValueListenableBuilder<int>(
-                                  valueListenable: selectedIndexNotifier,
-                                  builder: (_, selectedIndex, __) {
-                                    final bool isSelected = index == selectedIndex;
-                                    return GestureDetector(
-                                      onTap: () => selectedIndexNotifier.value = index,
-                                      child: Container(
-                                        padding: const EdgeInsets.all(8),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white,
-                                          borderRadius: BorderRadius.circular(10),
-                                          border: Border.all(
-                                            color: isSelected ? Colors.pink : Colors.transparent,
-                                            width: isSelected ? 2 : 1,
+                              return GridView.builder(
+                                // 讓 Grid 自己長高，由外層 ScrollView 捲動
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: plans.length,
+                                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 3,
+                                  mainAxisSpacing: 12,
+                                  crossAxisSpacing: 12,
+                                  childAspectRatio: 0.78,
+                                ),
+                                itemBuilder: (context, index) {
+                                  final p = plans[index];
+                                  return ValueListenableBuilder<int>(
+                                    valueListenable: selectedIndexNotifier,
+                                    builder: (_, selectedIndex, __) {
+                                      final bool isSelected = index == selectedIndex;
+                                      return GestureDetector(
+                                        onTap: () => selectedIndexNotifier.value = index,
+                                        child: Container(
+                                          padding: const EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius: BorderRadius.circular(10),
+                                            border: Border.all(
+                                              color: isSelected ? Colors.pink : Colors.transparent,
+                                              width: isSelected ? 2 : 1,
+                                            ),
+                                          ),
+                                          child: Column(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              Text(p.title,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: Colors.red)),
+                                              const SizedBox(height: 4),
+                                              Text('\$${p.price.toStringAsFixed(2)}',
+                                                  style: const TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.grey,
+                                                    decoration: TextDecoration.lineThrough,
+                                                  )),
+                                              const SizedBox(height: 4),
+                                              Text('\$${p.payPrice.toStringAsFixed(2)}',
+                                                  style: const TextStyle(
+                                                      fontSize: 16, fontWeight: FontWeight.bold)),
+                                              const SizedBox(height: 8),
+                                              Text('${p.perMonth.toStringAsFixed(2)} 美元/月',
+                                                  style: const TextStyle(
+                                                      fontSize: 12, color: Colors.grey)),
+                                            ],
                                           ),
                                         ),
-                                        child: Column(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: [
-                                            Text(
-                                              p.title,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.red,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              '\$${p.price.toStringAsFixed(2)}',
-                                              style: const TextStyle(
-                                                fontSize: 12,
-                                                color: Colors.grey,
-                                                decoration: TextDecoration.lineThrough,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              '\$${p.payPrice.toStringAsFixed(2)}',
-                                              style: const TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 8),
-                                            Text(
-                                              '${p.perMonth.toStringAsFixed(2)} 美元/月',
-                                              style: const TextStyle(fontSize: 12, color: Colors.grey),
-                                            ),
-                                          ],
-                                        ),
+                                      );
+                                    },
+                                  );
+                                },
+                              );
+                            },
+                          ),
+
+                          const SizedBox(height: 12),
+                          Center(
+                            child: SizedBox(
+                              width: 180,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.pink,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                ),
+                                onPressed: () async {
+                                  if (cachedPlans.isEmpty) return;
+                                  final idx = selectedIndexNotifier.value.clamp(0, cachedPlans.length - 1);
+                                  final amount = cachedPlans[idx].payPrice;
+
+                                  if (onConfirmWithAmount != null) {
+                                    onConfirmWithAmount(amount);
+                                  } else {
+                                    await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => PaymentMethodPage(amount: amount),
                                       ),
                                     );
-                                  },
-                                );
-                              },
-                            ),
-                          );
-                        },
-                      ),
-
-                      const SizedBox(height: 12),
-                      Center(
-                        child: SizedBox(
-                          width: 180,
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.pink,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
+                                  }
+                                  onConfirm();
+                                },
+                                child: const Text('購買VIP', style: TextStyle(color: Colors.white)),
                               ),
                             ),
-                            onPressed: () async {
-                              if (cachedPlans.isEmpty) return;
-                              final idx = selectedIndexNotifier.value.clamp(0, cachedPlans.length - 1);
-                              final amount = cachedPlans[idx].payPrice;
-
-                              if (onConfirmWithAmount != null) {
-                                onConfirmWithAmount(amount);
-                              } else {
-                                await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => PaymentMethodPage(amount: amount),
-                                  ),
-                                );
-                              }
-                              onConfirm(); // 保留舊 callback
-                            },
-                            child: const Text('購買VIP', style: TextStyle(color: Colors.white)),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ],
               ),

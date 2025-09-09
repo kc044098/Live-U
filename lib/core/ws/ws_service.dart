@@ -50,6 +50,8 @@ class WsService {
       (_headers['Token']?.isNotEmpty ?? false) &&
           (_headers['X-UID']?.isNotEmpty ?? false);
 
+  bool _wireLogEnabled = true;
+
   // 確保連線：沒有憑證就先不連
   Future<void> ensureConnected() async {
     debugPrint('[WS] ensureConnected() status=${_status.value} hasAuth=$_hasAuth');
@@ -211,6 +213,8 @@ class WsService {
             return;
           }
 
+          debugPrint('[WS] <= JSON (parsed)\n${_prettyJson(data)}');
+
           // 主類型（gift/recharge/room_chat/reply/notice/call/unknown）
           final typeStr = _mapType(data!['type'] ?? data['flag']);
           debugPrint('[WS] dispatch type=$typeStr');
@@ -371,10 +375,11 @@ class WsService {
       switch (t) {
         case 1: return 'gift';
         case 2: return 'recharge';
-        case 3: return 'room_chat';
+        case 3: return 'live_chat';
         case 4: return 'reply';
         case 5: return 'notice';
         case 6: return 'call';
+        case 8: return 'room_chat';
         default: return 'unknown';
       }
     }
@@ -424,6 +429,14 @@ class WsService {
     final id = _nextId++;
     _rawTaps[id] = fn;
     return () => _rawTaps.remove(id);
+  }
+
+  String _prettyJson(Map<String, dynamic> m) {
+    try {
+      return const JsonEncoder.withIndent('  ').convert(m);
+    } catch (_) {
+      return m.toString();
+    }
   }
 
 }
