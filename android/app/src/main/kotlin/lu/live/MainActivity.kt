@@ -91,10 +91,16 @@ class MainActivity : FlutterActivity() {
         if (!autoPipEnabled) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !isInPictureInPictureMode) {
             try {
-                val builder = PictureInPictureParams.Builder()
-                    .setAspectRatio(Rational(aspectW, aspectH))
-                hintRect?.let { builder.setSourceRectHint(it) }
-                enterPictureInPictureMode(builder.build())
+                // ★ 先叫 Flutter 顯示白底 + timer HUD
+                ch?.invokeMethod("prePiP", null)
+
+                // ★ 稍等一下讓 Flutter 完成繪製（50~80ms 足夠）
+                window.decorView.postDelayed({
+                    val builder = PictureInPictureParams.Builder()
+                        .setAspectRatio(Rational(aspectW, aspectH))
+                    hintRect?.let { builder.setSourceRectHint(it) }
+                    enterPictureInPictureMode(builder.build())
+                }, 60)
             } catch (_: Throwable) { /* ignore */ }
         }
     }

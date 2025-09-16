@@ -4,7 +4,8 @@ import '../../config/providers/app_config_provider.dart';
 import '../../data/network/api_client_interface.dart';
 import '../../data/network/api_client.dart';
 import '../profile/profile_controller.dart';
-import 'friend_list_state.dart';
+import 'data_model/friend_list_state.dart';
+import 'data_model/music_track.dart';
 import 'video_repository.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -21,11 +22,7 @@ final friendListProvider = StateNotifierProvider<FriendListNotifier, FriendListS
   return FriendListNotifier(repo);
 });
 
-class _ApiClientAdapter implements IApiClient {
-  final ApiClient _inner;
-  _ApiClientAdapter(this._inner);
-  @override
-  Future<Response> post(String path, {data}) => _inner.post(path, data: data);
-  @override
-  String get baseUrl => _inner.dio.options.baseUrl;
-}
+final musicListProvider = FutureProvider<List<MusicTrack>>((ref) async {
+  final repo = ref.read(videoRepositoryProvider);
+  return repo.fetchMusicList();
+});

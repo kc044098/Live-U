@@ -11,17 +11,22 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../data/network/api_client_provider.dart';
 import '../../data/network/api_endpoints.dart';
+import '../../routes/app_routes.dart';
 import '../mine/user_repository_provider.dart';
 import '../profile/profile_controller.dart';
 
 class VideoDetailsPage extends ConsumerStatefulWidget {
   final String videoPath;
   final String? thumbnailPath;
+  final bool musicAdded;    // 是否選了音樂
+  final String? musicPath;
 
   const VideoDetailsPage({
     super.key,
     required this.videoPath,
     this.thumbnailPath,
+    this.musicAdded = false, // 給預設避免既有呼叫報錯
+    this.musicPath,
   });
 
   @override
@@ -124,10 +129,15 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
       }
 
       // 3) 組 payload
+      final String relativeAudio =
+      (isVideo && widget.musicAdded && (widget.musicPath?.isNotEmpty ?? false))
+          ? widget.musicPath!.trim() : '';
+
       final payload = <String, dynamic>{
         'title': _descController.text.trim(),
         'is_top': _selectedCategory == '精選' ? 1 : 2,
         if (isVideo) 'video_url': videoUrl,
+        'audio_url': relativeAudio,
         if (isVideo && coverUrl != null) 'cover': coverUrl,
         if (!isVideo && imageUrl != null) 'img': [imageUrl], // 單張也用陣列
       };
@@ -142,7 +152,8 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
 
       if (!mounted) return;
       Fluttertoast.showToast(msg: "上傳成功～");
-      Navigator.pop(context, 'resume');
+      Navigator.of(context, rootNavigator: true)
+          .pushNamedAndRemoveUntil(AppRoutes.home, (route) => false);
     } on DioException catch (e) {
       if (CancelToken.isCancel(e)) {
         Fluttertoast.showToast(msg: '已取消上傳');

@@ -6,9 +6,11 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:provider/provider.dart' as legacy;
 import 'config/app_config.dart';
+import 'core/ws/ws_provider.dart';
 import 'features/call/call_signal_listener.dart';
 import 'features/call/rtc_engine_manager.dart';
 import 'features/live/broadcaster_page.dart';
+import 'features/live/pip_system_ui.dart';
 import 'firebase_options.dart';
 import 'globals.dart';
 import 'l10n/l10n.dart';
@@ -26,6 +28,9 @@ Future<void> main() async {
   final mgr = RtcEngineManager();
   final logPath = await mgr.prepareRtcLogPath();
   await mgr.init(appId: AppConfig.agoraAppId, logPath: logPath);
+
+  // 通話時的system pip
+  PipSystemUi.init(navigatorKey: rootNavigatorKey);
 
   runApp(
     ProviderScope(
@@ -48,12 +53,13 @@ Future<void> _initFirebase() async {
   }
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends ConsumerWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final locale = legacy.Provider.of<LocaleProvider>(context).locale;
+    ref.watch(wsProvider);
 
     return MaterialApp(
       title: 'lu live',

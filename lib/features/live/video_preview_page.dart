@@ -2,28 +2,31 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:audioplayers/audioplayers.dart' as ap;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../profile/profile_controller.dart';
 import 'video_details_page.dart';
 
 final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
 
-class VideoPreviewPage extends StatefulWidget {
+class VideoPreviewPage extends ConsumerStatefulWidget {
   final String videoPath;
   final bool musicAdded;
   final String? thumbnailPath;
+  final String? musicPath;
 
-  const VideoPreviewPage({
-    super.key,
+  const VideoPreviewPage({super.key,
     required this.videoPath,
     this.thumbnailPath,
     required this.musicAdded,
+    this.musicPath,
   });
 
   @override
-  State<VideoPreviewPage> createState() => _VideoPreviewPageState();
+  ConsumerState<VideoPreviewPage> createState() => _VideoPreviewPageState();
 }
 
-class _VideoPreviewPageState extends State<VideoPreviewPage>
+class _VideoPreviewPageState extends ConsumerState<VideoPreviewPage>
     with RouteAware, WidgetsBindingObserver {
   VideoPlayerController? _videoController;
   ap.AudioPlayer? _audioPlayer;
@@ -78,11 +81,12 @@ class _VideoPreviewPageState extends State<VideoPreviewPage>
   }
 
   Future<void> _playMusic() async {
-    if (_isDisposed || !mounted || !widget.musicAdded || _isPhoto) return;
+    if (_isDisposed || !mounted || _isPhoto) return;
+    if (!widget.musicAdded || widget.musicPath == null || widget.musicPath!.isEmpty) return;
+
     try {
       await _audioPlayer?.stop();
       await _audioPlayer?.dispose();
-
       _audioPlayer = ap.AudioPlayer();
       await _audioPlayer?.setAudioContext(ap.AudioContext(
         android: ap.AudioContextAndroid(
@@ -93,12 +97,26 @@ class _VideoPreviewPageState extends State<VideoPreviewPage>
           audioFocus: ap.AndroidAudioFocus.none,
         ),
       ));
-      await _audioPlayer?.setVolume(0.5);
-      await _audioPlayer?.play(ap.AssetSource('demo_music.mp3'));
+      await _audioPlayer!.setVolume(0.5);
 
+      final url = _absUrl(widget.musicPath!.trim()); // ★ 相對 → 絕對
+      await _audioPlayer!.play(ap.UrlSource(url));
     } catch (e) {
-      debugPrint('音樂重播失敗: $e');
+      debugPrint('音樂播放失敗: $e');
     }
+  }
+
+  String _absUrl(String path) {
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+
+    final profile = ref.read(userProfileProvider);
+    final cdn = (profile?.cdnUrl ?? '').trim();
+
+    final p = path.startsWith('/') ? path.substring(1) : path;
+
+    debugPrint('[Preview] build abs url: '
+        'cdn="$cdn", rawPath="$p" -> full="$cdn/$p"');
+    return '$cdn/$p';
   }
 
   void _stopAll({bool disposeController = false}) {
@@ -207,6 +225,8 @@ class _VideoPreviewPageState extends State<VideoPreviewPage>
                         builder: (_) => VideoDetailsPage(
                           videoPath: widget.videoPath,
                           thumbnailPath: widget.thumbnailPath,
+                          musicAdded: widget.musicAdded,   // ★ 傳遞音樂開關
+                          musicPath: widget.musicPath,     // ★ 傳遞相對路徑（不拼接）
                         ),
                       ),
                     );

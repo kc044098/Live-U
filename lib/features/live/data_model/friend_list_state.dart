@@ -1,7 +1,7 @@
 import 'package:djs_live_stream/features/live/video_repository.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../data/models/user_model.dart';
+import '../../../data/models/user_model.dart';
 
 class FriendListState {
   final List<UserModel> users;

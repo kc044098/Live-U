@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:djs_live_stream/data/network/background_api_service.dart';
@@ -778,21 +779,48 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   }
 
   void _showBirthdayPicker() {
-    int selectedYear = _selectedDate.year;
-    int selectedMonth = _selectedDate.month;
-    int selectedDay = _selectedDate.day;
+    const int kMinAge = 18;
+    final now = DateTime.now();
+    // 這一天（含當天）之前出生 → 已滿 18
+    final cutoff = DateTime(now.year - kMinAge, now.month, now.day);
 
-    final years = List.generate(100, (index) => DateTime.now().year - index);
-    final months = [
+    // 初始選中值：若目前 _selectedDate 小於 18 歲，就強制拉回臨界日
+    DateTime initial = _selectedDate;
+    if (initial.isAfter(cutoff)) initial = cutoff;
+
+    int selectedYear  = initial.year;
+    int selectedMonth = initial.month;
+    int selectedDay   = initial.day;
+
+    int daysInMonth(int year, int month) => DateTime(year, month + 1, 0).day;
+
+    // 年份清單：從「最年輕可選（=滿 18）」一路往前 100 年
+    final youngestYear = cutoff.year;
+    final oldestYear   = now.year - 100;
+    final years = List.generate(
+      (youngestYear - oldestYear) + 1,
+          (i) => youngestYear - i,
+    );
+
+    // 針對當年(= youngestYear)限制月份/天數，避免選到比 cutoff 晚的日期
+    int visibleMonthsForYear(int year) => (year == youngestYear) ? cutoff.month : 12;
+    int visibleDaysFor(int year, int month) {
+      int d = daysInMonth(year, month);
+      if (year == youngestYear && month == cutoff.month) {
+        d = min(d, cutoff.day);
+      }
+      return d;
+    }
+
+    // 先把目前的 月/日 壓到合法區間
+    selectedMonth = min(selectedMonth, visibleMonthsForYear(selectedYear));
+    selectedDay   = min(selectedDay, visibleDaysFor(selectedYear, selectedMonth));
+    int maxDays   = visibleDaysFor(selectedYear, selectedMonth);
+
+    final months = const [
       "January","February","March","April","May","June",
       "July","August","September","October","November","December"
     ];
-
-    int daysInMonth(int year, int month) {
-      return DateTime(year, month + 1, 0).day;
-    }
-
-    int maxDays = daysInMonth(selectedYear, selectedMonth);
 
     showModalBottomSheet(
       context: context,
@@ -818,60 +846,55 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                         ),
                         GestureDetector(
                           onTap: () async {
-                            final tempDate = DateTime(
-                                selectedYear, selectedMonth, selectedDay);
+                            final picked = DateTime(selectedYear, selectedMonth, selectedDay);
+
+                            // 雙保險：若仍晚於 cutoff（理論上不會），擋掉
+                            if (picked.isAfter(cutoff)) {
+                              Fluttertoast.showToast(msg: '需年滿 18 歲');
+                              return;
+                            }
 
                             // 計算年齡
-                            final now = DateTime.now();
-                            int age = now.year - tempDate.year;
-                            if (now.month < tempDate.month ||
-                                (now.month == tempDate.month &&
-                                    now.day < tempDate.day)) {
+                            int age = now.year - picked.year;
+                            if (now.month < picked.month ||
+                                (now.month == picked.month && now.day < picked.day)) {
                               age--;
                             }
+
                             showDialog(
                               context: context,
                               barrierDismissible: false,
                               builder: (_) => const Center(child: CircularProgressIndicator()),
                             );
                             try {
-                              // 呼叫後端 API 上傳年齡
+                              // 上傳到後端（你原本的流程）
                               final repo = ref.read(userRepositoryProvider);
                               await repo.updateMemberInfo({
-                                'detail': {
-                                  'age': '$age',
-                                }
+                                'detail': { 'age': '$age' }
                               });
 
                               // 更新本地 userModel 的 extra
                               final currentUser = ref.read(userProfileProvider);
                               if (currentUser != null) {
-                                final updatedExtra = Map<String, dynamic>.from(
-                                    currentUser.extra ?? {});
+                                final updatedExtra = Map<String, dynamic>.from(currentUser.extra ?? {});
                                 updatedExtra['age'] = '$age岁';
                                 _updateExtra('age', '$age岁');
 
-                                final updatedUser =
-                                currentUser.copyWith(extra: updatedExtra);
-                                ref
-                                    .read(userProfileProvider.notifier)
-                                    .setUser(updatedUser);
+                                final updatedUser = currentUser.copyWith(extra: updatedExtra);
+                                ref.read(userProfileProvider.notifier).setUser(updatedUser);
                                 await UserLocalStorage.saveUser(updatedUser);
                               }
 
-                              _selectedDate = tempDate;
+                              _selectedDate = picked;
                               Fluttertoast.showToast(msg: '年齡已更新');
                             } catch (e) {
                               Fluttertoast.showToast(msg: '年齡更新失敗：$e');
                             }
-                            Navigator.of(context).pop(); // ✅ 關閉 loading dialog
-                            Navigator.of(context).pop(); // ✅ 關閉 bottom sheet
+                            Navigator.of(context).pop(); // 關 loading
+                            Navigator.of(context).pop(); // 關 bottom sheet
                           },
                           child: const Text('Done',
-                              style: TextStyle(
-                                color: Color(0xFFFF4D67),
-                                fontSize: 16,
-                              )),
+                              style: TextStyle(color: Color(0xFFFF4D67), fontSize: 16)),
                         ),
                       ],
                     ),
@@ -883,7 +906,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: Stack(
                         children: [
-                          // 分隔線置中
+                          // 中間高亮區
                           Align(
                             alignment: Alignment.center,
                             child: Container(
@@ -899,7 +922,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
-                              // 月份
+                              // 月份（依年份限制最大月份）
                               Expanded(
                                 child: ListWheelScrollView.useDelegate(
                                   itemExtent: 40,
@@ -907,29 +930,27 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                                   magnification: 1.0,
                                   physics: const FixedExtentScrollPhysics(),
                                   controller: FixedExtentScrollController(
-                                      initialItem: selectedMonth - 1),
+                                    initialItem: selectedMonth - 1,
+                                  ),
                                   onSelectedItemChanged: (index) {
                                     setModalState(() {
                                       selectedMonth = index + 1;
-                                      maxDays = daysInMonth(selectedYear, selectedMonth);
+                                      // 月份改變 → 重新計算可選天數
+                                      maxDays = visibleDaysFor(selectedYear, selectedMonth);
                                       if (selectedDay > maxDays) selectedDay = maxDays;
                                     });
                                   },
                                   childDelegate: ListWheelChildBuilderDelegate(
-                                    childCount: months.length,
+                                    childCount: visibleMonthsForYear(selectedYear),
                                     builder: (context, index) {
-                                      final isSelected = index == selectedMonth - 1;
+                                      final isSelected = (index + 1) == selectedMonth;
                                       return Center(
                                         child: Text(
                                           months[index],
                                           style: TextStyle(
                                             fontSize: 18,
-                                            color: isSelected
-                                                ? Colors.black
-                                                : const Color(0xFF9E9E9E),
-                                            fontWeight: isSelected
-                                                ? FontWeight.bold
-                                                : FontWeight.normal,
+                                            color: isSelected ? Colors.black : const Color(0xFF9E9E9E),
+                                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                                           ),
                                         ),
                                       );
@@ -938,7 +959,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                                 ),
                               ),
 
-                              // 日期
+                              // 日期（依年份/月份限制最大天數）
                               Expanded(
                                 child: ListWheelScrollView.useDelegate(
                                   itemExtent: 40,
@@ -946,25 +967,22 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                                   magnification: 1.0,
                                   physics: const FixedExtentScrollPhysics(),
                                   controller: FixedExtentScrollController(
-                                      initialItem: selectedDay - 1),
+                                    initialItem: selectedDay - 1,
+                                  ),
                                   onSelectedItemChanged: (index) {
                                     setModalState(() => selectedDay = index + 1);
                                   },
                                   childDelegate: ListWheelChildBuilderDelegate(
                                     childCount: maxDays,
                                     builder: (context, index) {
-                                      final isSelected = index == selectedDay - 1;
+                                      final isSelected = (index + 1) == selectedDay;
                                       return Center(
                                         child: Text(
                                           '${index + 1}',
                                           style: TextStyle(
                                             fontSize: 18,
-                                            color: isSelected
-                                                ? Colors.black
-                                                : const Color(0xFF9E9E9E),
-                                            fontWeight: isSelected
-                                                ? FontWeight.bold
-                                                : FontWeight.normal,
+                                            color: isSelected ? Colors.black : const Color(0xFF9E9E9E),
+                                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                                           ),
                                         ),
                                       );
@@ -973,7 +991,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                                 ),
                               ),
 
-                              // 年份
+                              // 年份（不能超過 youngestYear）
                               Expanded(
                                 child: ListWheelScrollView.useDelegate(
                                   itemExtent: 40,
@@ -981,29 +999,32 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                                   magnification: 1.0,
                                   physics: const FixedExtentScrollPhysics(),
                                   controller: FixedExtentScrollController(
-                                      initialItem: years.indexOf(selectedYear)),
+                                    initialItem: years.indexOf(selectedYear),
+                                  ),
                                   onSelectedItemChanged: (index) {
                                     setModalState(() {
                                       selectedYear = years[index];
-                                      maxDays = daysInMonth(selectedYear, selectedMonth);
+
+                                      // 年份變動 → 先限月份，再限天數
+                                      final maxMonth = visibleMonthsForYear(selectedYear);
+                                      if (selectedMonth > maxMonth) selectedMonth = maxMonth;
+
+                                      maxDays = visibleDaysFor(selectedYear, selectedMonth);
                                       if (selectedDay > maxDays) selectedDay = maxDays;
                                     });
                                   },
                                   childDelegate: ListWheelChildBuilderDelegate(
                                     childCount: years.length,
                                     builder: (context, index) {
-                                      final isSelected = years[index] == selectedYear;
+                                      final y = years[index];
+                                      final isSelected = y == selectedYear;
                                       return Center(
                                         child: Text(
-                                          '${years[index]}',
+                                          '$y',
                                           style: TextStyle(
                                             fontSize: 18,
-                                            color: isSelected
-                                                ? Colors.black
-                                                : const Color(0xFF9E9E9E),
-                                            fontWeight: isSelected
-                                                ? FontWeight.bold
-                                                : FontWeight.normal,
+                                            color: isSelected ? Colors.black : const Color(0xFF9E9E9E),
+                                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                                           ),
                                         ),
                                       );

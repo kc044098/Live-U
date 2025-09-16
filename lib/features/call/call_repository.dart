@@ -40,6 +40,20 @@ class CallRepository {
     return _toMap(dyn);
   }
 
+  Future<String> renewRtcToken({
+    required String channelName,
+  }) async {
+    final raw = await _api.post(
+      ApiEndpoints.renewRtcToken, // 你自己後端的路由
+      data: {
+        'channel_name': channelName,
+      },
+    );
+    final map = _toMap(raw);
+    // 後端回傳 key 你自己決定，這裡兼容幾種常見命名
+    return (map['token'] ?? map['rtcToken'] ?? map['rtc_token'] ?? '').toString();
+  }
+
   /// 把任意回傳(normal/Dio/JSON字串/其它)安全轉成 Map<String,dynamic>
   Map<String, dynamic> _toMap(dynamic v) {
     if (v is Map<String, dynamic>) return v;

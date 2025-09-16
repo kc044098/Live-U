@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'music_select_page.dart';
 import 'video_preview_page.dart';
 import 'package:video_thumbnail/video_thumbnail.dart' as vt;
 import 'package:path_provider/path_provider.dart';
@@ -26,6 +27,7 @@ class _VideoRecorderPageState extends State<VideoRecorderPage> {
   bool _isRecording = false;
   bool _musicAdded = false;
   final ImagePicker _picker = ImagePicker();
+  String? _selectedMusicPath;
 
   @override
   void initState() {
@@ -67,6 +69,7 @@ class _VideoRecorderPageState extends State<VideoRecorderPage> {
             videoPath: fixedPath,
             thumbnailPath: thumbPath,
             musicAdded: _musicAdded,
+            musicPath: _musicAdded ? _selectedMusicPath : null,
           ),
         ),
       );
@@ -87,7 +90,8 @@ class _VideoRecorderPageState extends State<VideoRecorderPage> {
           builder: (_) => VideoPreviewPage(
             videoPath: fixedPath,
             thumbnailPath: fixedPath,
-            musicAdded: false,
+            musicAdded: _musicAdded,
+            musicPath: _musicAdded ? _selectedMusicPath : null,
           ),
         ),
       );
@@ -121,7 +125,8 @@ class _VideoRecorderPageState extends State<VideoRecorderPage> {
         builder: (_) => VideoPreviewPage(
           videoPath: pickedFile!.path,
           thumbnailPath: isVideoMode ? thumbPath : pickedFile.path,
-          musicAdded: isVideoMode ? _musicAdded : false,
+          musicAdded: _musicAdded,
+          musicPath: _musicAdded ? _selectedMusicPath : null,
         ),
       ),
     );
@@ -189,16 +194,29 @@ class _VideoRecorderPageState extends State<VideoRecorderPage> {
                         const Icon(Icons.music_note, color: Colors.white, size: 18),
                         const SizedBox(width: 4),
                         GestureDetector(
-                          onTap: () {
-                            setState(() => _musicAdded = true);
-                            Fluttertoast.showToast(msg: "已添加音樂");
+                          onTap: () async {
+                            final path = await Navigator.push<String>(
+                              context,
+                              MaterialPageRoute(builder: (_) => const MusicSelectPage()),
+                            );
+                            if (!mounted) return;
+                            if (path != null && path.isNotEmpty) {
+                              setState(() {
+                                _musicAdded = true;
+                                _selectedMusicPath = path;
+                              });
+                              Fluttertoast.showToast(msg: "已添加音乐");
+                            }
                           },
                           child: const Text('添加音樂', style: TextStyle(color: Colors.white, fontSize: 14)),
                         ),
                         const SizedBox(width: 8),
                         GestureDetector(
                           onTap: () {
-                            setState(() => _musicAdded = false);
+                            setState(() {
+                              _musicAdded = false;
+                              _selectedMusicPath = null;
+                            });
                             Fluttertoast.showToast(msg: "已清除音樂");
                           },
                           child: const Icon(Icons.close, color: Colors.white, size: 18),

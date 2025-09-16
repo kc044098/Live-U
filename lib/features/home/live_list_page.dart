@@ -453,12 +453,34 @@ class _CallButton extends StatelessWidget {
   final FeedItem item;
   const _CallButton({required this.item});
 
+  CalleeState _mapToCalleeState(FeedItem it) {
+    // 推荐：后端 raw 数字：1=online, 2=offline, 3=busy
+    final int? raw = it.onlineStatusRaw; // 你之前就有这个字段
+
+    if (raw != null) {
+      switch (raw) {
+        case 1: return CalleeState.online;
+        case 3: return CalleeState.busy;
+        case 2:
+        default: return CalleeState.offline;
+      }
+    }
+
+    // 兜底：如果只有字符串或其它形式
+    final s = it.onlineStatus.toString().toLowerCase();
+    if (s == 'busy' || s == '3') return CalleeState.busy;
+    if (s == 'online' || s == '1') return CalleeState.online;
+    return CalleeState.offline;
+  }
+
   void _handleCallRequest(BuildContext context) {
-    final broadcasterId = item.uid.toString();
+    final broadcasterId   = item.uid.toString();
     final broadcasterName = (item.nickName?.isNotEmpty == true)
         ? item.nickName!
         : (item.title.isEmpty ? '主播' : item.title);
     final broadcasterImage = item.firstAvatar ?? item.coverCandidate ?? 'assets/default.jpg';
+
+    final calleeState = _mapToCalleeState(item);   // ← 新增
 
     Navigator.push(
       context,
@@ -467,7 +489,8 @@ class _CallButton extends StatelessWidget {
           broadcasterId: broadcasterId,
           broadcasterName: broadcasterName,
           broadcasterImage: broadcasterImage,
-          //isBusy: item.onlineStatusRaw == 3,
+          isVideoCall: true,              // 或依你的 UI 传 true/false
+          calleeState: calleeState,       // ← 关键
         ),
       ),
     );
@@ -663,7 +686,7 @@ class _VideoCardState extends ConsumerState<_VideoCard> with WidgetsBindingObser
             uid: widget.item.uid,
             name: displayName,
             avatarPath: displayAvatar,
-            rateText: '${widget.item.pricePerMinute}美元/分鐘',
+            rateText: '${widget.item.pricePerMinute}金幣/分鐘',
             tags: displayTags,
             isLike: widget.item.isLike,
             status: widget.item.onlineStatus,
@@ -735,7 +758,7 @@ class _ImageCardState extends ConsumerState<_ImageCard> with WidgetsBindingObser
             uid: widget.item.uid,
             name: displayName,
             avatarPath: displayAvatar,
-            rateText: '${widget.item.pricePerMinute}美元/分鐘',
+            rateText: '${widget.item.pricePerMinute}金幣/分鐘',
             tags: displayTags,
             isLike: widget.item.isLike,
             status: widget.item.onlineStatus,

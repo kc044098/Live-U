@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 
@@ -11,10 +12,18 @@ import 'package:flutter_svg/svg.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+import 'package:svgaplayer_flutter/svgaplayer_flutter.dart';
+import 'package:http/http.dart' as http;
+import '../../data/models/gift_item.dart';
 import '../../data/models/user_model.dart';
 import '../call/call_request_page.dart';
+import '../live/data_model/gift_task.dart';
+import '../live/gift_providers.dart';
+import '../mine/edit_mine_page.dart';
 import '../mine/user_repository_provider.dart';
 import '../profile/profile_controller.dart';
+import '../profile/view_profile_page.dart';
+import 'chat_repository.dart';
 import 'chat_utils.dart' as cu;
 import 'chat_message.dart';
 import 'chat_providers.dart';
@@ -24,6 +33,14 @@ import 'emoji/emoji_input_formatter.dart';
 import 'emoji/emoji_pack.dart';
 import 'emoji/emoji_picker_panel.dart';
 import 'emoji/emoji_text.dart';
+import 'gift/gift_bottom_sheet.dart';
+import 'gift_bubble.dart';
+
+CalleeState _mapStatusToCalleeState(int s) {
+  if (s == 1 || s == 2) return CalleeState.online;
+  if (s == 3 || s == 4 || s == 5) return CalleeState.busy;
+  return CalleeState.offline;
+}
 
 class MessageChatPage extends ConsumerStatefulWidget {
   final String partnerName;
@@ -46,7 +63,7 @@ class MessageChatPage extends ConsumerStatefulWidget {
   ConsumerState<MessageChatPage> createState() => _MessageChatPageState();
 }
 
-class _MessageChatPageState extends ConsumerState<MessageChatPage> {
+class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTickerProviderStateMixin {
   final List<ChatMessage> _messages = [];
   late TextEditingController _textController;
   final ScrollController _scrollController = ScrollController();
@@ -58,12 +75,13 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
   final List<VoidCallback> _wsUnsubs = [];
 
   late Future<EmojiPack> _emojiPackFut;
+
+  int? _asInt(dynamic v) => (v is num) ? v.toInt() : int.tryParse('$v');
   bool _showEmoji = false;
 
   bool _isVoiceMode = false;
   bool _isRecording = false;
   int _recordDuration = 0;
-  int _sendCount = 0;
   Timer? _timer;
 
   bool _isLoadingMore = false;
@@ -77,6 +95,14 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
 
   late final FocusNode _inputFocus;
 
+  int _lastReadPostMs = 0;
+
+  late final SVGAAnimationController _svgaCtrl = SVGAAnimationController(vsync: this);
+  OverlayEntry? _giftEntry;
+  final Queue<GiftTask> _giftQueue = Queue<GiftTask>();
+  Timer? _giftFallbackTimer;
+  bool _isPlayingGift = false;
+
   @override
   void initState() {
     super.initState();
@@ -84,11 +110,13 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
 
     _attachCursorGuard(_textController);
 
-    // 表情面板監聽輸入焦點
+    // 監聽輸入焦點
     _inputFocus = FocusNode();
     _inputFocus.addListener(() {
       if (_inputFocus.hasFocus && _showEmoji) {
-        setState(() => _showEmoji = false);
+        setState(() {
+          _showEmoji = false;
+        });
         _scrollToBottom();
       }
     });
@@ -115,22 +143,37 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
       final list = await repo.fetchMessageHistory(page: 1, toUid: widget.partnerUid!);
       final cdnBase = me?.cdnUrl ?? '';
 
-      final msgs = list.map((m) =>
-          _fromApiMsg(Map<String, dynamic>.from(m), myUid: myUid, cdnBase: cdnBase)
-      ).toList()
-        ..sort((a, b) => (a.createAt ?? 0).compareTo(b.createAt ?? 0)); // 舊→新
+      // 讀目前禮物列表（若還在載入就給空陣列）
+      final gifts = ref.read(giftListProvider).maybeWhen(
+        data: (v) => v,
+        orElse: () => const <GiftItemModel>[],
+      );
+
+      final msgs = list
+          .map((m) => _fromApiMsg(
+        Map<String, dynamic>.from(m),
+        myUid: myUid,
+        cdnBase: cdnBase,
+        gifts: gifts,
+      ))
+          .toList()
+        ..sort((a, b) => (a.createAt ?? 0).compareTo(b.createAt ?? 0));
 
       setState(() {
         _messages
           ..clear()
           ..addAll(msgs);
+        final latest = _messages.isNotEmpty ? _messages.last : null;
+        if (latest != null && latest.type == MessageType.other) {
+          _markThreadReadOptimistic();
+        }
         _loading = false;
-        _hasMore = list.isNotEmpty; // 簡單判斷；你也可依 API 回傳是否還有下一頁
+        _hasMore = list.isNotEmpty;
         _page = 1;
       });
       _refreshCtrl.resetNoData();
       _refreshCtrl.loadComplete();
-      _scrollToBottom(); // 最新貼底
+      _scrollToBottom();
     } catch (e) {
       setState(() { _error = '$e'; _loading = false; });
     }
@@ -235,6 +278,9 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
     _recorder.dispose();
     _audioPlayer.dispose();
     _textController.dispose();
+    _giftFallbackTimer?.cancel();
+    _removeGiftOverlay();
+    try { _svgaCtrl.dispose(); } catch (_) {}
     super.dispose();
   }
 
@@ -293,12 +339,6 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
 
   Future<void> _startRecording() async {
 
-    // 發送次數超過限制
-    if (_sendCount >= 10) {
-      _showLimitDialog();
-      return;
-    }
-
     if (await _recorder.hasPermission()) {
       final filePath = await _getNewAudioPath();
       await _recorder.start(const RecordConfig(), path: filePath);
@@ -320,8 +360,6 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
     _timer?.cancel();
     setState(() => _isRecording = false);
     if (path == null) return;
-
-    _sendCount++;
 
     // 取得 myUid / toUid
     final user  = ref.read(userProfileProvider);
@@ -364,25 +402,28 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
     final userRepo = ref.read(userRepositoryProvider);
 
     try {
-      // 2) 上傳到 S3，拿「相對路徑」
-      final rel = await userRepo.uploadToS3(file: File(path)); // e.g. /upload/xxx.m4a
-      final full = cu.joinCdn(user?.cdnUrl, rel);                // ✅ UI 播放用完整 URL
+      // 先上傳 S3（需要路徑才可發送）
+      final rel = await userRepo.uploadToS3(file: File(path));
+      final full = cu.joinCdn(user?.cdnUrl, rel);
 
-      // 3) 發送語音消息：後端要相對路徑
-      final ok = await chatRepo.sendVoice(
+      final SendResult res = await chatRepo.sendVoice(
         uuid: uuid,
         toUid: toUid,
-        voicePath: rel,                         // ✅ 傳相對路徑給後端
+        voicePath: rel,
         durationSec: _recordDuration.toString(),
       );
 
       if (!mounted) return;
+
+      // 若超上限 → 撤回樂觀訊息 + 彈窗
+      if (_handleQuotaAndMaybeRollback(res, uuid: uuid)) return;
+
       setState(() {
         final i = _messages.indexWhere((m) => m.uuid == uuid);
         if (i >= 0) {
           _messages[i] = _messages[i].copyWith(
-            sendState: ok ? SendState.sent : SendState.failed,
-            audioPath: ok ? full : path,        // ✅ 成功→用 CDN 完整 URL；失敗→保留本地
+            sendState: res.ok ? SendState.sent : SendState.failed,
+            audioPath: res.ok ? full : path, // 成功→CDN，失敗→留本地
           );
         }
       });
@@ -393,7 +434,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
         if (i >= 0) {
           _messages[i] = _messages[i].copyWith(
             sendState: SendState.failed,
-            audioPath: path,                    // 失敗保留本地檔可重播
+            audioPath: path,
           );
         }
       });
@@ -447,22 +488,20 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
     });
   }
 
-  void _sendMessage() async {
-    if (_sendCount >= 10) {
-      _textController.clear();
-      _showLimitDialog();
-      return;
-    }
+  bool _shouldShowBottomActions(BuildContext context) {
+    final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+    return !_showEmoji && !keyboardOpen;
+  }
 
+  void _sendMessage() async {
     final text = _textController.text.trim();
     if (text.isEmpty) return;
 
-    // 取得 myUid 與 對方 uid
     final user = ref.read(userProfileProvider);
     final myUid = int.tryParse(user?.uid ?? '');
-    final toUid = widget.partnerUid; // 或使用你本頁現有變數
+    final toUid = widget.partnerUid;
 
-    // 若取不到 id，避免打 API，但仍可把訊息顯示為失敗（不破 UI）
+    // 取不到 id：照舊（顯示失敗的本地訊息），這段可以保留
     if (myUid == null || toUid == null) {
       setState(() {
         _messages.add(ChatMessage(
@@ -471,7 +510,6 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
           text: text,
           sendState: SendState.failed,
         ));
-        _sendCount++;
         _showEmoji = false;
       });
       _textController.clear();
@@ -481,7 +519,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
 
     final uuid = cu.genUuid(myUid);
 
-    // 樂觀加入一條 sending 訊息
+    // 樂觀加入
     final sending = ChatMessage(
       type: MessageType.self,
       contentType: ChatContentType.text,
@@ -495,22 +533,26 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
     );
     setState(() {
       _messages.add(sending);
-      _sendCount++;
       _showEmoji = false;
     });
     _textController.clear();
     _scrollToBottom();
 
-    // ✅ 呼叫 Repository
+    // ★ 這裡開始使用 SendResult，而不是 bool
     final repo = ref.read(chatRepositoryProvider);
-    final ok = await repo.sendText(uuid: uuid, toUid: toUid, text: text);
+    final SendResult res = await repo.sendText(uuid: uuid, toUid: toUid, text: text);
 
     if (!mounted) return;
+
+    // 命中「超出上限」：撤回訊息 + 彈窗，直接 return
+    if (_handleQuotaAndMaybeRollback(res, uuid: uuid)) return;
+
+    // 其它錯誤 → 樂觀訊息標記失敗；成功 → 樂觀訊息標記 sent
     setState(() {
       final i = _messages.indexWhere((m) => m.uuid == uuid);
       if (i >= 0) {
         _messages[i] = _messages[i].copyWith(
-          sendState: ok ? SendState.sent : SendState.failed,
+          sendState: res.ok ? SendState.sent : SendState.failed,
         );
       }
     });
@@ -581,9 +623,11 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
                             context,
                             MaterialPageRoute(
                               builder: (_) => CallRequestPage(
-                                broadcasterId: 'broadcaster001',
+                                broadcasterId: (widget.partnerUid ?? -1).toString(),
                                 broadcasterName: widget.partnerName,
                                 broadcasterImage: widget.partnerAvatar,
+                                isVideoCall: true, // ← 語音通話
+                                calleeState: _mapStatusToCalleeState(widget.statusText),
                               ),
                             ),
                           );
@@ -624,62 +668,40 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
     );
   }
 
-  ChatMessage _fromApiMsg(
-      Map<String, dynamic> m, {
-        required int myUid,
-        required String cdnBase,
-      }) {
-    final senderUid   = (m['uid'] as num?)?.toInt() ?? -1;
-    final rawContent  = (m['content'] ?? '').toString();
-    final createAt   = _parseEpochSec(m['create_at']);
-
-    Map<String, dynamic>? c;
-    try {
-      final tmp = jsonDecode(rawContent);
-      if (tmp is Map) c = tmp.map((k, v) => MapEntry('$k', v));
-    } catch (_) { /* 不是 JSON 就保持 null */ }
-
-    final voicePathRel = c?['voice_path']?.toString();
-    final chatText     = c?['chat_text']?.toString();
-    final duration     = int.parse(c?['duration'] ?? '0');
-    final imgPathRel   = (c?['img_path'] ?? c?['image_path'])?.toString();
-
-    // 圖片
-    if ((imgPathRel ?? '').isNotEmpty) {
-      final full = cu.joinCdn(cdnBase, imgPathRel!);
-      return ChatMessage(
-        type: senderUid == myUid ? MessageType.self : MessageType.other,
-        contentType: ChatContentType.image,
-        imagePath: full,
-        createAt: createAt,
-      );
-    }
-
-    // 語音
-    if ((voicePathRel ?? '').isNotEmpty) {
-      final full = cu.joinCdn(cdnBase, voicePathRel!); // 顯示用拼 CDN
-      return ChatMessage(
-        type: senderUid == myUid ? MessageType.self : MessageType.other,
-        contentType: ChatContentType.voice,
-        audioPath: full,
-        duration: duration,
-        createAt: createAt,
-      );
-    }
-
-    // 文字
-    return ChatMessage(
-      type: senderUid == myUid ? MessageType.self : MessageType.other,
-      contentType: ChatContentType.text,
-      text: (chatText != null && chatText.isNotEmpty) ? chatText : rawContent,
-      createAt: createAt,
-    );
-  }
-
   int _parseEpochSec(dynamic v) {
     if (v is int) return v;
     if (v is num) return v.toInt();
     return int.tryParse('$v') ?? 0;
+  }
+
+  void _markThreadReadOptimistic() {
+    final id = widget.partnerUid;
+    if (id == null) return;
+
+    // 極簡節流：800ms 內只送一次，避免 WS 積木瞬間多次觸發
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastReadPostMs < 800) return;
+    _lastReadPostMs = now;
+
+    // 樂觀呼叫即可，不 await
+    unawaited(ref.read(chatRepositoryProvider).messageRead(id: id));
+  }
+
+  void _removeOptimisticByUuid(String uuid) {
+    if (uuid.isEmpty) return;
+    setState(() {
+      _messages.removeWhere((m) => m.uuid == uuid);
+    });
+  }
+
+  /// 統一處理送訊息後的結果：命中 101 就彈窗並撤回
+  bool _handleQuotaAndMaybeRollback(SendResult res, {String? uuid}) {
+    if (res.code == 101) {
+      if (uuid != null) _removeOptimisticByUuid(uuid);
+      _showLimitDialog();
+      return true; // 表示已處理（命中上限）
+    }
+    return false;
   }
 
   @override
@@ -692,57 +714,106 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
           next.whenData((msg) {
             if (!mounted) return;
             setState(() => _messages.add(msg));
+
+            // ★ 對方來的新訊息 → 樂觀標記已讀
+            if (msg.type == MessageType.other) {
+              _markThreadReadOptimistic();
+            }
+
+            _tryPlayGiftFromMessage(msg);
+
             final atBottom = !_scrollController.hasClients
                 || _scrollController.position.pixels <= 40;
             if (atBottom) _scrollToBottom();
           });
         },
       );
+      ref.listen<AsyncValue<ReadReceipt>>(
+        roomReadProvider(partnerUid),
+            (prev, next) {
+          next.whenData((rcpt) {
+            if (!mounted) return;
+
+            setState(() {
+              for (var i = 0; i < _messages.length; i++) {
+                final m = _messages[i];
+
+                // 只標記「我發出的」訊息
+                if (m.type != MessageType.self) continue;
+
+                // 若後端帶了 createAt，就把「當時（含）之前的」都設為已讀；
+                // 若沒帶（=0），就全設為已讀（符合你「都設為雙勾」的需求）
+                final okToMark = (rcpt.createAt == 0)
+                    || ((m.createAt ?? 0) <= rcpt.createAt);
+
+                if (okToMark) {
+                  _messages[i] = m.copyWith(readStatus: 2); // 2=已讀 → 雙勾
+                }
+              }
+            });
+          });
+        },
+      );
     }
 
-    return Scaffold(
-      appBar: _buildAppBar(),
-      body: Column(
-        children: [
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _error != null
-                ? Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('載入失敗：$_error'),
-                  const SizedBox(height: 12),
-                  OutlinedButton(
-                    onPressed: _refreshHistory,
-                    child: const Text('重試'),
+    return WillPopScope(
+      onWillPop: _handleBack,
+      child: Scaffold(
+        appBar: _buildAppBar(),
+        body: Stack(
+          children: [
+            // 原本的整個 Column（不包含你那個 Positioned）
+            Column(
+              children: [
+                Expanded(
+                  child: _loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _error != null
+                      ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('載入失敗：$_error'),
+                        const SizedBox(height: 12),
+                        OutlinedButton(
+                          onPressed: _refreshHistory,
+                          child: const Text('重試'),
+                        ),
+                      ],
+                    ),
+                  )
+                      : _buildListView(),
+                ),
+                _buildInputBar(),
+                if (_showEmoji)
+                  SizedBox(
+                    height: 260,
+                    child: FutureBuilder<EmojiPack>(
+                      future: _emojiPackFut,
+                      builder: (context, snap) {
+                        if (snap.connectionState != ConnectionState.done || snap.data == null) {
+                          return const Center(child: CircularProgressIndicator());
+                        }
+                        return EmojiPickerPanel(
+                          pack: snap.data!,
+                          onSelected: (token) => _insertAtCursor(token),
+                        );
+                      },
+                    ),
                   ),
-                ],
-              ),
-            )
-                : _buildListView(),
-          ),
-          _buildInputBar(),
-          if (_showEmoji)
-            SizedBox(
-              height: 260,
-              child: FutureBuilder<EmojiPack>(
-                future: _emojiPackFut,
-                builder: (context, snap) {
-                  if (snap.connectionState != ConnectionState.done || snap.data == null) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  return EmojiPickerPanel(
-                    pack: snap.data!,
-                    onSelected: (token) => _insertAtCursor(token),
-                  );
-                },
-              ),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  switchInCurve: Curves.easeOut,
+                  switchOutCurve: Curves.easeIn,
+                  child: _shouldShowBottomActions(context)
+                      ? _buildBottomActions()
+                      : const SizedBox.shrink(),
+                ),
+              ],
             ),
 
-          _buildBottomActions(),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -757,21 +828,25 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
       title: Row(
         mainAxisSize: MainAxisSize.min,  // ✅ 讓 Title 寬度貼內容，方便置中
         children: [
-          Stack(
-            children: [
-              CircleAvatar(radius: 24, backgroundImage: _avatar()),
-              Positioned(
-                bottom: 0, right: 0,
-                child: Container(
-                  width: 12, height: 12,
-                  decoration: BoxDecoration(
-                    color: _getStatusColor(widget.statusText),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
+          InkWell(
+            borderRadius: BorderRadius.circular(24),
+            onTap: _openPartnerProfile,
+            child: Stack(
+              children: [
+                CircleAvatar(radius: 24, backgroundImage: _avatar()),
+                Positioned(
+                  bottom: 0, right: 0,
+                  child: Container(
+                    width: 12, height: 12,
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(widget.statusText),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           const SizedBox(width: 12),
           Column(
@@ -822,10 +897,15 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
       children: [
         // 對方頭像
         if (!isSelf)
-          CircleAvatar(
-            radius: 16,
-            backgroundImage: _avatar(),
+          InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: _openPartnerProfile,
+            child: CircleAvatar(
+              radius: 16,
+              backgroundImage: _avatar(),
+            ),
           ),
+
         if (!isSelf) const SizedBox(width: 8),
 
         // 訊息氣泡
@@ -836,9 +916,13 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
         if (isSelf) const SizedBox(width: 8),
 
         if (isSelf)
-          CircleAvatar(
-            radius: 16,
-            backgroundImage: user?.avatarImage ?? const AssetImage('assets/my_icon_defult.jpeg'),
+          InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: _openMyProfile,
+            child: CircleAvatar(
+              radius: 16,
+              backgroundImage: user?.avatarImage ?? const AssetImage('assets/my_icon_defult.jpeg'),
+            ),
           ),
       ],
     );
@@ -850,7 +934,6 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
         _toggleEmojiPanel();
       }},
       {'icon': 'assets/message_icon_2.svg', 'label': '通話', 'onTap': () {
-        final isBusy = widget.statusText == 3; // 頁面裡的 3=忙線中
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -858,14 +941,13 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
               broadcasterId: (widget.partnerUid ?? -1).toString(),
               broadcasterName: widget.partnerName,
               broadcasterImage: widget.partnerAvatar,
-              isBusy: isBusy,
-              isVideoCall: false, // ← 語音通話
+              isVideoCall: false,
+              calleeState: _mapStatusToCalleeState(widget.statusText),
             ),
           ),
         );
       }},
       {'icon': 'assets/message_icon_3.svg', 'label': '視頻', 'onTap': () {
-        final isBusy = widget.statusText == 3; // 頁面裡的 3=忙線中
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -873,15 +955,13 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
               broadcasterId: (widget.partnerUid ?? -1).toString(),
               broadcasterName: widget.partnerName,
               broadcasterImage: widget.partnerAvatar,
-              isBusy: isBusy,
               isVideoCall: true, // ← 視頻通話
+              calleeState: _mapStatusToCalleeState(widget.statusText),
             ),
           ),
         );
       }},
-      {'icon': 'assets/message_icon_4.svg', 'label': '禮物', 'onTap': () {
-        // TODO: 打開送禮面板
-      }},
+      {'icon': 'assets/message_icon_4.svg', 'label': '禮物', 'onTap': _openGiftSheet},
       {'icon': 'assets/message_icon_5.svg', 'label': '圖片', 'onTap': () async {
         await _pickAndSendImage();
       }},
@@ -928,6 +1008,18 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
         return _buildVoiceBubble(message);
       case ChatContentType.image:
         return _buildImageBubble(message);
+      case ChatContentType.gift:
+        final d = message.data ?? const {};
+        final title = (d['gift_title'] ?? message.text ?? '').toString();
+        final icon  = (d['gift_icon'] ?? '').toString();
+        final cnt   = (d['gift_count'] ?? d['count'] ?? 1);
+        final count = (cnt is num) ? cnt.toInt() : int.tryParse('$cnt') ?? 1;
+        return GiftBubble(
+          title: title,
+          count: count,
+          iconUrl: icon,
+          isSelf: message.type == MessageType.self,
+        );
       case ChatContentType.call:
         return _buildTextBubble('📞 ${message.text}');
       default:
@@ -999,6 +1091,129 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
           ),
         ),
       ),
+    );
+  }
+
+
+
+  Map<String, dynamic>? _decodeJsonMap(String? s) {
+    if (s == null || s.isEmpty) return null;
+    try {
+      final v = jsonDecode(s);
+      if (v is Map) {
+        return v.map((k, v) => MapEntry(k.toString(), v));
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Map<String, dynamic>? _parseGiftPayloadFromChatText(String? chatText) {
+    final inner = _decodeJsonMap(chatText);
+    final type = (inner?['type'] ?? inner?['t'])?.toString().toLowerCase();
+    if (type == 'gift') return inner;
+    return null;
+  }
+
+  String _fullUrl(String base, String p) {
+    if (p.isEmpty) return p;
+    if (p.startsWith('http')) return p;
+    if (base.isEmpty) return p;
+    return p.startsWith('/') ? '$base$p' : '$base/$p';
+  }
+
+  ChatMessage _fromApiMsg(
+      Map<String, dynamic> m, {
+        required int myUid,
+        required String cdnBase,
+        List<GiftItemModel> gifts = const [],
+      }) {
+    final senderUid  = (m['uid'] as num?)?.toInt() ?? -1;
+    final readStatus = _asInt(m['status']);
+    final rawContent = (m['content'] ?? '').toString();
+    final createAt   = _parseEpochSec(m['create_at']);
+
+    Map<String, dynamic>? c;
+    try {
+      final tmp = jsonDecode(rawContent);
+      if (tmp is Map) c = tmp.map((k, v) => MapEntry('$k', v));
+    } catch (_) {}
+
+    final voicePathRel = c?['voice_path']?.toString();
+    final chatText     = c?['chat_text']?.toString();
+    final duration     = int.parse(c?['duration'] ?? '0');
+    final imgPathRel   = (c?['img_path'] ?? c?['image_path'])?.toString();
+
+    // 圖片
+    if ((imgPathRel ?? '').isNotEmpty) {
+      final full = cu.joinCdn(cdnBase, imgPathRel!);
+      return ChatMessage(
+        type: senderUid == myUid ? MessageType.self : MessageType.other,
+        contentType: ChatContentType.image,
+        imagePath: full,
+        createAt: createAt,
+        sendState: senderUid == myUid ? SendState.sent : null, // ★
+        readStatus: readStatus, // ★
+      );
+    }
+
+    // 語音
+    if ((voicePathRel ?? '').isNotEmpty) {
+      final full = cu.joinCdn(cdnBase, voicePathRel!);
+      return ChatMessage(
+        type: senderUid == myUid ? MessageType.self : MessageType.other,
+        contentType: ChatContentType.voice,
+        audioPath: full,
+        duration: duration,
+        createAt: createAt,
+        sendState: senderUid == myUid ? SendState.sent : null, // ★
+        readStatus: readStatus, // ★
+      );
+    }
+
+    // ★ 禮物：chat_text 內藏 JSON
+    final gift = _parseGiftPayloadFromChatText(chatText);
+    if (gift != null) {
+      final id    = _asInt(gift['gift_id'] ?? gift['id']) ?? -1;
+      String title = (gift['gift_title'] ?? gift['title'] ?? '').toString();
+      String iconRel = (gift['gift_icon'] ?? gift['icon'] ?? '').toString();
+      final gold  = _asInt(gift['gift_gold'] ?? gift['gold']) ?? 0;
+      final count = _asInt(gift['gift_count'] ?? gift['count']) ?? 1;
+
+      // 若歷史訊息缺 icon/title，嘗試用目前禮物表補齊
+      if ((iconRel.isEmpty || title.isEmpty) && id >= 0) {
+        final match = gifts.where((g) => g.id == id).toList();
+        if (match.isNotEmpty) {
+          iconRel = iconRel.isEmpty ? match.first.icon : iconRel;
+          title   = title.isEmpty   ? match.first.title : title;
+        }
+      }
+
+      final iconFull = cu.joinCdn(cdnBase, iconRel); // 顯示用完整 URL
+      return ChatMessage(
+        type: senderUid == myUid ? MessageType.self : MessageType.other,
+        contentType: ChatContentType.gift,
+        text: title,
+        data: {
+          'gift_id'   : id,
+          'gift_title': title,
+          'gift_icon' : iconFull,
+          'gift_gold' : gold,
+          'gift_count': count,
+        },
+        createAt: createAt,
+        sendState: senderUid == myUid ? SendState.sent : null, // ★
+        readStatus: readStatus, // ★
+      );
+    }
+
+    // 普通文字
+    return ChatMessage(
+      type: senderUid == myUid ? MessageType.self : MessageType.other,
+      contentType: ChatContentType.text,
+      text: (chatText != null && chatText.isNotEmpty) ? chatText : rawContent,
+      createAt: createAt,
+      sendState: senderUid == myUid ? SendState.sent : null, // ★
+      readStatus: readStatus, // ★
     );
   }
 
@@ -1106,7 +1321,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [Colors.orange, Colors.purple]),
+                gradient: const LinearGradient(colors: [Color(0xFFFFB56B), Color(0xFFDF65F8)]),
                 borderRadius: BorderRadius.circular(24),
               ),
               child: const Text('發送', style: TextStyle(color: Colors.white)),
@@ -1118,32 +1333,26 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
   }
 
   Widget _tailStatus(ChatMessage m) {
-    switch (m.sendState) {
-      case SendState.sending:
-      // 傳送中 → 灰色單勾
-        return const Icon(
-          Icons.check,
-          size: 16,
-          color: Colors.grey,
-        );
-      case SendState.sent:
-      // 傳送成功 → 藍色單勾
-        return const Icon(
-          Icons.check,
-          size: 16,
-          color: Colors.blue,
-        );
-      case SendState.failed:
-      // 傳送失敗 → 紅色錯誤
-        return const Icon(
-          Icons.error,
-          size: 16,
-          color: Colors.red,
-        );
-      default:
-        return const SizedBox.shrink();
+    // 只展示自己的訊息
+    if (m.type != MessageType.self) return const SizedBox.shrink();
+
+    // 送出中 / 失敗優先判斷
+    if (m.sendState == SendState.sending) {
+      return const Icon(Icons.check, size: 16, color: Colors.grey);
+    }
+    if (m.sendState == SendState.failed) {
+      return const Icon(Icons.error, size: 16, color: Colors.red);
+    }
+
+    // 已送達（歷史訊息沒有 sendState 時也走這裡）
+    // readStatus: 1=未讀 → 單勾；2=已讀 → 雙勾
+    if (m.readStatus == 2) {
+      return const Icon(Icons.done_all, size: 16, color: Colors.blue); // ★ 已讀
+    } else {
+      return const Icon(Icons.check, size: 16, color: Colors.blue);    // ★ 未讀/未知
     }
   }
+
 
   void _toggleEmojiPanel() {
     FocusScope.of(context).unfocus();
@@ -1152,11 +1361,6 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
   }
 
   Future<void> _pickAndSendImage() async {
-    // 次數限制
-    if (_sendCount >= 10) {
-      _showLimitDialog();
-      return;
-    }
 
     // 1) 選圖
     final picker = ImagePicker();
@@ -1189,7 +1393,6 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
           sendState: SendState.failed,
           createAt: cu.nowSec(),
         ));
-        _sendCount++;
       });
       _scrollToBottom();
       return;
@@ -1210,7 +1413,6 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
     );
     setState(() {
       _messages.add(optimistic);
-      _sendCount++;
     });
     _scrollToBottom();
 
@@ -1223,7 +1425,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
       final full = cu.joinCdn(user?.cdnUrl, rel);        // UI 播放用完整 URL
 
       // 6) 發送圖片訊息（傳相對路徑）
-      final ok = await chatRepo.sendImage(
+      final SendResult res = await chatRepo.sendImage(
         uuid: uuid,
         toUid: toUid,
         imagePath: rel,
@@ -1232,12 +1434,16 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
       );
 
       if (!mounted) return;
+
+      // 若超上限 → 撤回樂觀訊息 + 彈窗
+      if (_handleQuotaAndMaybeRollback(res, uuid: uuid)) return;
+
       setState(() {
         final i = _messages.indexWhere((m) => m.uuid == uuid);
         if (i >= 0) {
           _messages[i] = _messages[i].copyWith(
-            sendState: ok ? SendState.sent : SendState.failed,
-            imagePath: ok ? full : file.path, // 成功→CDN，失敗→留本地
+            sendState: res.ok ? SendState.sent : SendState.failed,
+            imagePath: res.ok ? full : file.path,
           );
         }
       });
@@ -1255,6 +1461,101 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
     }
   }
 
+  void _insertGiftOverlay() {
+    if (_giftEntry != null) return;
+    _giftEntry = OverlayEntry(
+      builder: (_) => Positioned.fill(
+        child: IgnorePointer(
+          ignoring: true,
+          child: Center(child: SVGAImage(_svgaCtrl)),
+        ),
+      ),
+    );
+    Overlay.of(context, rootOverlay: true)!.insert(_giftEntry!);
+  }
+
+  void _removeGiftOverlay() {
+    _giftEntry?.remove();
+    _giftEntry = null;
+  }
+
+  // 播放一次 SVGA，播完自動隱藏
+  Future<void> _playGiftEffect(String url) async {
+    if (!mounted || url.isEmpty) { _onGiftDone(); return; }
+    if (!url.toLowerCase().endsWith('.svga')) { _onGiftDone(); return; }
+
+    try {
+      // 保險：開始前先清一次（避免上次殘留）
+      _removeGiftOverlay();
+
+      final resp = await http.get(Uri.parse(url));
+      if (resp.statusCode != 200 || resp.bodyBytes.isEmpty) {
+        throw 'http ${resp.statusCode}';
+      }
+      final item = await SVGAParser.shared.decodeFromBuffer(resp.bodyBytes);
+
+      _svgaCtrl.videoItem = item;
+      _insertGiftOverlay();
+
+      // 3s 保底，避免沒有完成事件而卡住
+      _giftFallbackTimer?.cancel();
+      _giftFallbackTimer = Timer(const Duration(seconds: 3), () {
+        try { _svgaCtrl.stop(); _svgaCtrl.videoItem = null; } catch (_) {}
+        _removeGiftOverlay();
+        _onGiftDone();
+      });
+
+      void onStatus(AnimationStatus s) {
+        if (s == AnimationStatus.completed || s == AnimationStatus.dismissed) {
+          _svgaCtrl.removeStatusListener(onStatus);
+          _giftFallbackTimer?.cancel();
+          _giftFallbackTimer = null;
+
+          try { _svgaCtrl.stop(); _svgaCtrl.videoItem = null; } catch (_) {}
+          _removeGiftOverlay();
+          _onGiftDone();
+        }
+      }
+
+      _svgaCtrl.addStatusListener(onStatus);
+      _svgaCtrl
+        ..reset()
+        ..forward(); // 播一次
+    } catch (e) {
+      debugPrint('SVGA play error: $e');
+      _removeGiftOverlay();
+      _onGiftDone(); // 失敗也讓隊列繼續
+    }
+  }
+
+  // 從 ChatMessage 嘗試取得 SVGA url（ws/歷史皆可）
+  void _tryPlayGiftFromMessage(ChatMessage msg) {
+    if (msg.contentType != ChatContentType.gift) return;
+
+    // 1) 直接拿 data.gift_url（若後端有帶）
+    String url = (msg.data?['gift_url'] ?? '').toString();
+
+    // 2) 沒帶就用 id 對照本地禮物清單
+    if (url.isEmpty) {
+      final id = (msg.data?['gift_id'] ?? msg.data?['id']);
+      final giftId = (id is num) ? id.toInt() : int.tryParse('$id');
+      if (giftId != null) {
+        final gifts = ref.read(giftListProvider).maybeWhen(
+          data: (v) => v,
+          orElse: () => const <GiftItemModel>[],
+        );
+        for (final g in gifts) {
+          if (g.id == giftId && g.url.isNotEmpty) {
+            url = cu.joinCdn(ref.read(userProfileProvider)?.cdnUrl, g.url);
+            break;
+          }
+        }
+      }
+    }
+
+    if (url.isNotEmpty) _enqueueGift(url);
+  }
+
   void _insertAtCursor(String s) {
     final sel = _textController.selection;
     final text = _textController.text;
@@ -1268,6 +1569,112 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
     _textController.selection = TextSelection.collapsed(offset: sel.start + s.length);
   }
 
+  void _openGiftSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: false,
+      backgroundColor: Colors.transparent,
+      builder: (_) {
+        return GiftBottomSheet(
+          onSelected: (gift) async {
+            final user = ref.read(userProfileProvider);
+            final myUid = int.tryParse(user?.uid ?? '0')!;
+            final toUid = widget.partnerUid ?? 0;
+            final uuid = cu.genUuid(myUid);
+
+            // ★ 先播本地特效（相對路徑→完整 URL）
+            final effectUrl = cu.joinCdn(user?.cdnUrl, gift.url);
+            _enqueueGift(effectUrl);
+
+            // payload（後端扣款/留存）
+            final payload = jsonEncode({
+              'type': 'gift',
+              'gift_id': gift.id,
+              'gift_title': gift.title,
+              'gift_gold': gift.gold,
+              'gift_icon': gift.icon, // 相對路徑
+              'count': 1,
+              // 可選：也把 gift_url 帶給對端，方便它端解析
+              'gift_url': gift.url,
+            });
+
+            // 樂觀 UI（略，同你原有）
+            final iconFull = cu.joinCdn(user?.cdnUrl, gift.icon);
+            final optimistic = ChatMessage(
+              type: MessageType.self,
+              contentType: ChatContentType.gift,
+              text: gift.title,
+              uuid: uuid,
+              flag: 'chat_gift',
+              toUid: toUid,
+              data: {
+                'gift_id': gift.id,
+                'gift_title': gift.title,
+                'gift_icon': iconFull,
+                'gift_gold': gift.gold,
+                'gift_count': 1,
+                'gift_url': gift.url, // ★ 帶上，若 ws 會 echo 也更好解析
+              },
+              sendState: SendState.sending,
+              createAt: cu.nowSec(),
+            );
+            setState(() => _messages.add(optimistic));
+            _scrollToBottom();
+
+            final sendResult = await ref.read(chatRepositoryProvider).sendText(
+              uuid: uuid,
+              toUid: toUid,
+              text: payload,
+              flag: 'chat_gift',
+            );
+
+            if (!mounted) return sendResult.ok;
+            final i = _messages.indexWhere((m) => m.uuid == uuid);
+            if (i >= 0) {
+              setState(() {
+                _messages[i] = _messages[i].copyWith(
+                  sendState: sendResult.ok ? SendState.sent : SendState.failed,
+                );
+              });
+            }
+            return sendResult.ok;
+          },
+        );
+      },
+    );
+  }
+
+  void _enqueueGift(String url, {int? giftId}) {
+    if (url.isEmpty) return;
+    _giftQueue.add(GiftTask(url, giftId: giftId));
+    _tryStartGiftPlayback();
+  }
+
+  void _tryStartGiftPlayback() {
+    if (_isPlayingGift || _giftQueue.isEmpty) return;
+    final task = _giftQueue.removeFirst();
+    _isPlayingGift = true;
+    _playGiftEffect(task.url); // 播放完成/逾時會自動接下一個（見下方改造）
+  }
+
+  void _onGiftDone() {
+    _giftFallbackTimer?.cancel();
+    _giftFallbackTimer = null;
+    _isPlayingGift = false;
+    // 小間隔 0.5s 再播下一個，避免銜接太急
+    Future.delayed(const Duration(milliseconds: 500), _tryStartGiftPlayback);
+  }
+
+  Future<bool> _handleBack() async {
+    if (_showEmoji) {
+      setState(() => _showEmoji = false);
+      FocusScope.of(context).unfocus();
+      _scrollToBottom();
+      return false; // 攔截返回：只關面板
+    }
+    return true; // 沒有面板 → 允許返回
+  }
+
   ImageProvider _avatar() {
     if (widget.partnerAvatar.startsWith('http')) {
       return NetworkImage(widget.partnerAvatar);
@@ -1277,17 +1684,38 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> {
 
   String get _presenceLabel {
     final s = widget.statusText;
+    if (s == 0) return '離線';
     if (s == 1 || s == 2) return '當前在線';
-    if (s == 3) return '忙線中';
+    if (s == 3 || s == 4 || s == 5) return '忙線中';
     return '離線';
+  }
+
+  void _openPartnerProfile() {
+    final uid = widget.partnerUid;
+    if (uid == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => ViewProfilePage(userId: uid)),
+    );
+  }
+
+  void _openMyProfile() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const EditMinePage()),
+    );
   }
 
   Color _getStatusColor(int index) {
     switch (index) {
+      case 0:
+        return Colors.grey; // 離線
       case 1:
       case 2:
         return Colors.green; // 上線
       case 3:
+      case 4:
+      case 5:
         return Colors.orange; // 忙碌
       default:
         return Colors.grey; // 離線

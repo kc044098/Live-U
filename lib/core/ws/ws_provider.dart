@@ -1,6 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../config/providers/app_config_provider.dart';
 import '../../data/locale_provider.dart';
 import '../../features/profile/profile_controller.dart';
 import '../ws/ws_service.dart';
@@ -14,6 +15,7 @@ final wsProvider = Provider<WsService>((ref) {
 
   Map<String, String> _lastHeaders = const {};
   DateTime _lastEnsureAt = DateTime.fromMillisecondsSinceEpoch(0);
+  Timer? _watchdog; // ← 新增：定時器
 
   bool _mapEquals(Map a, Map b) {
     if (a.length != b.length) return false;
@@ -23,14 +25,14 @@ final wsProvider = Provider<WsService>((ref) {
     return true;
   }
 
+  bool _hasAuth(Map<String, String> h) =>
+      (h['Token']?.isNotEmpty ?? false) && (h['X-UID']?.isNotEmpty ?? false);
+
   void ensureConnectedThrottled() {
     final now = DateTime.now();
-    if (now.difference(_lastEnsureAt).inMilliseconds < 1500) {
-      // 1.5 秒內不要重複要求重連
-      return;
-    }
+    if (now.difference(_lastEnsureAt).inMilliseconds < 1500) return;
     _lastEnsureAt = now;
-    s.ensureConnected(); // ⚠️ 確保 WsService 內部是冪等：OPEN/CONNECTING 直接 return
+    s.ensureConnected(); // 已連線 / 連線中 會直接 return
   }
 
   void updateHeadersIfChanged() {
@@ -48,20 +50,48 @@ final wsProvider = Provider<WsService>((ref) {
     if (!_mapEquals(headers, _lastHeaders)) {
       _lastHeaders = Map.unmodifiable(headers);
       debugPrint('[WS-PROVIDER] headers changed -> $headers');
-      s.updateHeaders(headers); // ⚠️ 確保這裡不要「無條件重連」，只更新內部狀態
+      s.updateHeaders(headers);
       ensureConnectedThrottled();
-    } else {
-      // 不變就什麼都不做，避免無意義重連
     }
   }
 
-  // 初始
+  // 1) 初始
   updateHeadersIfChanged();
 
-  // 僅當「相關值真的改變」時才動作
+  // 2) 監聽 auth/語系改變
   ref.listen(userProfileProvider, (prev, next) => updateHeadersIfChanged());
   ref.listen(localeProvider,      (prev, next) => updateHeadersIfChanged());
 
-  ref.onDispose(() => s.close());
+  // 3) 新增：每 30 秒做健康檢查（有憑證才檢查）
+  void _startWatchdog() {
+    _watchdog?.cancel();
+    _watchdog = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!_hasAuth(_lastHeaders)) {
+        debugPrint('[WS-PROVIDER][watchdog] not Auth. Token:${_lastHeaders['Token']}, X-UID:${_lastHeaders['X-UID']}.');
+        return;
+      }
+
+      // 1) 若已連上但超過 65s 沒有任何接收，判定為 zombie，先關再重連
+      final idle = s.idleFor;
+      if (s.status == WsStatus.connected && idle > const Duration(seconds: 65)) {
+        debugPrint('[WS-PROVIDER][watchdog] zombie (idle=${idle.inSeconds}s) -> forceReconnect');
+        s.forceReconnect('watchdog idle');
+        return;
+      }
+
+      // 2) 沒連上才去 ensureConnected（節流已內建）
+      if (s.status != WsStatus.connected) {
+        debugPrint('[WS-PROVIDER][watchdog] status=${s.status} -> ensureConnected()');
+        ensureConnectedThrottled();
+      }
+    });
+  }
+  _startWatchdog();
+
+  ref.onDispose(() {
+    _watchdog?.cancel();
+    s.close();
+  });
+
   return s;
 });

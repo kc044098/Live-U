@@ -1,48 +1,75 @@
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 
 /// 全局可呼叫：把任意 child 以小窗方式插入到 App root overlay。
-/// 全局：App 內懸浮視窗（不依賴系統 PiP）
 class CallOverlay {
   static OverlayEntry? _entry;
-
   static bool get isShowing => _entry != null;
 
-  static void show({
-    GlobalKey<NavigatorState>? navigatorKey, // ★ 用這個
+  // Android 通道
+  static const MethodChannel _pip = MethodChannel('pip');
+
+  static Future<void> _armPip({required bool enable, Rect? rect}) async {
+    if (!Platform.isAndroid) return;
+    try {
+      final args = <String, dynamic>{
+        'enable': enable,
+        'w': 9,         // 9:16 比例
+        'h': 16,
+        if (rect != null) 'left':  rect.left.toInt(),
+        if (rect != null) 'top':   rect.top.toInt(),
+        if (rect != null) 'width': rect.width.toInt(),
+        if (rect != null) 'height':rect.height.toInt(),
+      };
+      await _pip.invokeMethod('armAutoPip', args);
+    } catch (e) {
+      debugPrint('[CallOverlay] armAutoPip error: $e');
+    }
+  }
+
+  /// 提供給子元件（小窗）呼叫，更新 SourceRectHint
+  static Future<void> updatePipRect(Rect rect) => _armPip(enable: true, rect: rect);
+
+  static Future<void> show({
+    GlobalKey<NavigatorState>? navigatorKey,
     required Widget child,
-  }) {
+  }) async {
     if (_entry != null) {
       debugPrint('[CallOverlay] already showing, skip.');
       return;
     }
 
+    // 先建立 overlay
     _entry = OverlayEntry(builder: (_) => _MiniCallDraggable(child: child));
 
-    // 1) 優先 navigatorKey
-    OverlayState? overlay = navigatorKey?.currentState?.overlay;
-
+    final overlay = navigatorKey?.currentState?.overlay;
     if (overlay == null) {
-      debugPrint('[CallOverlay] ❌ No Overlay found. '
-          'Provide navigatorKey or rootContext of the root navigator.');
+      debugPrint('[CallOverlay] ❌ No Overlay found. Provide a root navigatorKey.');
       _entry = null;
       return;
     }
 
     overlay.insert(_entry!);
     debugPrint('[CallOverlay] ✅ inserted on root overlay');
+
+    // ★ 關鍵：小窗顯示 → 只在這時把 autoPiP 打開（先不帶 rect，稍後由子元件補上）
+    await _armPip(enable: true);
   }
 
-  static void hide() {
+  static Future<void> hide() async {
     if (_entry == null) return;
     _entry!.remove();
     _entry = null;
     debugPrint('[CallOverlay] removed');
+
+    // ★ 小窗關閉 → 關閉 autoPiP（之後按 Home/Overview 就不會進系統 PiP）
+    await _armPip(enable: false);
   }
 }
-
 
 class _MiniCallDraggable extends StatefulWidget {
   const _MiniCallDraggable({required this.child});
@@ -53,11 +80,31 @@ class _MiniCallDraggable extends StatefulWidget {
 }
 
 class _MiniCallDraggableState extends State<_MiniCallDraggable> {
+  final GlobalKey _boxKey = GlobalKey();
   Offset pos = const Offset(16, 120);
+
+  @override
+  void initState() {
+    super.initState();
+    // 初次插入一幀後回報位置給原生作為 SourceRectHint
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncPipRect());
+  }
+
+  void _syncPipRect() {
+    final renderObj = _boxKey.currentContext?.findRenderObject();
+    if (renderObj is RenderBox && renderObj.hasSize) {
+      final topLeft = renderObj.localToGlobal(Offset.zero);
+      final size = renderObj.size;
+      CallOverlay.updatePipRect(
+        Rect.fromLTWH(topLeft.dx, topLeft.dy, size.width, size.height),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
+
     return Positioned(
       left: pos.dx,
       top: pos.dy,
@@ -73,6 +120,8 @@ class _MiniCallDraggableState extends State<_MiniCallDraggable> {
               p.dy.clamp(8, size.height - h - 8),
             );
           });
+          // 拖曳結束 → 更新 PiP hintRect
+          _syncPipRect();
         },
         child: _miniBox(widget.child),
       ),
@@ -85,6 +134,7 @@ class _MiniCallDraggableState extends State<_MiniCallDraggable> {
     borderRadius: BorderRadius.circular(12),
     clipBehavior: Clip.antiAlias,
     child: Container(
+      key: _boxKey, // ★ 用來量測位置/尺寸
       width: 160,
       height: 220,
       decoration: BoxDecoration(

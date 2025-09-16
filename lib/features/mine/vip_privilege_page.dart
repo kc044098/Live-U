@@ -2,9 +2,11 @@ import 'package:djs_live_stream/features/mine/user_repository_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 
 import '../profile/profile_controller.dart';
 import '../wallet/payment_method_page.dart';
+import '../wallet/wallet_repository.dart';
 import 'model/vip_plan.dart';
 
 class VipPrivilegePage extends ConsumerStatefulWidget {
@@ -20,6 +22,7 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
   bool _loading = true;
   String? _error;
   int _bestIndex = 0; // 標示「最佳選擇」
+  bool _buying = false;
 
   @override
   void initState() {
@@ -81,6 +84,7 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(userProfileProvider);
+    final vipActive = user?.isVipEffective == true;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -193,94 +197,116 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                       const SizedBox(height: 16),
 
                       // 🟣 方案卡片（可橫向捲動；每個 item 最小間距 10）
-                      SizedBox(
-                        height: 146, // 卡片120 + 上方徽標空間6 + 一點餘裕
-                        child: ListView.separated(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          scrollDirection: Axis.horizontal,
-                          physics: const BouncingScrollPhysics(),
-                          itemCount: _plans.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 10), // 最小水平間隔 10
-                          itemBuilder: (context, index) {
-                            final p = _plans[index];
-                            final selected = selectedIndex == index;
+                      if (!vipActive) ...[
+                        SizedBox(
+                          height: 146, // 卡片120 + 上方徽標空間6 + 一點餘裕
+                          child: ListView.separated(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            scrollDirection: Axis.horizontal,
+                            physics: const BouncingScrollPhysics(),
+                            itemCount: _plans.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(width: 10),
+                            // 最小水平間隔 10
+                            itemBuilder: (context, index) {
+                              final p = _plans[index];
+                              final selected = selectedIndex == index;
 
-                            return GestureDetector(
-                              onTap: () => setState(() => selectedIndex = index),
-                              child: SizedBox(
-                                width: 115,
-                                child: Stack(
-                                  children: [
-                                    // 把卡片整體往下 6px，留出徽標空間
-                                    Positioned(
-                                      top: 6,
-                                      left: 0,
-                                      right: 0,
-                                      child: Container(
-                                        height: 120,
-                                        padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
-                                        decoration: BoxDecoration(
-                                          color: selected ? const Color(0xFFFFF5F5) : Colors.white,
-                                          border: Border.all(
-                                            color: selected ? Colors.red : const Color(0xFFE0E0E0),
-                                            width: selected ? 2 : 1,
+                              return GestureDetector(
+                                onTap: () =>
+                                    setState(() => selectedIndex = index),
+                                child: SizedBox(
+                                  width: 115,
+                                  child: Stack(
+                                    children: [
+                                      // 把卡片整體往下 6px，留出徽標空間
+                                      Positioned(
+                                        top: 6,
+                                        left: 0,
+                                        right: 0,
+                                        child: Container(
+                                          height: 120,
+                                          padding: const EdgeInsets.fromLTRB(
+                                              12, 6, 12, 6),
+                                          decoration: BoxDecoration(
+                                            color: selected
+                                                ? const Color(0xFFFFF5F5)
+                                                : Colors.white,
+                                            border: Border.all(
+                                              color: selected
+                                                  ? Colors.red
+                                                  : const Color(0xFFE0E0E0),
+                                              width: selected ? 2 : 1,
+                                            ),
+                                            borderRadius:
+                                                BorderRadius.circular(16),
                                           ),
-                                          borderRadius: BorderRadius.circular(16),
-                                        ),
-                                        child: Column(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: [
-                                            Text(p.title,
-                                                style: const TextStyle(
-                                                    fontSize: 16, fontWeight: FontWeight.bold)),
-                                            const SizedBox(height: 4),
-                                            Text(_fmtMoney(p.payPrice),
-                                                style: const TextStyle(fontSize: 16, color: Colors.black)),
-                                            const SizedBox(height: 4),
-                                            Text('原价 ${_fmtMoney(p.price)}',
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                  color: Colors.grey,
-                                                  decoration: TextDecoration.lineThrough,
-                                                )),
-                                            const SizedBox(height: 4),
-                                            Text(_fmtPerMonth(p),
-                                                style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                                          ],
+                                          child: Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              Text(p.title,
+                                                  style: const TextStyle(
+                                                      fontSize: 16,
+                                                      fontWeight:
+                                                          FontWeight.bold)),
+                                              const SizedBox(height: 4),
+                                              Text(_fmtMoney(p.payPrice),
+                                                  style: const TextStyle(
+                                                      fontSize: 16,
+                                                      color: Colors.black)),
+                                              const SizedBox(height: 4),
+                                              Text('原价 ${_fmtMoney(p.price)}',
+                                                  style: const TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.grey,
+                                                    decoration: TextDecoration
+                                                        .lineThrough,
+                                                  )),
+                                              const SizedBox(height: 4),
+                                              Text(_fmtPerMonth(p),
+                                                  style: const TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.grey)),
+                                            ],
+                                          ),
                                         ),
                                       ),
-                                    ),
 
-                                    // 徽標放在 top: 0（不再使用負位移）
-                                    if (index == _bestIndex)
-                                      Positioned(
-                                        top: 0,
-                                        left: 0,
-                                        child: Container(
-                                          width: 60,
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                          decoration: const BoxDecoration(
-                                            color: Color(0xFFFF4D67),
-                                            borderRadius: BorderRadius.only(
-                                              topRight: Radius.circular(8),
-                                              topLeft: Radius.circular(8),
-                                              bottomRight: Radius.circular(8),
+                                      // 徽標放在 top: 0（不再使用負位移）
+                                      if (index == _bestIndex)
+                                        Positioned(
+                                          top: 0,
+                                          left: 0,
+                                          child: Container(
+                                            width: 60,
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 8, vertical: 2),
+                                            decoration: const BoxDecoration(
+                                              color: Color(0xFFFF4D67),
+                                              borderRadius: BorderRadius.only(
+                                                topRight: Radius.circular(8),
+                                                topLeft: Radius.circular(8),
+                                                bottomRight: Radius.circular(8),
+                                              ),
+                                            ),
+                                            child: const Text(
+                                              '最佳选择',
+                                              style: TextStyle(
+                                                  fontSize: 10,
+                                                  color: Colors.white),
                                             ),
                                           ),
-                                          child: const Text(
-                                            '最佳选择',
-                                            style: TextStyle(fontSize: 10, color: Colors.white),
-                                          ),
                                         ),
-                                      ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
+                              );
+                            },
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 16),
+                        const SizedBox(height: 16),
+                      ],
                       // 🟣 專屬特權清單（不變）
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -374,27 +400,51 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                       const SizedBox(height: 20),
 
                       // 🟣 購買按鈕（用動態方案）
-                      if (user?.isVip == false && _plans.isNotEmpty)
+                      if (!vipActive && _plans.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 24),
                           child: SizedBox(
                             width: double.infinity,
                             height: 50,
                             child: ElevatedButton(
-                              onPressed: () {
-                                final sel = _plans[selectedIndex];
-                                final amount = sel.payPrice;
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        PaymentMethodPage(amount: amount),
-                                  ),
-                                );
-                                // TODO: 實付成功後再更新 VIP 狀態；此處僅示意
-                                user?.isVip = true;
-                                setState(() {});
-                              },
+                              onPressed: _buying
+                                  ? null
+                                  : () async {
+                                      final sel = _plans[selectedIndex];
+
+                                      setState(() => _buying = true);
+                                      try {
+                                        await ref
+                                            .read(userRepositoryProvider)
+                                            .buyVip(id: sel.id);
+
+                                        Fluttertoast.showToast(msg: '開通成功');
+
+                                        // 刷新使用者/錢包，更新 vip 到期時間
+                                        final repo =
+                                            ref.read(walletRepositoryProvider);
+                                        final (gold, vipExpire) =
+                                            await repo.fetchMoneyCash();
+
+                                        final user =
+                                            ref.read(userProfileProvider);
+                                        if (user != null) {
+                                          ref
+                                                  .read(userProfileProvider
+                                                      .notifier)
+                                                  .state =
+                                              user.copyWith(
+                                                  gold: gold,
+                                                  vipExpire: vipExpire);
+                                        }
+                                        setState(() {}); // 讓畫面上的「暫未開通」等依綁定狀態刷新
+                                      } catch (e) {
+                                        Fluttertoast.showToast(msg: '開通失敗：$e');
+                                      } finally {
+                                        if (mounted)
+                                          setState(() => _buying = false);
+                                      }
+                                    },
                               style: ElevatedButton.styleFrom(
                                 elevation: 0,
                                 shape: RoundedRectangleBorder(

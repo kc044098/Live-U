@@ -21,21 +21,28 @@ import 'call_repository.dart';
 
 import 'package:flutter_svg/flutter_svg.dart';
 
+enum CalleeState { online, busy, offline }
+
 class CallRequestPage extends ConsumerStatefulWidget {
-  final String broadcasterId;     // 對方 uid（顯示用）
+  final String broadcasterId;
   final String broadcasterName;
   final String broadcasterImage;
-  final bool isBusy;
   final bool isVideoCall;
+
+  /// 新增：對方狀態（預設 online）
+  final CalleeState calleeState;
 
   const CallRequestPage({
     super.key,
     required this.broadcasterId,
     required this.broadcasterName,
     required this.broadcasterImage,
-    this.isBusy = false,
     this.isVideoCall = true,
-  });
+
+    // ✅ 向下相容：若舊程式仍傳 isBusy，會自動轉成 busy，否則 online
+    CalleeState? calleeState,
+    @Deprecated('Use calleeState instead') bool? isBusy,
+  }) : calleeState = calleeState ?? (isBusy == true ? CalleeState.busy : CalleeState.online);
 
   @override
   ConsumerState<CallRequestPage> createState() => _CallRequestPageState();
@@ -58,6 +65,7 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
   bool _finished = false;
   bool _cancelled = false;
   bool _sentCancel = false;
+  int _freeAtSec = 0;
 
   static const String _kToastTimeout = '電話撥打超時，對方無回應';
 
@@ -69,15 +77,25 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    if (widget.isBusy) {
-      // ✅ 忙碌：不真正撥號、不播原鈴聲
-      _playUnavailableTone();
-      _startTimeout(); // 30 秒自動關閉
-    } else {
-      // ✅ 原本撥號流程（撥號 API、播放一般鈴聲、等待對方接聽…）
-      _playRingtone();
-      _initiateCall();
-      _listenSignaling();
+    switch (widget.calleeState) {
+      case CalleeState.busy:
+      // 忙線：不真正撥號、不聽 WS，播忙音，N 秒自動關閉
+        _playUnavailableTone();
+        _startTimeout(toast: '對方忙線中');
+        break;
+
+      case CalleeState.offline:
+      // 離線：不真正撥號、不聽 WS，播同一段提示音或靜音，短一點自動關閉
+        _playUnavailableTone(); // 想靜音就註解掉這行
+        _startTimeout(toast: '對方不在線');
+        break;
+
+      case CalleeState.online:
+      // 在線：照舊流程
+        _playRingtone();
+        _initiateCall();
+        _listenSignaling();
+        break;
     }
   }
 
@@ -121,7 +139,7 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
               broadcasterId: widget.broadcasterId,
               broadcasterName: widget.broadcasterName,
               broadcasterImage: widget.broadcasterImage,
-              isBusy: widget.isBusy,
+              calleeState: widget.calleeState,
               isVideoCall: widget.isVideoCall,
             )),
           );
@@ -165,8 +183,17 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
       _callerUid   = (data['from_uid'] as num?)?.toInt() ?? (data['uid'] as num?)?.toInt();
       _calleeUid   = (data['to_uid'] as num?)?.toInt();
 
-      if (_channelId == null || _channelId!.isEmpty || _callerToken == null || _callerToken!.isEmpty) {
-        throw '呼叫返回缺少必要欄位(channel/token)';
+      final fa = data['free_at'];
+      _freeAtSec = (fa is num) ? fa.toInt() : int.tryParse(fa?.toString() ?? '') ?? 0;
+
+      if (_channelId == null) {
+        throw '電話撥打失敗 _channelId == null';
+      } else if (_channelId!.isEmpty) {
+        throw '電話撥打失敗 _callerToken!.isEmpty';
+      } else if (_callerToken == null) {
+        throw '電話撥打失敗 _channelId == null';
+      } else if (_callerToken!.isEmpty) {
+        throw '電話撥打失敗 _callerToken!.isEmpty';
       }
 
       _startTimeout();
@@ -236,6 +263,7 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
           'remoteUid'    : _calleeUid,
           'callFlag'     : callFlag,               // 1=video, 2=voice
           'peerAvatar'   : widget.broadcasterImage,
+          'free_at'      : _freeAtSec,
         },
       );
     }
@@ -261,11 +289,11 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
     }));
   }
 
-  void _startTimeout() {
+  void _startTimeout({ String? toast}) {
     _timeoutTimer?.cancel();
-    _timeoutTimer = Timer(const Duration(seconds: 30), () async {
+    _timeoutTimer = Timer(Duration(seconds: 30), () async {
       if (_cancelled) return;
-      await _endWithToast(_kToastTimeout);
+      await _endWithToast(toast ?? _kToastTimeout);
     });
   }
 
@@ -323,12 +351,29 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
     // 先關掉小窗（若有）
     if (CallOverlay.isShowing) {
       CallOverlay.hide();
-      // 等一幀防止 overlay 殘影
+      // 等一幀避免 overlay 殘影
       await Future<void>.delayed(const Duration(milliseconds: 1));
     }
-    // 用 root navigator 清空堆疊回首頁
+
+    // 回到上一頁（使用 root navigator）
     final nav = Navigator.of(_rootCtx);
-    nav.pushNamedAndRemoveUntil(AppRoutes.home, (route) => false);
+
+    // 盡量 pop 當前頁面；沒有上一頁時 maybePop 也不會崩
+    if (nav.canPop()) {
+      nav.pop();
+    } else {
+      await nav.maybePop();
+      // 如果你想在「真的沒有上一頁」時保底回首頁，再解開下一行：
+      // nav.pushNamedAndRemoveUntil(AppRoutes.home, (route) => false);
+    }
+  }
+
+  String _statusTextFor(CalleeState s) {
+    switch (s) {
+      case CalleeState.busy:    return '對方忙線中！';
+      case CalleeState.offline: return '對方不在線';
+      case CalleeState.online:  return '正在接通中...';
+    }
   }
 
   @override
@@ -363,7 +408,7 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
                       ),
                       const SizedBox(height: 24),
                       Text(
-                        widget.isBusy ? '对方忙线中！' : '正在接通中...',
+                        _statusTextFor(widget.calleeState),
                         style: const TextStyle(fontSize: 18, color: Colors.white),
                       ),
                       const SizedBox(height: 240),

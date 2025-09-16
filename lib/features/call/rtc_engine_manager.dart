@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+
 class RtcEngineManager {
   static final RtcEngineManager _i = RtcEngineManager._();
   RtcEngineManager._();
@@ -39,6 +40,7 @@ class RtcEngineManager {
     }
     return _engine;
   }
+
 
   Future<void> init({
     required String appId,
@@ -188,4 +190,6 @@ class RtcEngineManager {
     if (!(await f.exists())) await f.create(recursive: true);
     return path;
   }
+
+
 }

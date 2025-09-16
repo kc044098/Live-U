@@ -185,31 +185,53 @@ class WsService {
             try { t(raw); } catch (_) {}
           }
 
-          // 可視化 raw
-          if (raw is String) {
-            debugPrint('[WS] <= (text) ${raw.length} chars');
-          } else if (raw is List<int>) {
-            debugPrint('[WS] <= (binary) ${raw.length} bytes');
-          } else {
-            debugPrint('[WS] <= (unknown) ${raw.runtimeType}');
-          }
-
           // 轉成文字以便 JSON 解析
           final text = raw is String ? raw : (raw is List<int> ? utf8.decode(raw) : null);
           if (text == null) { debugPrint('[WS] skip non-text frame'); return; }
 
-          // 解析 JSON
+          String _clip(String s, {int max = 4000}) =>
+              (s.length <= max) ? s : (s.substring(0, max) + '… <truncated ${s.length - max} chars>');
+
           Map<String, dynamic>? data;
           try {
             final obj = jsonDecode(text);
+
             if (obj is Map) {
               data = obj.map((k, v) => MapEntry(k.toString(), v));
+            } else if (obj is List) {
+              // ✅ 詳細列印：是清單時把整個清單漂亮印出
+              debugPrint('[WS] JSON list (${obj.length} items):\n'
+                  '${const JsonEncoder.withIndent("  ").convert(obj)}');
+
+              // （可選）若清單元素是 Map，逐一派發
+              for (final e in obj) {
+                if (e is Map) {
+                  final m = e.map((k, v) => MapEntry(k.toString(), v));
+                  // 與下方 Map 流程相同的派發 + 日誌
+                  final typeStr = _mapType(m['type'] ?? m['flag']);
+                  debugPrint('[WS] dispatch type(list-item)=$typeStr');
+                  for (final h in _anyHandlers.values.toList()) {
+                    try { h({'__type__': typeStr, ...m}); } catch (_) {}
+                  }
+                  _dispatch(typeStr, m);
+                  if (typeStr == 'call') {
+                    final derived = _mapCallStateToEventDynamic(m['status'] ?? m['data']?['status']) ?? 'invite';
+                    for (final h in _anyHandlers.values.toList()) {
+                      try { h({'__type__': 'call.$derived', ...m}); } catch (_) {}
+                    }
+                    _dispatch('call.$derived', m);
+                  }
+                }
+              }
+              return; // 清單已處理完
             } else {
-              debugPrint('[WS] not a JSON map, ignore');
+              // ✅ 詳細列印：是單值（字串/數字/bool/null）就直接印值與原始 text
+              debugPrint('[WS] JSON value (type=${obj.runtimeType}): $obj RAW:${_clip(text)}');
               return;
             }
           } catch (e) {
-            debugPrint('[WS] parse error: $e\n$text');
+            // ✅ 解析失敗時也印原文（避免丟資訊）
+            debugPrint('[WS] parse error: $e\nRAW:${_clip(text)}');
             return;
           }
 
@@ -439,4 +461,10 @@ class WsService {
     }
   }
 
+  DateTime get lastRx => _lastRx;
+  Duration get idleFor => DateTime.now().difference(_lastRx);
+
+  void forceReconnect([String reason = 'watchdog']) {
+    _safeClose(reason); // 會走 onDone -> _scheduleReconnect()
+  }
 }

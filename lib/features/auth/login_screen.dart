@@ -114,95 +114,86 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            // 原本內容
             _isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  const SizedBox(height: 64),
-                  SvgPicture.asset(
-                    'assets/logo_placeholder.svg',
-                    height: 80,
-                  ),
-                  const SizedBox(height: 28),
-                  const Text(
-                    '欢迎您的登录',
-                    style: TextStyle(
-                        fontSize: 22, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 64),
-                  _buildLoginButton(
-                    label: '通过 Facebook 登录',
-                    iconPath: 'assets/icon_facebook.svg',
-                    onPressed: _fakeLogin,
-                  ),
-                  _buildLoginButton(
-                    label: '通过 Google 登录',
-                    iconPath: 'assets/icon_google.svg',
-                    onPressed: _handleGoogleLogin,
-                  ),
-                  _buildLoginButton(
-                    label: '通过 Apple 登录',
-                    iconPath: 'assets/icon_apple.svg',
-                    onPressed: _fakeLogin,
-                  ),
-                  _buildLoginButton(
-                    label: '通过邮箱登录',
-                    iconPath: 'assets/icon_email.svg',
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const EmailLoginScreen()),
-                      );
-                    },
-                  ),
-                  _buildLoginButton(
-                    label: '通过账号密码登录',
-                    iconPath: 'assets/icon_user.svg',
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const AccountLoginScreen()),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 24),
-                  Text.rich(
-                    TextSpan(
-                      text: '登录及代表您确认已满18岁，并同意我们的 ',
+                : LayoutBuilder(
+              builder: (ctx, constraints) {
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 24)
+                      .copyWith(bottom: 80), // 給右下角版本號留空間
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min, // 關鍵：讓內容可壓縮
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        TextSpan(
-                          text: '《使用条款》',
-                          style:
-                          const TextStyle(color: Color(0xFFFF4D67)),
+                        const SizedBox(height: 64),
+                        SvgPicture.asset('assets/logo_placeholder.svg', height: 80),
+                        const SizedBox(height: 28),
+                        const Text('欢迎您的登录',
+                            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 64),
+
+                        _buildLoginButton(
+                          label: '通过 Facebook 登录',
+                          iconPath: 'assets/icon_facebook.svg',
+                          onPressed: _fakeLogin,
                         ),
-                        const TextSpan(text: ' 和 '),
-                        TextSpan(
-                          text: '《主播协议》',
-                          style:
-                          const TextStyle(color: Color(0xFFFF4D67)),
+                        _buildLoginButton(
+                          label: '通过 Google 登录',
+                          iconPath: 'assets/icon_google.svg',
+                          onPressed: _handleGoogleLogin,
                         ),
-                        const TextSpan(text: ' 与 '),
-                        TextSpan(
-                          text: '《隐私政策》',
-                          style:
-                          const TextStyle(color: Color(0xFFFF4D67)),
+                        _buildLoginButton(
+                          label: '通过 Apple 登录',
+                          iconPath: 'assets/icon_apple.svg',
+                          onPressed: _fakeLogin,
                         ),
+                        _buildLoginButton(
+                          label: '通过邮箱登录',
+                          iconPath: 'assets/icon_email.svg',
+                          onPressed: () {
+                            Navigator.push(context,
+                                MaterialPageRoute(builder: (_) => const EmailLoginScreen()));
+                          },
+                        ),
+                        _buildLoginButton(
+                          label: '通过账号密码登录',
+                          iconPath: 'assets/icon_user.svg',
+                          onPressed: () {
+                            Navigator.push(context,
+                                MaterialPageRoute(builder: (_) => const AccountLoginScreen()));
+                          },
+                        ),
+                        const SizedBox(height: 24),
+
+                        Text.rich(
+                          TextSpan(
+                            text: '登录及代表您确认已满18岁，并同意我们的 ',
+                            children: [
+                              TextSpan(text: '《使用条款》',
+                                  style: const TextStyle(color: Color(0xFFFF4D67))),
+                              const TextSpan(text: ' 和 '),
+                              TextSpan(text: '《主播协议》',
+                                  style: const TextStyle(color: Color(0xFFFF4D67))),
+                              const TextSpan(text: ' 与 '),
+                              TextSpan(text: '《隐私政策》',
+                                  style: const TextStyle(color: Color(0xFFFF4D67))),
+                            ],
+                          ),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+
+                        const SizedBox(height: 16),
                       ],
                     ),
-                    textAlign: TextAlign.center,
-                    style:
-                    const TextStyle(fontSize: 12, color: Colors.grey),
                   ),
-                  const SizedBox(height: 16),
-                ],
-              ),
+                );
+              },
             ),
+
 
             // 右下角版本號
             Positioned(
