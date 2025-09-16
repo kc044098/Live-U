@@ -210,6 +210,17 @@ class UserRepository {
     return MemberFocusPage(list: list, count: count);
   }
 
+  // 主播通話價格設置
+  Future<void> setPrice({required bool isVideo, required int price}) async {
+    final data = {
+      'flag'  : 1,
+      'name'  : isVideo ? 'video_price' : 'voice_price',
+      'title' : isVideo ? '视频价格' : '语音价格',
+      'values': price.toString(),
+    };
+    await _api.post(ApiEndpoints.configSet, data: data);
+  }
+
   /// 取得 VIP 方案列表（以 sort 升冪；若沒有 sort 就以 month 升冪）
   Future<List<VipPlan>> fetchVipPlans() async {
     final resp = await _api.post(ApiEndpoints.memberVipList, data: {});
@@ -232,6 +243,16 @@ class UserRepository {
     });
 
     return plans;
+  }
+
+  Future<void> buyVip({required int id}) async {
+    final resp = await _api.post(ApiEndpoints.buyVip, data: {"id": id});
+    final raw = resp.data is String ? jsonDecode(resp.data) : resp.data;
+
+    if (raw is! Map || raw['code'] != 200) {
+      final msg = raw is Map ? (raw['message']?.toString() ?? '購買失敗') : '購買失敗';
+      throw Exception(msg);
+    }
   }
 
   // 點擊喜歡視頻

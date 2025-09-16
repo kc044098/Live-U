@@ -112,7 +112,7 @@ void showLikeAlertDialog(
                                   crossAxisCount: 3,
                                   mainAxisSpacing: 12,
                                   crossAxisSpacing: 12,
-                                  childAspectRatio: 0.78,
+                                  childAspectRatio: 0.7,
                                 ),
                                 itemBuilder: (context, index) {
                                   final p = plans[index];
@@ -123,7 +123,7 @@ void showLikeAlertDialog(
                                       return GestureDetector(
                                         onTap: () => selectedIndexNotifier.value = index,
                                         child: Container(
-                                          padding: const EdgeInsets.all(8),
+                                          padding: const EdgeInsets.all(4),
                                           decoration: BoxDecoration(
                                             color: Colors.white,
                                             borderRadius: BorderRadius.circular(10),

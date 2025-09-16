@@ -1,3 +1,4 @@
+import 'package:djs_live_stream/features/mine/user_repository_provider.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,14 +16,20 @@ class PriceSettingPage extends ConsumerStatefulWidget {
 
 class _PriceSettingPageState extends ConsumerState<PriceSettingPage> {
 
-  /// 目前顯示的價格（可從 API 帶入）
+  static const int kMinPrice = 100;
+  static const int kMaxPrice = 1000;
+
   int _videoPrice = 100;
-  int _voicePrice = 80;
+  int _voicePrice = 100;
+
+  bool _savingVideo = false;
+  bool _savingVoice = false;
+
+  bool _silentBusy = false;
 
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(userProfileProvider);
-    final bool isVideo = user?.isVideoCall ?? true;
 
     return Scaffold(
       appBar: AppBar(
@@ -35,37 +42,75 @@ class _PriceSettingPageState extends ConsumerState<PriceSettingPage> {
       backgroundColor: Colors.white,
       body: Column(
         children: [
-          // 合併後的接聽開關，放在原本「視頻接聽」的位置
-          _buildMergedCallToggle(isVideo),
+          // _buildMergedCallToggle(isVideo),
 
-          // 視頻價格設置（右邊改成白底陰影按鈕，點擊可編輯）
           _buildItem(
             iconPath: 'assets/icon_set_price_2.svg',
             label: '视频价格设置',
             trailing: _buildPriceButton(
-              amount: _videoPrice,
-              onPressed: () => _showEditPriceDialog(
+              amount: _videoPrice,               // ★ 新增
+              onPressed: _savingVideo ? null : () => _showEditPriceDialog(
                 title: '视频价格设置',
                 initial: _videoPrice,
-                onSaved: (v) => setState(() => _videoPrice = v),
+                onSaved: (v) => _applyPrice(isVideo: true, value: v),  // ★ 呼叫 API
               ),
             ),
           ),
 
-          // 語音價格設置（右邊改成白底陰影按鈕，點擊可編輯）
           _buildItem(
             iconPath: 'assets/icon_set_price_4.svg',
             label: '语音价格设置',
             trailing: _buildPriceButton(
-              amount: _voicePrice,
-              onPressed: () => _showEditPriceDialog(
+              amount: _voicePrice,                  // ★ 新增
+              onPressed: _savingVoice ? null : () => _showEditPriceDialog(
                 title: '语音价格设置',
                 initial: _voicePrice,
-                onSaved: (v) => setState(() => _voicePrice = v),
+                onSaved: (v) => _applyPrice(isVideo: false, value: v), // ★ 呼叫 API
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPriceButton({
+    required int amount,
+    required VoidCallback? onPressed,
+    bool loading = false,                 // ★ 新增
+  }) {
+    return SizedBox(
+      height: 36,
+      child: ElevatedButton(
+        onPressed: loading ? null : onPressed,   // ★ 儲存中禁用
+        style: ElevatedButton.styleFrom(
+          elevation: 1,
+          shadowColor: Colors.black26,
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
+          minimumSize: const Size(130, 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (loading) ...[
+              const SizedBox(
+                width: 16, height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(width: 8),
+            ] else ...[
+              Image.asset('assets/icon_gold1.png', width: 18, height: 18),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              '$amount币 / 分钟',
+              style: const TextStyle(fontSize: 14, color: Colors.black),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -142,39 +187,6 @@ class _PriceSettingPageState extends ConsumerState<PriceSettingPage> {
     );
   }
 
-  /// 右側白底陰影按鈕（展示金幣＋價格文字）
-  Widget _buildPriceButton({
-    required int amount,
-    required VoidCallback onPressed,
-  }) {
-    return SizedBox(
-      height: 36,
-      child: ElevatedButton(
-        onPressed: onPressed,
-        style: ElevatedButton.styleFrom(
-          elevation: 1,
-          shadowColor: Colors.black26,
-          backgroundColor: Colors.white,
-          foregroundColor: Colors.black,
-          minimumSize: const Size(130, 10),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Image.asset('assets/icon_gold1.png', width: 18, height: 18),
-            const SizedBox(width: 6),
-            Text(
-              '$amount币 / 分钟',
-              style: const TextStyle(fontSize: 14, color: Colors.black),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   /// 彈窗：左邊「請輸入價格」，右邊數字輸入框，按保存更新價格
   Future<void> _showEditPriceDialog({
     required String title,
@@ -186,7 +198,7 @@ class _PriceSettingPageState extends ConsumerState<PriceSettingPage> {
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: Text(title, textAlign: TextAlign.center,style: const TextStyle(fontSize: 16)),
+          title: Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16)),
           contentPadding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
           content: SizedBox(
             width: 300,
@@ -196,11 +208,14 @@ class _PriceSettingPageState extends ConsumerState<PriceSettingPage> {
                   child: TextField(
                     controller: controller,
                     keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(4), // 最高 1000
+                    ],
                     decoration: const InputDecoration(
                       isDense: true,
                       border: OutlineInputBorder(),
-                      hintText: '請輸入價格',
+                      hintText: '請輸入 100 ~ 1000',
                     ),
                   ),
                 ),
@@ -208,10 +223,7 @@ class _PriceSettingPageState extends ConsumerState<PriceSettingPage> {
             ),
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
             TextButton(
               onPressed: () {
                 final text = controller.text.trim();
@@ -223,11 +235,10 @@ class _PriceSettingPageState extends ConsumerState<PriceSettingPage> {
                   );
                   return;
                 }
-                if (v < 1 || v > 1000000) {
-                  Fluttertoast.showToast(msg: '金額必須在 1 到 1,000,000 之間');
+                if (v < 100 || v > 1000) {
+                  Fluttertoast.showToast(msg: '價格需介於 $kMinPrice ~ $kMaxPrice');
                   return;
                 }
-
                 Navigator.pop(ctx, v);
               },
               child: const Text('保存'),
@@ -237,8 +248,39 @@ class _PriceSettingPageState extends ConsumerState<PriceSettingPage> {
       },
     );
 
-    if (result != null) {
-      onSaved(result);
+    if (result != null) onSaved(result);
+  }
+
+  Future<void> _applyPrice({
+    required bool isVideo,
+    required int value,
+  }) async {
+    if (value < kMinPrice || value > kMaxPrice) {
+      Fluttertoast.showToast(msg: '價格需介於 $kMinPrice ~ $kMaxPrice');
+      return;
+    }
+    if (_silentBusy) return;         // 防止連點造成重複請求（無 UI 顯示）
+    _silentBusy = true;
+
+    final prev = isVideo ? _videoPrice : _voicePrice;
+
+    // 樂觀更新（無 loading）
+    setState(() {
+      if (isVideo) _videoPrice = value; else _voicePrice = value;
+    });
+
+    try {
+      await ref.read(userRepositoryProvider)
+          .setPrice(isVideo: isVideo, price: value);
+      Fluttertoast.showToast(msg: '保存成功');
+    } catch (_) {
+      // 失敗就還原
+      setState(() {
+        if (isVideo) _videoPrice = prev; else _voicePrice = prev;
+      });
+      Fluttertoast.showToast(msg: '保存失敗，請稍後再試');
+    } finally {
+      _silentBusy = false;
     }
   }
 }

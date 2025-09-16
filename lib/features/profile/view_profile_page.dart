@@ -179,95 +179,115 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
   }
 
   Widget buildButtonView(UserModel? u, bool effectiveIsLike) {
-    final myUid = ref.watch(userProfileProvider)?.uid;
-
     if (u == null) return const SizedBox.shrink();
+    final myUid = ref.watch(userProfileProvider)?.uid;
+    if (myUid != null && u.uid.toString() == myUid) return const SizedBox(height: 4);
+
     final liked = effectiveIsLike;
+    const double kBtnH = 44;
+    const double kGap = 6;
 
-    return (myUid != null && u.uid.toString() != myUid)
-        ? Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ❤️ 固定寬度的愛心
+        SizedBox(
+          width: 48,
+          child: Column(
             children: [
-              // 愛心
-              Column(
-                children: [
-                  ValueListenableBuilder<double>(
-                    valueListenable: scaleNotifier,
-                    builder: (_, scale, __) {
-                      return GestureDetector(
-                        onTap: () => _toggleLike(u, liked),
-                        child: AnimatedScale(
-                          scale: scale,
-                          duration: const Duration(milliseconds: 150),
-                          child: SvgPicture.asset(
-                            liked
-                                ? 'assets/live_heart_filled2.svg'
-                                : 'assets/live_heart2.svg',
-                            width: 40,
-                            height: 40,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 2),
-                ],
-              ),
-
-              // 私信
-              OutlinedButton(
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Colors.pink),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24)),
-                ),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => MessageChatPage(
-                        partnerName: _partnerName(u),
-                        partnerAvatar: u.avatarUrl,
-                        vipLevel: (u.isVip ==true)? 1:0,
-                        statusText: u.status ?? 0,
-                        partnerUid: int.parse(u.uid),
-                      ),
-                    ),
-                  );
-                },
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  child: Text('私信TA', style: TextStyle(color: Colors.pink)),
-                ),
-              ),
-
-              // 發起視頻
-              Column(
-                children: [
-                  GestureDetector(
-                    onTap: () => _handleCallRequest(u),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 60, vertical: 12),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFFFB56B), Color(0xFFDF65F8)],
-                        ),
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: const Text('发起视频',
-                          style: TextStyle(color: Colors.white, fontSize: 14)),
+              ValueListenableBuilder<double>(
+                valueListenable: scaleNotifier,
+                builder: (_, scale, __) => GestureDetector(
+                  onTap: () => _toggleLike(u, liked),
+                  child: AnimatedScale(
+                    scale: scale,
+                    duration: const Duration(milliseconds: 150),
+                    child: SvgPicture.asset(
+                      liked ? 'assets/live_heart_filled2.svg' : 'assets/live_heart2.svg',
+                      width: 40, height: 40,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  const Text('1美元/分钟',
-                      style: TextStyle(color: Colors.grey, fontSize: 10)),
-                ],
+                ),
+              ),
+              const SizedBox(height: 2),
+            ],
+          ),
+        ),
+
+        const SizedBox(width: kGap),
+
+        // 💬 私信 —— 3 份寬
+        Expanded(
+          flex: 3,
+          child: SizedBox(
+            height: kBtnH,
+            child: OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Colors.pink),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                minimumSize: const Size(0, kBtnH),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+              ),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => MessageChatPage(
+                      partnerName: _partnerName(u),
+                      partnerAvatar: u.avatarUrl,
+                      vipLevel: (u.isVip == true) ? 1 : 0,
+                      statusText: u.status ?? 0,
+                      partnerUid: int.parse(u.uid),
+                    ),
+                  ),
+                );
+              },
+              child: const FittedBox(child: Text('私信TA', style: TextStyle(color: Colors.pink))),
+            ),
+          ),
+        ),
+
+        const SizedBox(width: kGap),
+
+        // 🎥 發起視頻 —— 5 份寬（含下方價格）
+        Expanded(
+          flex: 5,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                height: kBtnH,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(colors: [Color(0xFFFFB56B), Color(0xFFDF65F8)]),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: TextButton(
+                    style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                    onPressed: () => _handleCallRequest(u),
+                    child: const FittedBox(
+                      child: Text('发起视频', style: TextStyle(color: Colors.white, fontSize: 14)),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                '1金幣/分钟',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey, fontSize: 10),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                softWrap: false,
               ),
             ],
-          )
-        : SizedBox(height: 4);
+          ),
+        ),
+        const SizedBox(width: 12),
+      ],
+    );
   }
 
   void _toggleLike(UserModel current, bool currentLiked) {

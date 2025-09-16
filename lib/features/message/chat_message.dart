@@ -4,7 +4,7 @@ enum MessageType {
   system,  // 系統訊息
 }
 
-enum ChatContentType { text, voice, image, call, system }
+enum ChatContentType { text, voice, image, call, system, gift }
 
 enum SendState { sending, sent, failed }
 
@@ -21,12 +21,19 @@ class ChatMessage {
   int currentPosition;
   final String? imagePath;
 
+  final int? giftId;
+  final String? giftTitle;
+  final String? giftIcon;
+  final int giftCount;
+
   // === ✅ 新增協議欄位（全部可選） ===
   final String? uuid;                 // 後端協議用訊息ID
   final String? flag;                 // 例如 "chat_person"
   final int? toUid;                   // 對方 uid
   final Map<String, dynamic>? data;   // 送後端 data map
   final SendState? sendState;         // 送出中/成功/失敗
+
+  final int? readStatus;  // 1=未讀、2=已讀、其他/空=null
 
   ChatMessage({
     // 原本參數...
@@ -40,6 +47,10 @@ class ChatMessage {
     this.isPlaying = false,
     this.currentPosition = 0,
     this.imagePath,
+    this.giftId,
+    this.giftTitle,
+    this.giftIcon,
+    this.giftCount = 1,
 
     // 新增參數（可選）
     this.uuid,
@@ -47,6 +58,7 @@ class ChatMessage {
     this.toUid,
     this.data,
     this.sendState,
+    this.readStatus,
   });
 
   // ✅ 方便更新用
@@ -56,6 +68,7 @@ class ChatMessage {
     int? toUid,
     Map<String, dynamic>? data,
     SendState? sendState,
+    int? readStatus,
     MessageType? type,
     ChatContentType? contentType,
     String? text,
@@ -66,6 +79,10 @@ class ChatMessage {
     bool? isPlaying,
     int? currentPosition,
     String? imagePath,
+    int? giftId,
+    String? giftTitle,
+    String? giftIcon,
+    int? giftCount,
   }) {
     return ChatMessage(
       type: type ?? this.type,
@@ -82,7 +99,12 @@ class ChatMessage {
       toUid: toUid ?? this.toUid,
       data: data ?? this.data,
       sendState: sendState ?? this.sendState,
+      readStatus: readStatus ?? this.readStatus,
       imagePath: imagePath ?? this.imagePath,
+      giftId: giftId,
+      giftTitle: giftTitle ?? this.giftTitle,
+      giftIcon: giftIcon ?? this.giftIcon,
+      giftCount: giftCount ?? this.giftCount,
     );
   }
 }

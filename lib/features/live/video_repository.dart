@@ -7,6 +7,7 @@ import '../../data/network/api_client.dart';
 import '../../data/network/api_endpoints.dart';
 import '../profile/profile_controller.dart';
 import 'data_model/feed_item.dart';
+import 'data_model/music_track.dart';
 
 class VideoRepository {
   final ApiClient _api;
@@ -63,6 +64,35 @@ class VideoRepository {
         .toList();
   }
 
+  /// 取得音樂清單（無參數）
+  Future<List<MusicTrack>> fetchMusicList() async {
+    final Response res = await _api.post(ApiEndpoints.musicList);
+
+    final data = (res.data['data'] as Map<String, dynamic>?) ?? const {};
+    final rawList = (data['list'] as List?) ?? const [];
+
+    // 你要的人物頭像 emoji（會循環使用）
+    const coverEmojis = ['🧓🏻', '🙋🏼‍♀️', '👩🏻‍💼', '🧑🏻‍🎤', '🧑🏽‍🦱', '🧒🏻', '🧑', '👩', '👨',
+      '🧒', '👶', '🧓', '🧔', '🧑‍🦰', '🧑‍🦱', '🧑‍🦳', '🧑‍🦲', '🧑‍💼', '🧑‍💻', '🧑‍🎓', '🧑‍⚕️',];
+
+    return rawList.asMap().entries.map((entry) {
+      final i = entry.key;
+      final m = entry.value as Map<String, dynamic>;
+      return MusicTrack(
+        id: (m['id'] ?? '').toString(),
+        title: (m['title'] ?? '') as String,
+        artist: '官方曲庫',
+        duration: Duration(seconds: (m['duration'] ?? 0) as int),
+        coverEmoji: coverEmojis[i % coverEmojis.length],
+        path: (m['url'] ?? '') as String,
+        // 這兩個先本地管理（收藏/用過），API若未提供就先 false
+        isFavorited: false,
+        usedBefore: false,
+        recommended: ((m['is_recommend'] ?? 0) as int) == 1,
+      );
+    }).toList(growable: false);
+  }
+
   Future<List<UserModel>> fetchRecommendedUsers({int page = 1}) async {
     final Response res = await _api.post(
       ApiEndpoints.userRecommend,
@@ -88,3 +118,4 @@ class VideoRepository {
     await _api.post(ApiEndpoints.videoUpdate, data: data);
   }
 }
+

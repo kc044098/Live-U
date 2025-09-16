@@ -548,7 +548,11 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
       final updatedUser = await userRepo.getMemberInfo(currentUser);
 
       await UserLocalStorage.saveUser(updatedUser);
-      ref.read(userProfileProvider.notifier).setUser(updatedUser);
+      final prev = ref.read(userProfileProvider);
+      final merged = (prev == null)
+          ? updatedUser
+          : updatedUser.copyWith(gold: prev.gold, vipExpire: prev.vipExpire);
+      ref.read(userProfileProvider.notifier).setUser(merged);
       ref.read(memberFeedProvider.notifier).loadFirstPage();
     });
     _getCurrentCityFromGPS();

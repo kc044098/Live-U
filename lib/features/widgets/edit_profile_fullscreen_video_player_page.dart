@@ -287,16 +287,22 @@ class _FullscreenVideoPlayerPageState
                   ),
                   const SizedBox(height: 10),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      AutoGrowTextField(
-                        controller: _textController,
-                        style: const TextStyle(color: Colors.white, fontSize: 14),
-                        minChars: 10,
-                        maxFraction: 0.65,
-                        inputFormatters: [LengthLimitingTextInputFormatter(_kMaxTitleLen)],
-                        maxLength: _kMaxTitleLen,
+                      // ⬇️ 文字框填滿剩餘寬度，與畫面最右邊距離固定 10
+                      Expanded(
+                        child: AutoGrowTextField(
+                          controller: _textController,
+                          style: const TextStyle(color: Colors.white, fontSize: 14),
+                          inputFormatters: [ LengthLimitingTextInputFormatter(_kMaxTitleLen) ],
+                          maxLength: _kMaxTitleLen,
+                          multiline: true,                // ⬅️ 開啟多行自動換行
+                          // 可保留預設 padding，也可稍微加高：
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        ),
                       ),
+
+                      // 右側分類按鈕（保留）
                       if (_isBroadcaster) ...[
                         const SizedBox(width: 8),
                         ElevatedButton(
@@ -304,8 +310,7 @@ class _FullscreenVideoPlayerPageState
                             backgroundColor: _selectedCategory == '精選'
                                 ? const Color(0xFFFF4D67)
                                 : const Color(0xFF3A9EFF),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                             padding: const EdgeInsets.symmetric(horizontal: 15),
                           ),
                           onPressed: () => _showCategoryBottomSheet(context),
@@ -313,12 +318,9 @@ class _FullscreenVideoPlayerPageState
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(_selectedCategory,
-                                  style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold)),
+                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                               const SizedBox(width: 4),
-                              const Icon(Icons.arrow_forward_ios,
-                                  size: 14, color: Colors.white),
+                              const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.white),
                             ],
                           ),
                         ),

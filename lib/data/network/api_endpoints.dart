@@ -29,9 +29,22 @@ class ApiEndpoints {
   static const String liveCallRenew = '/api/im/call'; // 直播token續期
 
   static const String messageSend = '/api/im/send'; // 發送聊天消息
+  static const String messageRead = '/api/im/message/read'; // 已讀聊天消息
+
   static const String messageHistory = '/api/im/message/history'; // 接收聊天歷史消息
   static const String userMessageList = '/api/im/message/user'; // 接收用戶聊天記錄列表
+  static const String userCallRecordList = '/api/live/list'; // 接收用戶撥打電話記錄列表
 
   static const String moneyCash = '/api/member/cash'; // 獲取金幣
+  static const String coinPacketList = '/api/member/gold/list'; // 金幣禮包列表
+  static const String giftList = '/api/live/gift/list'; // 禮物列表
+  static const String musicList = '/api/member/music/list'; // 音樂列表
+  static const String recharge = '/api/finance/recharge'; // 充值金幣 （測試用）
+  static const String rechargeList = '/api/finance/recharge/list'; // 充值明細
+  static const String rechargeDetail = '/api/finance/recharge/info'; // 充值詳情
+  static const String financeList = '/api/finance/list'; // 帳變紀錄
+  static const String buyVip = '/api/finance/vip/buy'; // 購買vip
+  static const String configSet = '/api/member/config/set'; // 用於主播視頻或語音價格配置
+  static const String renewRtcToken = '/api/live/token/renew';
 
 }

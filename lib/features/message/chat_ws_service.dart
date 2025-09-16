@@ -61,6 +61,27 @@ class ChatWsService {
     return controller.stream;
   }
 
+  Map<String, dynamic>? decodeJsonMap(String? s) {
+    if (s == null || s.isEmpty) return null;
+    try {
+      final v = jsonDecode(s);
+      if (v is Map) return v.map((k, v) => MapEntry(k.toString(), v));
+    } catch (_) {}
+    return null;
+  }
+
+  int? toInt(dynamic v) {
+    if (v is num) return v.toInt();
+    return int.tryParse('${v ?? ''}');
+  }
+
+  String joinCdn(String base, String path) {
+    if (path.isEmpty || path.startsWith('http')) return path;
+    final b = base.replaceFirst(RegExp(r'/+$'), '');
+    final p = path.replaceFirst(RegExp(r'^/+'), '');
+    return '$b/$p';
+  }
+
   // === 封裝解析：把協議 -> ChatMessage ===
   ChatMessage? _parseRoomChat(
       Map<String, dynamic> payload, {
@@ -91,7 +112,7 @@ class ChatWsService {
       }
       return null;
     }
-
+    final st = pick<int>(data, ['Status','status']);
     String _s(dynamic v) => v?.toString() ?? '';
 
     final uuid    = pick<String>(payload, ['UUID','uuid']) ??
@@ -113,18 +134,71 @@ class ChatWsService {
     // 只處理「對方 → 我」且為指定會話
     if (toUid != myUid || fromUid != partnerUid) return null;
 
-    // 內容可能是 JSON
-    Map<String, dynamic>? cjson;
-    if (content.isNotEmpty) {
-      try {
-        final obj = jsonDecode(content);
-        if (obj is Map) cjson = obj.map((k, v) => MapEntry(k.toString(), v));
-      } catch (_) {}
-    }
-
+    // 第一層：content -> Map（含 chat_text / voice_path）
+    Map<String, dynamic>? cjson = decodeJsonMap(content);
     String? chatText;
     String? voiceRel;
     int duration = 0;
+
+    if (cjson != null) {
+      chatText = (cjson['chat_text'] ?? '').toString();
+      voiceRel = (cjson['voice_path'] ?? '').toString();
+      final dRaw = cjson['duration'];
+      duration = (dRaw is num) ? dRaw.toInt() : int.tryParse('${dRaw ?? ''}') ?? 0;
+      if ((chatText ?? '').isEmpty && (voiceRel ?? '').isEmpty) {
+        chatText = content;
+      }
+    } else {
+      chatText = content;
+    }
+
+    // 禮物
+    final inner = decodeJsonMap(chatText);
+    final t = (inner?['type'] ?? inner?['t'])?.toString().toLowerCase();
+    if (t == 'gift') {
+      final id    = () { final v = inner?['gift_id'] ?? inner?['id']; if (v is num) return v.toInt(); return int.tryParse('$v') ?? -1; }();
+      final title = (inner?['gift_title'] ?? inner?['title'] ?? '').toString();
+      final iconRel = (inner?['gift_icon'] ?? inner?['icon'] ?? '').toString();
+      final gold  = () { final v = inner?['gift_gold'] ?? inner?['gold']; if (v is num) return v.toInt(); return int.tryParse('$v') ?? 0; }();
+      final count = () { final v = inner?['gift_count'] ?? inner?['count']; if (v is num) return v.toInt(); return int.tryParse('$v') ?? 1; }();
+      final giftUrlRel = (inner?['gift_url'] ?? '').toString();
+
+      final iconFull = joinCdn(cdnBase, iconRel);
+      final giftUrlFull = joinCdn(cdnBase, giftUrlRel);
+
+      return ChatMessage(
+        type: MessageType.other,
+        contentType: ChatContentType.gift,
+        text: title,
+        uuid: uuid.isEmpty ? null : uuid,
+        createAt: createAt,
+        readStatus: st,
+        data: {
+          'gift_id'   : id,
+          'gift_title': title,
+          'gift_icon' : iconFull,
+          'gift_gold' : gold,
+          'gift_count': count,
+          if (giftUrlRel.isNotEmpty) 'gift_url': giftUrlFull,
+        },
+      );
+    }
+
+    final imgRel1 = (cjson?['img_path'] ?? cjson?['image_path'])?.toString() ?? '';
+    final imgRel2 = (inner?['img_path'] ?? inner?['image_path'])?.toString() ?? '';
+    final imgRel  = imgRel1.isNotEmpty ? imgRel1 : imgRel2;
+
+    // 圖片
+    if (imgRel.isNotEmpty) {
+      return ChatMessage(
+        type: MessageType.other,
+        contentType: ChatContentType.image,
+        imagePath: joinCdn(cdnBase, imgRel), // 轉完整 URL
+        uuid: uuid.isEmpty ? null : uuid,
+        createAt: createAt,
+        readStatus: st,
+      );
+    }
 
     if (cjson != null) {
       chatText = _s(cjson['chat_text']);
@@ -138,34 +212,138 @@ class ChatWsService {
       chatText = content;
     }
 
-    String _joinCdn(String base, String path) {
-      if (path.isEmpty || path.startsWith('http')) return path;
-      final b = base.replaceFirst(RegExp(r'/+$'), '');
-      final p = path.replaceFirst(RegExp(r'^/+'), '');
-      return '$b/$p';
-    }
-
-    // 回傳 ChatMessage（封裝協議差異）
+    // 語音
     if ((voiceRel ?? '').isNotEmpty) {
       return ChatMessage(
         type: MessageType.other,
         contentType: ChatContentType.voice,
-        audioPath: _joinCdn(cdnBase, voiceRel!),
+        audioPath: joinCdn(cdnBase, voiceRel!),
         duration: duration,
         uuid: uuid.isEmpty ? null : uuid,
         createAt: createAt,
+        readStatus: st,
       );
     }
 
+    // 純文字
     return ChatMessage(
       type: MessageType.other,
       contentType: ChatContentType.text,
       text: chatText ?? '',
       uuid: uuid.isEmpty ? null : uuid,
       createAt: createAt,
+      readStatus: st,
     );
   }
 }
+
+class ReadReceipt {
+  final String uuid;     // 後端帶的最後一條消息 id（可選）
+  final int createAt;    // 後端帶的時間（秒，若沒有就 0）
+  final int fromUid;     // 對方 uid
+  final int toUid;       // 我方 uid
+  ReadReceipt({required this.uuid, required this.createAt, required this.fromUid, required this.toUid});
+}
+
+extension _ChatWsServiceReads on ChatWsService {
+  // 監聽「某個對話伙伴」的已讀回執
+  Stream<ReadReceipt> roomReadStream({required int partnerUid}) {
+    final ws   = _ref.read(wsProvider);
+    final me   = _ref.read(userProfileProvider);
+    final myUid = int.tryParse(me?.uid ?? '') ?? -1;
+
+    ws.ensureConnected();
+
+    final controller = StreamController<ReadReceipt>(sync: true);
+
+    // 如果你的 ws 有命名事件（例如 'room_read' 或 'message.read'），用它優先：
+    final unsubNamed = ws.on('room_read', (payload) {
+      final rec = _parseReadReceiptFromMap(payload);
+      if (rec != null && rec.fromUid == partnerUid && rec.toUid == myUid) {
+        controller.add(rec);
+      }
+    });
+
+    // 保底：若後端沒有獨立事件、只丟「flag:9」的廣播，就用 tapRaw 抓
+    final untap = ws.tapRaw((raw) {
+      try {
+        String? text;
+        if (raw is String) text = raw;
+        if (raw is List<int>) text = utf8.decode(raw, allowMalformed: true);
+        if (text == null || text.isEmpty) return;
+
+        final m = jsonDecode(text);
+        if (m is! Map) return;
+
+        int? pickInt(dynamic v) {
+          if (v is num) return v.toInt();
+          return int.tryParse('${v ?? ''}');
+        }
+        T? pick<T>(Map mm, List<String> keys) {
+          for (final k in keys) {
+            if (!mm.containsKey(k)) continue;
+            final v = mm[k];
+            if (T == int || T == num) return (pickInt(v) as T?);
+            return v as T?;
+          }
+          return null;
+        }
+
+        final flag = pick<int>(m, ['flag','Flag','type','Type']);
+        if (flag != 9) return;
+
+        // 兼容 data/Data
+        final Map data = (m['data'] is Map) ? m['data'] as Map
+            : (m['Data'] is Map) ? m['Data'] as Map
+            : const {};
+
+        final from = pick<int>(m, ['uid','Uid']) ?? pick<int>(data, ['uid','Uid']) ?? -1;
+        final to   = pick<int>(m, ['to_uid','ToUid','toUid']) ?? pick<int>(data, ['to_uid','ToUid','toUid']) ?? -1;
+        final uuid = pick<String>(m, ['uuid','UUID']) ?? pick<String>(data, ['uuid','UUID','id','Id']) ?? '';
+        final ts   = pick<int>(data, ['create_at','CreateAt','update_at','UpdateAt']) ?? 0;
+
+        if (from == partnerUid && to == myUid) {
+          controller.add(ReadReceipt(uuid: uuid ?? '', createAt: ts, fromUid: from, toUid: to));
+        }
+      } catch (_) {}
+    });
+
+    controller.onCancel = () {
+      try { unsubNamed(); } catch (_) {}
+      try { untap(); } catch (_) {}
+    };
+
+    return controller.stream;
+  }
+
+  ReadReceipt? _parseReadReceiptFromMap(Map payload) {
+    int? _i(dynamic v) => (v is num) ? v.toInt() : int.tryParse('$v');
+    T? pick<T>(Map m, List<String> ks) {
+      for (final k in ks) {
+        if (m.containsKey(k)) {
+          final v = m[k];
+          if (T == int || T == num) return (_i(v) as T?);
+          return v as T?;
+        }
+      }
+      return null;
+    }
+
+    final Map data = (payload['data'] is Map) ? payload['data']
+        : (payload['Data'] is Map) ? payload['Data']
+        : const {};
+    final flag = pick<int>(payload, ['flag','Flag','type','Type']);
+    if (flag != 9) return null;
+
+    final uuid = pick<String>(payload, ['uuid','UUID']) ?? pick<String>(data, ['id','Id','uuid','UUID']) ?? '';
+    final from = pick<int>(payload, ['uid','Uid']) ?? pick<int>(data, ['uid','Uid']) ?? -1;
+    final to   = pick<int>(payload, ['to_uid','ToUid','toUid']) ?? pick<int>(data, ['to_uid','ToUid','toUid']) ?? -1;
+    final ts   = pick<int>(data, ['create_at','CreateAt','update_at','UpdateAt']) ?? 0;
+
+    return ReadReceipt(uuid: uuid, createAt: ts, fromUid: from, toUid: to);
+  }
+}
+
 
 // === Riverpod providers ===
 
@@ -176,4 +354,10 @@ final roomChatProvider = StreamProvider.autoDispose
     .family<ChatMessage, int>((ref, partnerUid) {
   final svc = ref.read(chatWsServiceProvider);
   return svc.roomChatStream(partnerUid: partnerUid);
+});
+
+final roomReadProvider = StreamProvider.autoDispose
+    .family<ReadReceipt, int>((ref, partnerUid) {
+  final svc = ref.read(chatWsServiceProvider);
+  return svc.roomReadStream(partnerUid: partnerUid);
 });

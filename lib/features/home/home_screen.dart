@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import '../../l10n/l10n.dart';
 import '../live/data_model/home_feed_state.dart';
+import '../live/gift_providers.dart';
 import '../wallet/wallet_repository.dart';
 import 'live_list_page.dart';
 import 'mine_page.dart';
@@ -62,6 +63,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ref.read(userProfileProvider.notifier).state =
               user.copyWith(gold: gold, vipExpire: vipExpire);
         }
+
+        // 獲取禮物列表
+        await ref.read(giftListProvider.notifier).loadIfStale(const Duration(seconds: 10));
       } catch (e) {
       }
 

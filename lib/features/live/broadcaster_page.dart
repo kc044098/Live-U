@@ -1,16 +1,19 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
+import 'package:svgaplayer_flutter/parser.dart';
+import 'package:svgaplayer_flutter/player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:http/http.dart' as http;
 import '../../core/ws/ws_provider.dart';
+import '../../data/models/gift_item.dart';
 import '../../globals.dart';
 import '../../routes/app_routes.dart';
 import '../call/call_repository.dart';
@@ -18,12 +21,16 @@ import '../call/rtc_engine_manager.dart';
 import '../message/chat_message.dart';
 import '../message/chat_providers.dart';
 import '../message/chat_utils.dart' as cu;
+import '../message/gift/gift_bottom_sheet.dart';
 import '../profile/profile_controller.dart';
 import 'call_session_provider.dart';
 import 'data_model/call_overlay.dart';
 import 'data_model/call_timer.dart';
+import 'data_model/free_digits_badge.dart';
+import 'data_model/gift_task.dart';
 import 'data_model/live_chat_input_bar.dart';
 import 'data_model/live_chat_panel.dart';
+import 'gift_providers.dart';
 import 'mini_call_view.dart';
 
 class BroadcasterPage extends ConsumerStatefulWidget {
@@ -34,7 +41,7 @@ class BroadcasterPage extends ConsumerStatefulWidget {
 }
 
 class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   String roomId = '';
   String title = '';
   String desc = '';
@@ -42,6 +49,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
   bool isCallMode = false;
   bool asBroadcaster = true;
   String peerAvatar = '';
+  String? _currentToken;
 
   final List<int> _remoteUids = [];
   final List<VoidCallback> _wsUnsubs = [];
@@ -51,6 +59,11 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
   bool _closing = false;
 
   Timer? _joinTimeout; // 10 秒入房守門
+  int _freeAtSec = 0;
+
+  bool _inFreePeriod = false;
+  int _freeLeftSec = 0;
+  Timer? _freeTimer;
 
   late final RtcEngineManager _rtc; // ✅ 使用全域 manager
   late final VoidCallback _joinedListener;
@@ -65,6 +78,31 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
   final GlobalKey _localPreviewKey = GlobalKey();
 
+  bool _speakerOn = true;
+  bool _micOn = true;
+  bool _videoOn = true;
+
+  bool _frontCamera = true;
+
+  bool _remoteVideoOn = true;              // 對方攝像頭是否開啟
+  late final RtcEngineEventHandler _pageRtcHandler;
+
+  // SVGA 播放用
+  late final SVGAAnimationController _svgaCtrl = SVGAAnimationController(vsync: this);
+  OverlayEntry? _giftEntry;
+
+  final Queue<GiftTask> _giftQueue = Queue<GiftTask>();
+  bool _isPlayingGift = false;
+  Timer? _giftFallbackTimer;
+
+  // 去重 WS 的 uuid（避免重放）
+  final _liveSeenUuid = <String>{};
+
+  // SVGA 快取（記憶體）
+  final Map<String, Uint8List> _svgaBytesCache = {};
+  final Map<String, dynamic>   _svgaItemCache  = {};
+  static const int _svgaCacheCap = 8;
+
   Map<String, dynamic> _dataOf(Map p) =>
       (p['data'] is Map) ? Map<String, dynamic>.from(p['data']) : const {};
 
@@ -77,6 +115,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
   bool _isThisChannel(Map p) => _ch(p) == roomId;
 
+
   // ---------------------------------------------------------------
 
   CallType _callType = CallType.video; // 預設先給 video
@@ -88,6 +127,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     WidgetsBinding.instance.addObserver(this);
 
     _rtc = RtcEngineManager(); // 已在 app 啟動 init 過
+
     // joined 後啟動共享計時
     _joinedListener = () async {
       final j = _rtc.joined.value;
@@ -96,6 +136,16 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
         ref.read(callTimerProvider).start();      // ← 啟動共享 timer
         setState(() => _joined = true);
         await _ensureAwake();
+
+
+        if (_freeAtSec > 0) {
+          // 有免費時長 → 主計時先不要跑
+          ref.read(callTimerProvider).reset();
+          _startFreeCountdown();        // 結束時會自動 start()
+        } else {
+          // 沒有免費時長 → 直接開始主計時
+          ref.read(callTimerProvider).start();
+        }
       }
     };
 
@@ -121,6 +171,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
     // 先停本地狀態與計時
     _cancelJoinTimeout();
+    _stopFreeCountdown();
     ref.read(callTimerProvider).reset();
     ref.read(callSessionProvider(roomId).notifier).clearAll();
     if (_joined) {
@@ -156,8 +207,13 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
       isCallMode = args['isCallMode'] == true;
       asBroadcaster = args['asBroadcaster'] != false;
       peerAvatar   = (args['peerAvatar'] ?? '').toString();
-
+      final freeRaw = args['free_at'] ?? args['freeAt'] ?? args['freeSec'];
+      final fs = (freeRaw is num) ? freeRaw.toInt() : int.tryParse('${freeRaw ?? ''}');
+      if (fs != null && fs >= 0) _freeAtSec = fs;
+      _inFreePeriod = _freeAtSec > 0;
+      _currentToken = rtcToken;
       _applyCallFlagFromArgs(args);
+      _videoOn = !_isVoice;
 
       final s = ref.read(callSessionProvider(roomId));
       _liveInputCtrl.text = s.draft;
@@ -167,9 +223,86 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
       _argsReady = true;
       _enterRoom();
       _listenCallSignals();
+
+      // 監聽遠端視訊開關
+      _pageRtcHandler = RtcEngineEventHandler(
+        // 新版事件
+        onRemoteVideoStateChanged: (conn, uid, state, reason, elapsed) {
+          if (conn.channelId != roomId || uid != _remoteUid) return;
+
+          // 狀態判斷
+          switch (state) {
+            case RemoteVideoState.remoteVideoStateStarting:
+            case RemoteVideoState.remoteVideoStateDecoding:
+              _setRemoteVideoOn(true);
+              break;
+            case RemoteVideoState.remoteVideoStateStopped:
+            // 真正被停止才關閉
+              _setRemoteVideoOn(false);
+              break;
+            case RemoteVideoState.remoteVideoStateFrozen:
+            case RemoteVideoState.remoteVideoStateFailed:
+            // 這兩個多半是網路波動，先不要切頭像
+            // 保持現狀，等恢復 Decoding 再自動變回 true
+              break;
+            default:
+              break;
+          }
+
+          // 只有明確訊號才關閉/開啟
+          if (reason == RemoteVideoStateReason.remoteVideoStateReasonRemoteMuted ||
+              reason == RemoteVideoStateReason.remoteVideoStateReasonRemoteOffline) {
+            _setRemoteVideoOn(false);
+          }
+          if (reason == RemoteVideoStateReason.remoteVideoStateReasonRemoteUnmuted ||
+              reason == RemoteVideoStateReason.remoteVideoStateReasonNetworkRecovery) {
+            _setRemoteVideoOn(true);
+          }
+
+        },
+        // 到期前 ~30 秒觸發：先拿新 token 並續上去
+        onTokenPrivilegeWillExpire: (conn, token) async {
+          // 即將過期（通常提前 30 秒通知）
+          if (conn.channelId == roomId) await _refreshToken();
+        },
+        onRequestToken: (conn) async {
+          // SDK 主動要求 token（某些情況會觸發）
+          if (conn.channelId == roomId) await _refreshToken();
+        },
+        onConnectionStateChanged: (conn, state, reason) {
+          // 若因 token 過期導致斷線
+          if (conn.channelId == roomId &&
+              reason == ConnectionChangedReasonType.connectionChangedTokenExpired) {
+            _refreshToken();
+          }
+        },
+        onError: (code, msg) {
+          // 保底：109=ERR_TOKEN_EXPIRED, 110=ERR_INVALID_TOKEN
+          if (code == ErrorCodeType.errTokenExpired ||
+              code == ErrorCodeType.errInvalidToken) {
+            _refreshToken();
+          }
+        },
+
+        // 舊版/相容事件
+        onUserMuteVideo: (conn, uid, muted) {
+          if (conn.channelId == roomId && uid == _remoteUid) _setRemoteVideoOn(!muted);
+        },
+        onUserEnableVideo: (conn, uid, enabled) {
+          if (conn.channelId == roomId && uid == _remoteUid) _setRemoteVideoOn(enabled);
+        },
+      );
+      _rtc.engine.registerEventHandler(_pageRtcHandler);
     } else {
       Navigator.of(context).pop();
     }
+  }
+
+  int? get _remoteUid => _remoteUids.isNotEmpty ? _remoteUids.first : null;
+
+  void _setRemoteVideoOn(bool on) {
+    if (!mounted || _remoteVideoOn == on) return;
+    setState(() => _remoteVideoOn = on);
   }
 
   void _onDraftChanged() {
@@ -191,6 +324,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     }
 
     await WakelockPlus.enable();
+
 
     // 啟動入房逾時（建議 15~20s，先保留你原 10s）
     _armJoinTimeout();
@@ -252,16 +386,165 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     _wsUnsubs.add(_wsUnsubLiveChat!);
   }
 
-  Widget _buildRemoteView() {
+  /// 圖片按鈕：不加任何底色，圖片自帶圓底
+  Widget _assetBtn({
+    required String asset,         // 開啟時的圖
+    String? offAsset,              // 關閉時的圖（可不給，改用透明度）
+    required VoidCallback onTap,
+    bool on = true,
+  }) {
+    final a = (offAsset != null && !on) ? offAsset : asset;
+    return Opacity(
+      opacity: on ? 1.0 : 0.55, // 沒 off 圖時用透明度表達
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          width: 32,
+          height: 32,
+          margin: const EdgeInsets.only(left: 10),
+          alignment: Alignment.center,
+          child: Image.asset(a, width: 32, height: 32, fit: BoxFit.contain),
+        ),
+      ),
+    );
+  }
+
+  // === 新增：功能動作 ===
+  Future<void> _toggleSpeaker() async {
+    final nv = !_speakerOn;
+    setState(() => _speakerOn = nv);
+    try { await _rtc.engine.setEnableSpeakerphone(nv); } catch (_) {}
+  }
+  Future<void> _toggleMic() async {
+    final nv = !_micOn;
+    setState(() => _micOn = nv);
+    try { await _rtc.engine.muteLocalAudioStream(!nv); } catch (_) {}
+  }
+  Future<void> _toggleVideo() async {
+    // 語音模式就不處理
+    if (_isVoice) return;
+
+    final engine = _rtc.engine;
+    if (engine == null) return;
+    final next = !_videoOn;
+    try {
+      if (next) {
+        // 開啟本地攝像頭 + 允許上行 + 開始預覽
+        await engine.enableLocalVideo(true);
+        await engine.muteLocalVideoStream(false);
+        await engine.startPreview();
+      } else {
+        // 關閉本地攝像頭 + 停止上行 + 停止預覽
+        await engine.muteLocalVideoStream(true);
+        await engine.enableLocalVideo(false);
+        await engine.stopPreview();
+      }
+      if (!mounted) return;
+      setState(() => _videoOn = next);
+    } catch (e) {
+      debugPrint('[RTC] toggleVideo error: $e');
+      Fluttertoast.showToast(msg: '切換影像失敗');
+    }
+  }
+  Future<void> _switchCamera() async {
+    if (_isVoice) return;                 // 語音模式禁用
+    final engine = _rtc.engine;
+    if (engine == null) return;
+
+    try {
+      await engine.switchCamera();        // Agora 一鍵切換
+      if (!mounted) return;
+      setState(() => _frontCamera = !_frontCamera); // 同步本地預覽鏡像
+    } catch (e) {
+      debugPrint('[RTC] switchCamera error: $e');
+      Fluttertoast.showToast(msg: '切換鏡頭失敗');
+    }
+  }
+
+  void _openGiftSheetLive() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => GiftBottomSheet(
+        onSelected: (gift) async {
+          final me = ref.read(userProfileProvider);
+          if (_remoteUids.isEmpty) return false;
+          final toUid = _remoteUids.first;
+
+          // 立刻播特效（相對→完整）
+          final effectUrl = cu.joinCdn(me?.cdnUrl, gift.url);
+          _enqueueGift(effectUrl);
+          // 發送 payload（帶 gift_url，方便對端解析直接播）
+          final payload = jsonEncode({
+            'type': 'gift',
+            'gift_id': gift.id,
+            'gift_title': gift.title,
+            'gift_gold': gift.gold,
+            'gift_icon': gift.icon,   // 相對路徑
+            'gift_count': 1,
+            'gift_url': gift.url,     // 相對路徑（WS 也會帶給對端）
+          });
+
+          final myUid = int.tryParse(me?.uid ?? '0') ?? 0;
+          final uuid  = cu.genUuid(myUid);
+
+          // 樂觀加入面板（顯示 icon + 次數）
+          final iconFull = cu.joinCdn(me?.cdnUrl, gift.icon);
+          ref.read(callSessionProvider(roomId).notifier).addOptimistic(
+            ChatMessage(
+              type: MessageType.self,
+              contentType: ChatContentType.gift,
+              text: gift.title,
+              uuid: uuid,
+              flag: 'chat_room',
+              toUid: toUid,
+              data: {
+                'gift_id': gift.id,
+                'gift_title': gift.title,
+                'gift_icon': iconFull,
+                'gift_gold': gift.gold,
+                'gift_count': 1,
+                'gift_url': gift.url, // 相對
+              },
+              sendState: SendState.sending,
+              createAt: cu.nowSec(),
+            ),
+          );
+          _scrollLiveToBottom();
+
+          // 真正發送（旗標用 chat_room）
+          final sendResult = await ref.read(chatRepositoryProvider)
+              .sendText(uuid: uuid, toUid: toUid, text: payload, flag: 'chat_room');
+
+          ref.read(callSessionProvider(roomId).notifier)
+              .updateSendState(uuid, sendResult.ok ? SendState.sent : SendState.failed);
+
+          return sendResult.ok;
+        },
+      ),
+    );
+  }
+
+  Widget _buildRemoteView(ImageProvider avatarProvider) {
     if (_isVoice) return const ColoredBox(color: Colors.white);
     if (!_rtc.isInited || _rtc.engine == null || _remoteUids.isEmpty) {
       return const ColoredBox(color: Colors.black);
     }
+
+    // 對方關相機 → 黑底 + 對方頭像
+    if (!_remoteVideoOn) {
+      return Container(
+        color: Colors.black,
+        child: Center(child: CircleAvatar(radius: 60, backgroundImage: avatarProvider)),
+      );
+    }
+
+    // 對方開相機 → 顯示遠端視訊
     final remoteUid = _remoteUids.first;
     return AgoraVideoView(
       controller: VideoViewController.remote(
         rtcEngine: _rtc.engine,
-        // ✅ 全域引擎
         canvas: VideoCanvas(uid: remoteUid),
         connection: RtcConnection(channelId: roomId),
         useFlutterTexture: true,
@@ -275,9 +558,11 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     return AgoraVideoView(
       controller: VideoViewController(
         rtcEngine: _rtc.engine, // ✅ 全域引擎
-        canvas: const VideoCanvas(
+        canvas: VideoCanvas(
           uid: 0,
-          mirrorMode: VideoMirrorModeType.videoMirrorModeEnabled,
+          mirrorMode: _frontCamera
+              ? VideoMirrorModeType.videoMirrorModeEnabled
+              : VideoMirrorModeType.videoMirrorModeDisabled,
         ),
         useFlutterTexture: true,
         useAndroidSurfaceView: false,
@@ -361,6 +646,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     _rtc.joined.removeListener(_joinedListener);
     _rtc.remoteUids.removeListener(_remoteListener);
 
+    try { _rtc.engine.unregisterEventHandler(_pageRtcHandler); } catch (_) {}
 
     _liveInputCtrl.dispose();
     _liveInputFocus.dispose();
@@ -374,7 +660,10 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
       } catch (_) {}
     }
     _wsUnsubs.clear();
-
+    try { _svgaCtrl.dispose(); } catch (_) {}
+    _giftFallbackTimer?.cancel();
+    _removeGiftOverlay();
+    _stopFreeCountdown();
     WakelockPlus.disable();
 
     super.dispose();
@@ -392,6 +681,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
       'asBroadcaster': asBroadcaster,
       'peerAvatar'   : peerAvatar,
       'callFlag'     : _isVoice ? 2 : 1,
+      'free_at'      : _inFreePeriod ? _freeLeftSec : 0,
     };
 
     CallOverlay.show(
@@ -449,15 +739,15 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
         body: Stack(
           children: [
             // 遠端畫面全屏
-            Positioned.fill(child: _buildRemoteView()),
+            Positioned.fill(child: _buildRemoteView(avatarProvider)),
 
             // 左上：縮小（改成 App 內小窗）
             Positioned(
               top: top + 6,
               left: 12,
               child: IconButton(
-                icon: Image.asset('assets/zoom.png', width: 20, height: 20),
-                onPressed: _goMini, // <= 這行
+                icon: Image.asset('assets/zoom.png', width: 20, height: 20, color: _isVoice? Color(0xFF8E8895) : Colors.white),
+                onPressed: _goMini,
                 tooltip: '縮小畫面',
                 splashRadius: 22,
               ),
@@ -478,7 +768,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
               ),
             ),
 
-            // 名字下方 計時膠囊
+            // 名字下方：免費時長 / 計時膠囊（二擇一）
             Positioned(
               top: top + 56,
               left: 0,
@@ -487,7 +777,53 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
                 child: AnimatedOpacity(
                   opacity: _joined ? 1 : 0,
                   duration: const Duration(milliseconds: 200),
-                  child: Container(
+                  child: _inFreePeriod
+                      ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '免費時長',
+                        style: TextStyle(
+                          color: fg,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Center(
+                        child: FreeDigitsBadge(
+                          text: _mmss(_freeLeftSec),  // 01:10
+                          fg: fg,
+                          bg: chipBg,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      GestureDetector(
+                        onTap: () {
+                          // TODO: 換成你的充值頁路由
+                          // Navigator.pushNamed(context, AppRoutes.recharge);
+                          // 或：
+                          // Navigator.push(context, MaterialPageRoute(builder: (_) => const PaymentMethodPage()));
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFFFA770), Color(0xFFD247FE)],
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                            ),
+                          ),
+                          child: const Text(
+                            '去充值',
+                            style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                      : Container(
                     padding: const EdgeInsets.only(top: 4),
                     width: 120,
                     height: 26,
@@ -541,7 +877,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
               ),
 
             // 本地預覽：右側偏上（加陰影）
-            if (!_isVoice)
+            if (!_isVoice && _videoOn)
               Positioned(
                 right: 12,
                 top: top + 120,
@@ -582,15 +918,55 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
             Positioned(
               left: 12,
               bottom: 20,
-              right: MediaQuery.of(context).size.width * 0.55, // 右側保留空間（避免蓋住本地預覽）
+              right: 225, // ← 精確預留給右側按鈕列
               child: LiveChatInputBar(
                 controller: _liveInputCtrl,
                 focusNode: _liveInputFocus,
                 onSend: _sendLiveText,
-                onTapField: () {}, // 需要時可關閉別的面板
+                onTapField: () {},
               ),
             ),
 
+            Positioned(
+              right: 12,
+              bottom: 20,
+              child: Row(
+                children: [
+                  // 1) 禮物
+                  _assetBtn(
+                    asset: 'assets/icon_gift.png',
+                    onTap: _openGiftSheetLive,
+                  ),
+                  // 揚聲器（開/關圖示）
+                  _assetBtn(
+                    asset: 'assets/icon_speaker_1.png',     // 開啟
+                    offAsset: 'assets/icon_speaker_2.png',  // 關閉
+                    onTap: _toggleSpeaker,
+                    on: _speakerOn,
+                  ),
+                  // 麥克風（開/關圖示）
+                  _assetBtn(
+                    asset: 'assets/icon_mic_1.png',     // 開啟
+                    offAsset: 'assets/icon_mic_2.png',  // 關閉
+                    onTap: _toggleMic,
+                    on: _micOn,
+                  ),
+                  // 4) 視訊（語音模式禁用）
+                  if (!_isVoice)
+                  _assetBtn(
+                    asset: 'assets/icon_vedio.png',
+                    onTap: _toggleVideo,
+                    on: _videoOn,
+                  ),
+                  // 5) 切換鏡頭（語音模式禁用）
+                  if (!_isVoice && _videoOn)
+                  _assetBtn(
+                    asset: 'assets/icon_switch.png',
+                    onTap: _switchCamera,
+                  ),
+                ],
+              ),
+            ),
 
           ],
         ),
@@ -598,72 +974,184 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     );
   }
 
+  Map<String, dynamic>? _decodeJsonMap(String? s) {
+    if (s == null || s.isEmpty) return null;
+    try {
+      final v = jsonDecode(s);
+      if (v is Map) return v.map((k, v) => MapEntry(k.toString(), v));
+    } catch (_) {}
+    return null;
+  }
+  int _toInt(dynamic v) => (v is num) ? v.toInt() : int.tryParse('${v ?? ''}') ?? -1;
+  String _joinCdn(String base, String path) {
+    if (path.isEmpty || path.startsWith('http')) return path;
+    final b = base.replaceFirst(RegExp(r'/+$'), '');
+    final p = path.replaceFirst(RegExp(r'^/+'), '');
+    return '$b/$p';
+  }
+
   void _onWsLiveChat(Map<String, dynamic> payload) {
     try {
-      // --- 取出內層 data ---
       final data = (payload['Data'] is Map)
           ? Map<String, dynamic>.from(payload['Data'])
           : (payload['data'] is Map)
           ? Map<String, dynamic>.from(payload['data'])
           : const <String, dynamic>{};
 
-      // --- 可選：保險型 type 檢查（接受 flag 或 type），也可以整段移除 ---
+      // 保險型過濾：只收 live_chat（flag/type=3）
       final tRaw = payload['type'] ?? payload['Type'] ?? payload['flag'] ?? payload['Flag'];
       final tVal = (tRaw is num) ? tRaw.toInt() : int.tryParse('$tRaw');
-      if (tVal != null && tVal != 3) return; // 不是 live_chat 就跳出（多一道保險）
+      if (tVal != null && tVal != 3) return;
 
-      // --- 內容：可能是純字串或 JSON {"chat_text": "..."} ---
       final content = (data['Content'] ?? data['content'] ?? '').toString();
       if (content.isEmpty) return;
 
-      String chatText = content;
-      try {
-        final obj = jsonDecode(content);
-        if (obj is Map && obj['chat_text'] != null) {
-          chatText = obj['chat_text'].toString();
-        }
-      } catch (_) { /* 不是 JSON 就用原字串 */ }
+      // 第一層：content 可能是 {"chat_text":"..."} / {"voice_path":...}
+      final cjson = _decodeJsonMap(content);
+      String? chatText = cjson?['chat_text']?.toString() ?? content;
+      String? voiceRel = cjson?['voice_path']?.toString();
+      int duration = () {
+        final d = cjson?['duration'];
+        return (d is num) ? d.toInt() : int.tryParse('${d ?? ''}') ?? 0;
+      }();
 
-      // --- 參與人比對（因封包沒有 channel_id，用 uid / to_uid 判斷是否這一房的 1v1） ---
-      int _toInt(dynamic v) => (v is num) ? v.toInt() : int.tryParse('$v') ?? -1;
-
+      final me = ref.read(userProfileProvider);
+      final myUid = int.tryParse(me?.uid ?? '') ?? -1;
       final fromUid = _toInt(data['Uid'] ?? payload['Uid'] ?? data['uid'] ?? payload['uid']);
       final toUid   = _toInt(data['ToUid'] ?? payload['ToUid'] ?? data['to_uid'] ?? payload['toUid']);
 
-      final me   = ref.read(userProfileProvider);
-      final myUid = int.tryParse(me?.uid ?? '') ?? -1;
       final remote = _remoteUids.isNotEmpty ? _remoteUids.first : null;
       if (remote == null) return;
 
-      // 只收「對方→我」或（必要時）「我→對方」的 echo
       final isThisTalk = (fromUid == remote && toUid == myUid) ||
           (fromUid == myUid   && toUid == remote);
-      if (!isThisTalk) {
-        debugPrint('[LIVE] skip: pair mismatch from=$fromUid to=$toUid me=$myUid remote=$remote');
+      if (!isThisTalk) return;
+
+      final uuid = (payload['uuid'] ?? payload['UUID'] ?? data['uuid'] ?? data['UUID'] ?? '').toString();
+      if (uuid.isNotEmpty && !_liveSeenUuid.add(uuid)) return;
+      final now  = cu.nowSec();
+
+      // ★ 第二層：chat_text 可能是字串化的禮物 JSON
+      final inner = _decodeJsonMap(chatText);
+      final innerType = (inner?['type'] ?? inner?['t'])?.toString().toLowerCase();
+
+      final session = ref.read(callSessionProvider(roomId).notifier);
+      final cdnBase = me?.cdnUrl ?? '';
+
+      if (innerType == 'gift') {
+        final gid   = _toInt(inner?['gift_id'] ?? inner?['id']);
+        final title = (inner?['gift_title'] ?? inner?['title'] ?? '').toString();
+        final iconRel = (inner?['gift_icon'] ?? inner?['icon'] ?? '').toString();
+        final gold  = _toInt(inner?['gift_gold'] ?? inner?['gold']);
+        final count = _toInt(inner?['gift_count'] ?? inner?['count']);
+        String urlRel = (inner?['gift_url'] ?? '').toString();
+
+        // 若缺 gift_url，靠本地禮物表補
+        if (urlRel.isEmpty && gid >= 0) {
+          final gifts = ref.read(giftListProvider).maybeWhen(
+            data: (v) => v,
+            orElse: () => const <GiftItemModel>[],
+          );
+          final g = gifts.where((e) => e.id == gid).toList();
+          if (g.isNotEmpty && g.first.url.isNotEmpty) {
+            urlRel = g.first.url; // 相對
+          }
+        }
+
+        final iconFull = _joinCdn(cdnBase, iconRel);
+        final urlFull  = _joinCdn(cdnBase, urlRel);
+
+        if (fromUid != myUid && urlFull.isNotEmpty) {
+          _enqueueGift(urlFull);
+        }
+
+        final msg = ChatMessage(
+          type: (fromUid == myUid) ? MessageType.self : MessageType.other,
+          contentType: ChatContentType.gift,
+          text: title,
+          uuid: uuid.isEmpty ? null : uuid,
+          createAt: now,
+          data: {
+            'gift_id': gid,
+            'gift_title': title,
+            'gift_icon': iconFull,
+            'gift_gold': gold,
+            'gift_count': count,
+            if (urlRel.isNotEmpty) 'gift_url': urlFull,
+          },
+        );
+
+        session.addIncoming(msg);
+        _scrollLiveToBottom();
+
         return;
       }
 
-      // --- 去重（uuid）---
-      String? uuid;
-      final u = (payload['uuid'] ?? payload['UUID'] ?? data['uuid'] ?? data['UUID'] ?? '').toString();
-      if (u.isNotEmpty) {
-        uuid = u;
+      // 語音訊息（若你的直播面板有要顯示就補 UI；下方先保持文字為主）
+      if ((voiceRel ?? '').isNotEmpty) {
+        final msg = ChatMessage(
+          type: (fromUid == myUid) ? MessageType.self : MessageType.other,
+          contentType: ChatContentType.voice,
+          audioPath: _joinCdn(cdnBase, voiceRel!),
+          duration: duration,
+          uuid: uuid.isEmpty ? null : uuid,
+          createAt: now,
+        );
+        session.addIncoming(msg);
+        _scrollLiveToBottom();
+        return;
       }
 
-      // --- 推進 UI ---
+      // 純文字
       final msg = ChatMessage(
         type: (fromUid == myUid) ? MessageType.self : MessageType.other,
         contentType: ChatContentType.text,
-        text: chatText,
-        uuid: uuid,
-        createAt: cu.nowSec(),
+        text: chatText ?? '',
+        uuid: uuid.isEmpty ? null : uuid,
+        createAt: now,
       );
-
-      ref.read(callSessionProvider(roomId).notifier).addIncoming(msg);
+      session.addIncoming(msg);
       _scrollLiveToBottom();
     } catch (e, st) {
-      debugPrint('room chat (type=3) parse err: $e\n$st\npayload=$payload');
+      debugPrint('[LIVE WS] parse err: $e\n$st\npayload=$payload');
     }
+  }
+
+  String _mmss(int sec) {
+    if (sec < 0) sec = 0;
+    final m = (sec ~/ 60).toString().padLeft(2, '0');
+    final s = (sec % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  void _startFreeCountdown() {
+    _freeTimer?.cancel();
+    setState(() {
+      _inFreePeriod = _freeAtSec > 0;
+      _freeLeftSec = _freeAtSec;
+    });
+    if (!_inFreePeriod) return;
+
+    _freeTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) return;
+      if (_freeLeftSec <= 1) {
+        t.cancel();
+        setState(() {
+          _inFreePeriod = false;
+          _freeLeftSec = 0;
+        });
+        // 免費結束 → 啟動原計時器
+        ref.read(callTimerProvider).start();
+        Fluttertoast.showToast(msg: '免費時長已結束，開始計費');
+      } else {
+        setState(() => _freeLeftSec--);
+      }
+    });
+  }
+
+  void _stopFreeCountdown() {
+    _freeTimer?.cancel();
+    _freeTimer = null;
   }
 
   Future<void> _sendLiveText() async {
@@ -705,7 +1193,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     _scrollLiveToBottom();
 
     final repo = ref.read(chatRepositoryProvider);
-    final ok = await repo.sendText(
+    final sendResult = await repo.sendText(
       uuid: uuid,
       toUid: toUid,
       text: txt,
@@ -713,7 +1201,106 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     );
 
     if (!mounted) return;
-    session.updateSendState(uuid, ok ? SendState.sent : SendState.failed);
+    session.updateSendState(uuid, sendResult.ok ? SendState.sent : SendState.failed);
+  }
+
+  // 播放一次 SVGA，播完自動關閉
+  Future<void> _playGiftEffect(String url) async {
+    if (!mounted || url.isEmpty) { _onGiftDone(); return; }
+    if (!url.toLowerCase().endsWith('.svga')) { _onGiftDone(); return; }
+
+    try {
+      _removeGiftOverlay(); // 確保畫布乾淨
+
+      // ★ 先從快取/預取拿已解好的 item（第一次會下載+解析，之後秒拿）
+      final item = await _loadSVGAItem(url);
+
+      _svgaCtrl.videoItem = item;
+      _insertGiftOverlay();
+
+      // —— 估算動畫時長，作為 fallback（+10% 緩衝即可）——
+      int _estimateDurationMs(dynamic v) {
+        try {
+          final frames = v.frames as int?;
+          final fps    = v.FPS as int?;
+          if (frames != null && fps != null && frames > 0 && fps > 0) {
+            final sec = frames / fps;
+            return (sec * 1100).round();   // 比之前 20% 更短，縮減不必要等待
+          }
+        } catch (_) {}
+        return 4000; // 取不到就用 4s，比原先更短
+      }
+
+      final estMs = _estimateDurationMs(item);
+      _giftFallbackTimer?.cancel();
+      _giftFallbackTimer = Timer(Duration(milliseconds: estMs), () {
+        try { _svgaCtrl.stop(); _svgaCtrl.videoItem = null; } catch (_) {}
+        _removeGiftOverlay();
+        _onGiftDone();
+      });
+
+      void onStatus(AnimationStatus s) {
+        if (s != AnimationStatus.completed) return; // 忽略 reset 的 dismissed
+        _svgaCtrl.removeStatusListener(onStatus);
+        _giftFallbackTimer?.cancel();
+        _giftFallbackTimer = null;
+
+        try { _svgaCtrl.stop(); _svgaCtrl.videoItem = null; } catch (_) {}
+        _removeGiftOverlay();
+        _onGiftDone();
+      }
+
+      _svgaCtrl.addStatusListener(onStatus);
+
+      // 用 forward(from: 0) 避免剛設定 videoItem 就先出現 dismissed
+      _svgaCtrl.forward(from: 0.0);
+
+    } catch (e) {
+      debugPrint('[SVGA] play error: $e');
+      _removeGiftOverlay();
+      _onGiftDone();
+    }
+  }
+
+  void _enqueueGift(String url, {int? giftId}) {
+    if (url.isEmpty) return;
+    _giftQueue.add(GiftTask(url, giftId: giftId));
+    _prefetchNextSVGA();
+    _tryStartGiftPlayback();
+  }
+
+  void _tryStartGiftPlayback() {
+    if (_isPlayingGift || _giftQueue.isEmpty) return;
+    final task = _giftQueue.removeFirst();
+    _isPlayingGift = true;
+    _prefetchNextSVGA();
+    _playGiftEffect(task.url);
+  }
+
+  void _onGiftDone() {
+    _giftFallbackTimer?.cancel();
+    _giftFallbackTimer = null;
+    _isPlayingGift = false;
+    // 小間隔避免銜接太急
+    Future.delayed(const Duration(milliseconds: 150), _tryStartGiftPlayback);
+  }
+
+  void _insertGiftOverlay() {
+    if (_giftEntry != null) return;
+    _giftEntry = OverlayEntry(
+      builder: (_) => Positioned.fill(
+        child: IgnorePointer(
+          ignoring: true,
+          child: Center(child: SVGAImage(_svgaCtrl)),
+        ),
+      ),
+    );
+    Overlay.of(context, rootOverlay: true)!.insert(_giftEntry!);
+  }
+
+  void _removeGiftOverlay() {
+    _giftEntry?.remove();
+    _giftEntry = null;
   }
 
   void _scrollLiveToBottom() {
@@ -730,6 +1317,61 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
       }
     });
   }
+
+  Future<dynamic> _loadSVGAItem(String url) async {
+    // 1) 先看已解析快取
+    final cachedItem = _svgaItemCache[url];
+    if (cachedItem != null) return cachedItem;
+
+    // 2) 再看位元組快取（避免重複下載）
+    Uint8List? bytes = _svgaBytesCache[url];
+    if (bytes == null) {
+      final resp = await http.get(Uri.parse(url));
+      if (resp.statusCode != 200 || resp.bodyBytes.isEmpty) {
+        throw 'http ${resp.statusCode}';
+      }
+      bytes = resp.bodyBytes;
+      // 簡單 fifo 逐出
+      if (_svgaBytesCache.length >= _svgaCacheCap) {
+        _svgaBytesCache.remove(_svgaBytesCache.keys.first);
+      }
+      _svgaBytesCache[url] = bytes;
+    }
+
+    // 3) 解析（第一次會花時間；之後直接用 item 快取）
+    final item = await SVGAParser.shared.decodeFromBuffer(bytes);
+
+    if (_svgaItemCache.length >= _svgaCacheCap) {
+      _svgaItemCache.remove(_svgaItemCache.keys.first);
+    }
+    _svgaItemCache[url] = item;
+    return item;
+  }
+
+  void _prefetchNextSVGA() {
+    if (_giftQueue.isEmpty) return;
+    final nextUrl = _giftQueue.first.url;
+    // 背景預取，不影響當前播放
+    unawaited(_loadSVGAItem(nextUrl).catchError((_) {}));
+  }
+
+  Future<void> _refreshToken() async {
+    if (roomId.isEmpty) return;
+    try {
+
+      final newToken = await ref.read(callRepositoryProvider).renewRtcToken(
+        channelName: roomId,
+      );
+
+      await _rtc.engine.renewToken(newToken);        // ✅ 回傳給 Agora
+      setState(() => rtcToken = newToken);           // (可選)保留現值
+      debugPrint('[RTC] token renewed');
+    } catch (e) {
+      debugPrint('[RTC] renew token error: $e');
+      // 失敗策略（可選）：稍後重試/提示/視情況離房
+    }
+  }
+
 
   void _applyCallFlagFromArgs(Map<String, dynamic> args) {
     // 優先吃 callFlag (1=video, 2=voice)

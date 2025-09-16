@@ -1,0 +1,45 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../data/models/gift_item.dart';
+import '../../data/network/api_client_provider.dart';
+import '../../data/repository/gift_repository.dart';
+
+final giftRepositoryProvider = Provider<GiftRepository>((ref) {
+  final api = ref.read(apiClientProvider);
+  return GiftRepository(api);
+});
+
+class GiftListNotifier extends StateNotifier<AsyncValue<List<GiftItemModel>>> {
+  GiftListNotifier(this._repo) : super(const AsyncValue.loading());
+
+  final GiftRepository _repo;
+
+  Future<void> loadIfEmpty() async {
+    if (_repo.hasCache) {
+      state = AsyncValue.data(_repo.cached);
+      return;
+    }
+    await refresh();
+  }
+
+  Future<void> loadIfStale([Duration ttl = const Duration(minutes: 10)]) async {
+    if (_repo.hasCache && !_repo.isStale(ttl)) {
+      state = AsyncValue.data(_repo.cached);
+      return;
+    }
+    await refresh();
+  }
+
+  Future<void> refresh() async {
+    try {
+      state = const AsyncValue.loading();
+      final list = await _repo.fetchGiftList(force: true);
+      state = AsyncValue.data(list);
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
+  }
+}
+
+final giftListProvider = StateNotifierProvider<GiftListNotifier, AsyncValue<List<GiftItemModel>>>(
+      (ref) => GiftListNotifier(ref.read(giftRepositoryProvider)),
+);

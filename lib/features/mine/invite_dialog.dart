@@ -21,7 +21,7 @@ class InviteDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
       child: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -73,21 +73,21 @@ class InviteDialog extends StatelessWidget {
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Center(
-                            child: Container(
-                              width: double.infinity,
-                              height: 250,
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Center(
-                                child: RepaintBoundary(
-                                  key: _qrKey,
-                                  child: QrImageView(
-                                    data: inviteUrl,
-                                    version: QrVersions.auto,
-                                    size: 250,
-                                  ),
+                            child: RepaintBoundary(
+                              key: _qrKey,
+                              child: Container(
+                                width: 268,
+                                height: 268,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,       // ← 白背景要包進截圖
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                alignment: Alignment.center,
+                                child: QrImageView(
+                                  data: inviteUrl,
+                                  version: QrVersions.auto,
+                                  size: 250,
+                                  backgroundColor: Colors.white, // ← 再加一道保險
                                 ),
                               ),
                             ),

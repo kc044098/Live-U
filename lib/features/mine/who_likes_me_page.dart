@@ -360,95 +360,113 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage>
   }
 
   Widget _plansGrid() {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: _plans.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 0.8,
-      ),
-      itemBuilder: (context, index) {
-        final p = _plans[index];
-        final selected = _selectedPlanIndex == index;
+    return LayoutBuilder(
+      builder: (context, cons) {
+        const cols = 3;
+        const crossSpacing = 12.0;
+        final ts = MediaQuery.textScaleFactorOf(context).clamp(1.0, 1.6);
 
-        return GestureDetector(
-          onTap: () => setState(() => _selectedPlanIndex = index),
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: selected ? Colors.pink : const Color(0xFFE0E0E0),
-                    width: selected ? 2 : 1,
-                  ),
-                  boxShadow: selected
-                      ? [
-                    BoxShadow(
-                      color: Colors.pink.withOpacity(0.15),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
+        // 算每格寬度
+        final tileW = (cons.maxWidth - crossSpacing * (cols - 1)) / cols;
+
+        // 估算一張卡片需要的高度（字體會放大，所以乘上 ts）
+        // 行高大致：標題14 + 價格16 + 原價12 + /月12 + 間距與內距
+        final baseTextH = (14*1.25 + 16*1.25 + 12*1.25 + 12*1.25); // 行高估值
+        const vPadding = 6.0 * 2;
+        const vSpacing = 2.0 * 3;
+        // 給一點餘量，避免不同字體切割造成 1~3px 的誤差
+        final extra = 10.0;
+
+        final tileH = (baseTextH * ts) + vPadding + vSpacing + extra;
+
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _plans.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: cols,
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            // 關鍵：用固定高度取代 childAspectRatio
+            mainAxisExtent: tileH + 8,
+          ),
+          itemBuilder: (context, index) {
+            final p = _plans[index];
+            final selected = _selectedPlanIndex == index;
+
+            return GestureDetector(
+              onTap: () => setState(() => _selectedPlanIndex = index),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: selected ? Colors.pink : const Color(0xFFE0E0E0),
+                        width: selected ? 2 : 1,
+                      ),
+                      boxShadow: selected
+                          ? [BoxShadow(color: Colors.pink.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 4))]
+                          : null,
                     ),
-                  ]
-                      : null,
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(p.title,
-                        style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.red)),
-                    const SizedBox(height: 2),
-                    // 售價（可能是特價）
-                    Text(_fmtMoney(p.payPrice),
-                        style: const TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 2),
-                    // 原價（固定刪除線）
-                    Text('原价 ${_fmtMoney(p.price)}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
-                          decoration: TextDecoration.lineThrough,
-                        )),
-                    const SizedBox(height: 2),
-                    Text(_fmtPerMonth(p),
-                        style:
-                        const TextStyle(fontSize: 12, color: Colors.grey)),
-                  ],
-                ),
-              ),
-              if (index == _bestIndex)
-                Positioned(
-                  top: -8,
-                  left: 0,
-                  child: Container(
-                    width: 60,
-                    padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFFF4D67),
-                      borderRadius: BorderRadius.only(
-                        topRight: Radius.circular(8),
-                        topLeft: Radius.circular(8),
-                        bottomRight: Radius.circular(8),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(p.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.red)),
+                        const SizedBox(height: 2),
+                        Text(_fmtMoney(p.payPrice),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 2),
+                        Text('原价 ${_fmtMoney(p.price)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey,
+                              decoration: TextDecoration.lineThrough,
+                            )),
+                        const SizedBox(height: 2),
+                        Text(_fmtPerMonth(p),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+
+                  // 標籤（不影響格子高度）
+                  if (index == _bestIndex)
+                    Positioned(
+                      top: -8,
+                      left: 0,
+                      child: Container(
+                        width: 60,
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFFF4D67),
+                          borderRadius: BorderRadius.only(
+                            topRight: Radius.circular(8),
+                            topLeft: Radius.circular(8),
+                            bottomRight: Radius.circular(8),
+                          ),
+                        ),
+                        child: const Text('最佳选择',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 10, color: Colors.white)),
                       ),
                     ),
-                    child: const Text('最佳选择',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 10, color: Colors.white)),
-                  ),
-                ),
-            ],
-          ),
+                ],
+              ),
+            );
+          },
         );
       },
     );

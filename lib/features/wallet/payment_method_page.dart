@@ -1,20 +1,29 @@
 import 'package:djs_live_stream/features/wallet/payment_details_page.dart';
+import 'package:djs_live_stream/features/wallet/wallet_repository.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
-class PaymentMethodPage extends StatefulWidget {
-  final double amount;
+class PaymentMethodPage extends ConsumerStatefulWidget {
+  final double amount; // 顯示於 UI 的金額（美元）
+  final int? packetId;
 
-  const PaymentMethodPage({super.key, required this.amount});
+  const PaymentMethodPage({
+    super.key,
+    required this.amount,
+    this.packetId,
+  });
 
   @override
-  State<PaymentMethodPage> createState() => _PaymentMethodPageState();
+  ConsumerState<PaymentMethodPage> createState() => _PaymentMethodPageState();
 }
 
-class _PaymentMethodPageState extends State<PaymentMethodPage> {
+class _PaymentMethodPageState extends ConsumerState<PaymentMethodPage> {
   int selectedMethod = 0;
   bool isPaying = false;
+
+  int _goldFromAmount(double amount) => (amount * 100).round();
 
   // 支付方式對照表
   final paymentMethods = [
@@ -24,13 +33,44 @@ class _PaymentMethodPageState extends State<PaymentMethodPage> {
     'Google Pay',
   ];
 
-// 可選帳號（僅部分有）
+  // 可選帳號（僅部分有）
   final payAccounts = [
-    null,                         // 佣金充值不需要帳號
-    null,                         // 新卡也不需要
-    '1234567890@163.com',         // PayPal 帳戶
-    'user@gmail.com',            // Google Pay 帳戶
+    null,                   // 佣金充值不需要帳號
+    null,                   // 新卡也不需要
+    '1234567890@163.com',   // PayPal 帳戶（DEMO）
+    'user@gmail.com',       // Google Pay 帳戶（DEMO）
   ];
+
+  Future<void> _doRecharge() async {
+    setState(() => isPaying = true);
+    try {
+      final repo = ref.read(walletRepositoryProvider);
+
+      if (widget.packetId != null) {
+        // ★ 禮包：只傳 id
+        await repo.rechargeGold(id: widget.packetId);
+      } else {
+        // ★ 自訂金額：只傳 gold
+        final gold = _goldFromAmount(widget.amount);
+        await repo.rechargeGold(gold: gold);
+      }
+
+      // 成功後刷新餘額
+      ref.invalidate(walletBalanceProvider);
+
+      if (!mounted) return;
+      final toast = (widget.packetId != null)
+          ? '禮包充值成功'
+          : '充值成功：+${_goldFromAmount(widget.amount)} 金幣';
+      Fluttertoast.showToast(msg: toast);
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      Fluttertoast.showToast(msg: '充值失敗：$e');
+    } finally {
+      if (mounted) setState(() => isPaying = false);
+    }
+  }
 
   Widget buildRadioTile({
     required int value,
@@ -63,6 +103,8 @@ class _PaymentMethodPageState extends State<PaymentMethodPage> {
 
   @override
   Widget build(BuildContext context) {
+    final payable = widget.amount > 0 && !isPaying;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF9F9F9),
       appBar: AppBar(
@@ -81,6 +123,12 @@ class _PaymentMethodPageState extends State<PaymentMethodPage> {
           Text(
             '\$${widget.amount.toStringAsFixed(2)}',
             style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 4),
+          // 顯示換算後金幣（測試）
+          Text(
+            '≈ ${_goldFromAmount(widget.amount)} 金幣',
+            style: const TextStyle(color: Colors.grey),
           ),
           const SizedBox(height: 20),
 
@@ -168,20 +216,7 @@ class _PaymentMethodPageState extends State<PaymentMethodPage> {
                   backgroundColor: Colors.transparent,
                   elevation: 0,
                 ),
-                onPressed: () async {
-                  setState(() => isPaying = true);
-
-                  // 模擬跳轉到第三方支付 + 等待
-                  await Future.delayed(const Duration(seconds: 2));
-
-                  // 回來後提示並返回
-                  if (context.mounted) {
-                    Fluttertoast.showToast(msg: '支付成功');
-                    Navigator.pop(context, true);
-                  }
-
-                  setState(() => isPaying = false);
-                },
+                onPressed: payable ? _doRecharge : null,
                 child: Ink(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(24),

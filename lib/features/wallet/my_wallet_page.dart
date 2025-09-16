@@ -1,5 +1,5 @@
 import 'dart:io';
-
+import 'dart:typed_data';
 import 'package:djs_live_stream/features/wallet/payment_method_page.dart';
 import 'package:djs_live_stream/features/wallet/wallet_detail_page.dart';
 import 'package:djs_live_stream/features/wallet/wallet_repository.dart';
@@ -11,6 +11,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 
 import '../../data/models/user_model.dart';
 import '../profile/profile_controller.dart';
+import 'model/coin_packet.dart';
 
 class MyWalletPage extends ConsumerStatefulWidget {
   const MyWalletPage({super.key});
@@ -24,14 +25,6 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
   int? _gold;        // ← 從 moneyCash 取得後暫存於此
   final TextEditingController _customAmountController = TextEditingController();
 
-  final List<Map<String, dynamic>> rechargeOptions = [
-    {'coins': 1000, 'price': 10},
-    {'coins': 3000, 'price': 30, 'bonus': '限時贈送250幣'},
-    {'coins': 5000, 'price': 50},
-    {'coins': 11000, 'price': 100, 'bonus': '限時贈送1000幣'},
-    {'coins': 60000, 'price': 500},
-    {'custom': true},
-  ];
 
   @override
   void initState() {
@@ -68,8 +61,14 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
     // 以 moneyCash 結果優先，其次用 user.gold，最後 fallback 0
     final int coinAmount = _gold ?? (user.gold ?? 0);
 
+    final packetsAsync = ref.watch(coinPacketsProvider);
+
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,          // 關掉 scrolled-under 陰影
+        surfaceTintColor: Colors.transparent,
         title: const Text('我的錢包', style: TextStyle(color: Colors.black, fontSize: 16)),
         centerTitle: true,
         leading: IconButton(
@@ -94,8 +93,35 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildHeader(user, coinAmount),
-            _buildRechargeGrid(),
-            if (selectedIndex == rechargeOptions.length - 1) _buildCustomAmountInput(),
+
+            // ★ 用後端資料建 Grid
+            packetsAsync.when(
+              loading: () => const Padding(
+                padding: EdgeInsets.only(top: 40),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+              error: (e, st) => Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    const Text('禮包載入失敗', style: TextStyle(color: Colors.red)),
+                    const SizedBox(height: 8),
+                    Text('$e', style: const TextStyle(color: Colors.black54)),
+                    const SizedBox(height: 8),
+                    OutlinedButton(
+                      onPressed: () => ref.refresh(coinPacketsProvider),
+                      child: const Text('重試'),
+                    ),
+                  ],
+                ),
+              ),
+              data: (packets) => Column(
+                children: [
+                  _buildRechargeGrid(packets),
+                  if (selectedIndex == packets.length) _buildCustomAmountInput(), // ★ custom 卡 index = packets.length
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -173,13 +199,16 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
     );
   }
 
-  Widget _buildRechargeGrid() {
+  Widget _buildRechargeGrid(List<CoinPacket> packets) {
+    final customIndex = packets.length; // ★ 最後一個是自訂金額
+    final itemCount = packets.length + 1;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: GridView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        itemCount: rechargeOptions.length,
+        itemCount: itemCount,
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
           childAspectRatio: 0.9,
@@ -187,8 +216,72 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
           mainAxisSpacing: 12,
         ),
         itemBuilder: (context, index) {
-          final item = rechargeOptions[index];
+          final isCustom = index == customIndex;
+
+          // 目前是否被選中
           final isSelected = selectedIndex == index;
+
+          // 自訂金額卡
+          if (isCustom) {
+            return GestureDetector(
+              onTap: () => setState(() => selectedIndex = index),
+              child: Stack(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: SizedBox(
+                      height: 125,
+                      child: Column(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                color: isSelected ? const Color(0xFFFFEFEF) : Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: isSelected ? Colors.red : const Color(0xFFEDEDED),
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  SvgPicture.asset(
+                                    'assets/icon_edit1.svg',
+                                    width: 36,
+                                    colorFilter: ColorFilter.mode(
+                                      isSelected ? Colors.red : Colors.grey,
+                                      BlendMode.srcIn,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    '自定义金额',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: isSelected ? Colors.red : Colors.grey,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          const SizedBox(height: 18), // 無價格欄
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          // 一般禮包卡
+          final p = packets[index];
+          final displayPrice = _displayPrice(p.price);
+          final bonusText = p.bonus > 0 ? '限時贈送${p.bonus}幣' : null;
 
           return GestureDetector(
             onTap: () => setState(() => selectedIndex = index),
@@ -211,36 +304,13 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
                                 width: 1.5,
                               ),
                             ),
-                            child: item['custom'] == true
-                                ? Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                SvgPicture.asset(
-                                  'assets/icon_edit1.svg',
-                                  width: 36,
-                                  colorFilter: ColorFilter.mode(
-                                    isSelected ? Colors.red : Colors.grey,
-                                    BlendMode.srcIn,
-                                  ),
-                                  // 如果你的 flutter_svg 很旧，也可用 `color: ...`（但已弃用）
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  '自定义金额',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: isSelected ? Colors.red : Colors.grey,
-                                  ),
-                                ),
-                              ],
-                            )
-                                : Column(
+                            child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Image.asset('assets/icon_gold1.png', width: 36),
                                 const SizedBox(height: 6),
                                 Text(
-                                  '${item['coins']}币',
+                                  '${formatNumber(p.gold)}币',
                                   style: TextStyle(
                                     fontSize: 14,
                                     color: isSelected ? Colors.red : Colors.black,
@@ -251,15 +321,15 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
                           ),
                         ),
                         const SizedBox(height: 6),
-                        item['custom'] != true
-                            ? Text('\$${item['price'].toStringAsFixed(2)}',
-                            style: const TextStyle(fontSize: 12, color: Colors.black54))
-                            : const SizedBox(height: 18),
+                        Text(
+                          '\$${displayPrice}',
+                          style: const TextStyle(fontSize: 12, color: Colors.black54),
+                        ),
                       ],
                     ),
                   ),
                 ),
-                if (item['bonus'] != null)
+                if (bonusText != null)
                   Positioned(
                     top: 0,
                     left: 0,
@@ -274,7 +344,7 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
                         ),
                       ),
                       child: Text(
-                        item['bonus'],
+                        bonusText,
                         style: const TextStyle(fontSize: 10, color: Color(0xFFFF3535)),
                       ),
                     ),
@@ -307,7 +377,7 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               decoration: const InputDecoration(
                 border: InputBorder.none,
-                hintText: '请输入您的充值金额（1–1000美元）',
+                hintText: '请输入您的充值金额',
                 hintStyle: TextStyle(color: Colors.grey),
               ),
             ),
@@ -328,10 +398,25 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
     return buf.toString();
   }
 
+  String _displayPrice(int raw) {
+    final double v = raw >= 1000 ? raw / 100.0 : raw.toDouble();
+    return v.toStringAsFixed(2);
+  }
+
   void _onRechargePressed() {
-    final isCustom = selectedIndex == rechargeOptions.length - 1;
+    final packetsAsync = ref.read(coinPacketsProvider);
+    final packets = packetsAsync.asData?.value ?? [];
+
+    if (packets.isEmpty) {
+      Fluttertoast.showToast(msg: '禮包尚未載入，請稍候');
+      return;
+    }
+
+    final customIndex = packets.length;
+    final isCustom = selectedIndex == customIndex;
 
     if (isCustom) {
+      // 自訂金額 → 只帶 amount
       final input = _customAmountController.text.trim();
       final parsed = double.tryParse(input);
 
@@ -339,34 +424,46 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
         Fluttertoast.showToast(msg: '至少輸入1元');
         return;
       }
-
       if (parsed % 1 != 0) {
         Fluttertoast.showToast(msg: '金額必須是整數');
         return;
       }
 
-      setState(() {
-        selectedIndex = 0;
-      });
+      FocusScope.of(context).unfocus();
 
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => PaymentMethodPage(amount: parsed),
+          builder: (_) => PaymentMethodPage(
+            amount: parsed,
+            // packetId: null  // 可不寫，預設就是 null
+          ),
         ),
       );
-
       return;
     }
 
-    final amountToPay = (rechargeOptions[selectedIndex]['price'] as num).toDouble();
+    // 選擇前面禮包 → 帶入 packetId + amount
+    if (selectedIndex < 0 || selectedIndex >= packets.length) {
+      Fluttertoast.showToast(msg: '請先選擇禮包');
+      return;
+    }
+    final picked = packets[selectedIndex];
+
+    // 若後端 price 為「分」，你可用規則轉成實際金額（這裡沿用之前示例）
+    final amountToPay = (picked.price >= 1000)
+        ? picked.price / 100.0
+        : picked.price.toDouble();
 
     FocusScope.of(context).unfocus();
 
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => PaymentMethodPage(amount: amountToPay),
+        builder: (_) => PaymentMethodPage(
+          amount: amountToPay,
+          packetId: picked.id, // ★ 帶禮包 id
+        ),
       ),
     );
   }

@@ -19,6 +19,7 @@ import '../mine/logout_confirm_dialog.dart';
 import '../profile/profile_controller.dart';
 import '../mine/edit_mine_page.dart';
 import '../wallet/my_wallet_page.dart';
+import '../wallet/wallet_repository.dart';
 
 class MinePage extends ConsumerStatefulWidget {
   const MinePage({super.key});
@@ -27,11 +28,41 @@ class MinePage extends ConsumerStatefulWidget {
   ConsumerState<MinePage> createState() => _MinePageState();
 }
 
-class _MinePageState extends ConsumerState<MinePage> {
+class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver {
+  static const double _tabBarHeight = 64.0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.invalidate(walletBalanceProvider);
+      ref.refresh(walletBalanceProvider);
+    });
+
+    // 錢包 API 回來就把 gold/vip 寫回 userProfile，保持一致
+    ref.listen(walletBalanceProvider, (prev, next) {
+      next.whenData((t) {
+        final (gold, vipExpire) = t;
+        final u = ref.read(userProfileProvider);
+        if (u != null) {
+          ref.read(userProfileProvider.notifier).state =
+              u.copyWith(gold: gold, vipExpire: vipExpire);
+        }
+      });
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(userProfileProvider);
-    final controller = ref.read(userProfileProvider.notifier);
+    final wallet = ref.watch(walletBalanceProvider);
+    final coinLatest = wallet.maybeWhen(
+      data: (t) => t.$1,              // t = (gold, vipExpire)
+      orElse: () => user?.gold ?? 0,
+    );
+    final bottomGap = MediaQuery.of(context).padding.bottom + _tabBarHeight + 16;
 
     if (user == null) {
       return const Scaffold(
@@ -52,6 +83,7 @@ class _MinePageState extends ConsumerState<MinePage> {
           ),
           SafeArea(
             child: SingleChildScrollView(
+              padding: EdgeInsets.only(bottom: bottomGap),
               child: Column(
                 children: [
                   // Header: 頭像 + 暱稱 + VIP + ID
@@ -126,6 +158,9 @@ class _MinePageState extends ConsumerState<MinePage> {
                                           builder: (_) => const EditMinePage(),
                                         ),
                                       );
+                                      if (!mounted) return;
+                                      ref.invalidate(walletBalanceProvider);
+                                      ref.refresh(walletBalanceProvider);
                                     },
                                     child: SvgPicture.asset(
                                       'assets/icon_edit1.svg',
@@ -351,6 +386,9 @@ class _MinePageState extends ConsumerState<MinePage> {
                           MaterialPageRoute(
                               builder: (context) => const MyWalletPage()),
                         );
+                        if (!mounted) return;
+                        ref.invalidate(walletBalanceProvider);
+                        ref.refresh(walletBalanceProvider);
                       },
                       child: Container(
                         padding: const EdgeInsets.all(16),
@@ -375,9 +413,7 @@ class _MinePageState extends ConsumerState<MinePage> {
                             const SizedBox(width: 8),
                             const Text('我的钱包', style: TextStyle(fontSize: 16)),
                             const Spacer(),
-                            const Text('1000个币',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 16)),
+                            Text('$coinLatest 金币', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                             const SizedBox(width: 12),
                             Container(
                               padding: const EdgeInsets.symmetric(
@@ -440,9 +476,10 @@ class _MinePageState extends ConsumerState<MinePage> {
                   ),
                 );
               }),
+              /*
               _buildMenuItem('assets/icon_mine_beauty.svg', '美颜设置', () {
                 Fluttertoast.showToast(msg: "尚未實現美顏功能");
-              }),
+              }),*/
             ]),
             const SizedBox(height: 12),
             _buildFunctionCard([
@@ -481,9 +518,10 @@ class _MinePageState extends ConsumerState<MinePage> {
           ] else
             // 普通用戶列表
             _buildFunctionCard([
+              /*
               _buildMenuItem('assets/icon_mine_beauty.svg', '美颜设置', () {
                 Fluttertoast.showToast(msg: "尚未實現美顏功能");
-              }),
+              }),*/
               _buildMenuItem('assets/icon_mine_people.svg', '谁喜欢我', () async {
                 final result = await Navigator.push(
                   context,
@@ -572,4 +610,20 @@ class _MinePageState extends ConsumerState<MinePage> {
       onTap: onTap,
     );
   }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // 回到前景時再取一次最新餘額
+      ref.invalidate(walletBalanceProvider);
+      ref.refresh(walletBalanceProvider);
+    }
+  }
+
 }

@@ -209,7 +209,7 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
 
     if (token == null) {
       final resp = await acceptFuture;
-      final data = (resp?['data'] is Map) ? Map<String, dynamic>.from(resp!['data']) : const {};
+      final data = (resp['data'] is Map) ? Map<String, dynamic>.from(resp['data']) : const {};
       token = (data['string'] ?? data['token'])?.toString();
       if (token == null || token.isEmpty) {
         _busy = false;
@@ -264,32 +264,6 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
     nav.pushNamedAndRemoveUntil(AppRoutes.home, (_) => false);
   }
 
-  void _goBroadcasterAndDropSelf({
-    required String token,
-    required bool wantVideo,
-    required int remoteUid,
-    required String title,
-    required String avatar,
-  }) async {
-    await _closeMiniIfAny();
-    Navigator.of(_rootCtx).pushNamedAndRemoveUntil(
-      AppRoutes.broadcaster,
-          (route) => route.settings.name == AppRoutes.home, // 保留首頁
-      arguments: {
-        'roomId'       : widget.channelName,
-        'token'        : token,
-        'uid'          : ref.read(userProfileProvider)!.uid,
-        'title'        : title,
-        'hostName'     : ref.read(userProfileProvider)!.displayName,
-        'isCallMode'   : true,
-        'asBroadcaster': true,
-        'remoteUid'    : remoteUid,
-        'callFlag'     : wantVideo ? 1 : 2,
-        'peerAvatar'   : avatar,
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final top = MediaQuery.of(context).padding.top;
@@ -337,7 +311,7 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
                         const SizedBox(width: 64),
                         GestureDetector(
                           onTap: _accept,
-                          child: SvgPicture.asset('assets/call_live_accept.svg', width: 64, height: 64),
+                          child: SvgPicture.asset(widget.callerFlag == 1 ?'assets/call_live_accept.svg': 'assets/call_voice_accept.svg', width: 64, height: 64),
                         ),
                       ],
                     ),

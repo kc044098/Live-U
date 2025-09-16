@@ -126,9 +126,12 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      extendBodyBehindAppBar: true,
       appBar: _isLoading ? null : AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
         leading: IconButton(
           icon: SvgPicture.asset(
             'assets/arrow_back.svg',
@@ -316,20 +319,23 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
                     ],
                   ),
                   const SizedBox(height: 48),
-
                   // Social login
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _buildSocialIcon('assets/icon_facebook.svg'),
-                      const SizedBox(width: 32),
-                      _buildSocialIcon(
-                        'assets/icon_google.svg',
-                        onTap: _handleGoogleLogin,
-                      ),
-                      const SizedBox(width: 32),
-                      _buildSocialIcon('assets/icon_apple.svg'),
-                    ],
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      const double gap = 12; // 最小間距（原來 32 太大了）
+                      return Row(
+                        children: [
+                          Expanded(child: _buildSocialButton('assets/icon_facebook_2.svg')),
+                          const SizedBox(width: gap),
+                          Expanded(child: _buildSocialButton(
+                            'assets/icon_google_2.svg',
+                            onTap: _handleGoogleLogin,
+                          )),
+                          const SizedBox(width: gap),
+                          Expanded(child: _buildSocialButton('assets/icon_apple_2.svg')),
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 24),
 
@@ -372,18 +378,28 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
     );
   }
 
-  Widget _buildSocialIcon(String assetPath, {VoidCallback? onTap}) {
+  Widget _buildSocialButton(String assetPath, {VoidCallback? onTap}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 88,
+        // 不再固定寬度，交給 Expanded 等分
         height: 60,
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           border: Border.all(color: const Color(0xFFEEEEEE), width: 1),
           borderRadius: BorderRadius.circular(16),
         ),
-        child: SvgPicture.asset(assetPath),
+        child: Center(
+          // FittedBox 讓圖示在狹窄時等比縮小，避免撐爆
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: SvgPicture.asset(
+              assetPath,
+              width: 24,
+              height: 24,
+            ),
+          ),
+        ),
       ),
     );
   }

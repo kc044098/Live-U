@@ -54,11 +54,17 @@ dependencies:
   geolocator: ^10.1.0
   geocoding: ^2.1.0
   characters: ^1.3.0
+  collection: ^1.18.0
   pull_to_refresh_flutter3: ^2.0.2
   cached_network_image: ^3.4.1
   flutter_cache_manager: ^3.3.1
+  svgaplayer_flutter: ^2.2.0
+
   fulive_plugin:
     path: third_party/fulive_plugin
+
+dependency_overrides:
+  http: ^1.2.2
 
 dev_dependencies:
   flutter_test:
