@@ -8,10 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
-import 'package:svgaplayer_flutter/parser.dart';
-import 'package:svgaplayer_flutter/player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
-import 'package:http/http.dart' as http;
 import '../../core/ws/ws_provider.dart';
 import '../../data/models/gift_item.dart';
 import '../../globals.dart';
@@ -27,6 +24,7 @@ import 'call_session_provider.dart';
 import 'data_model/call_overlay.dart';
 import 'data_model/call_timer.dart';
 import 'data_model/free_digits_badge.dart';
+import 'data_model/gift_effect_player.dart';
 import 'data_model/gift_task.dart';
 import 'data_model/live_chat_input_bar.dart';
 import 'data_model/live_chat_panel.dart';
@@ -49,7 +47,6 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
   bool isCallMode = false;
   bool asBroadcaster = true;
   String peerAvatar = '';
-  String? _currentToken;
 
   final List<int> _remoteUids = [];
   final List<VoidCallback> _wsUnsubs = [];
@@ -87,21 +84,10 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
   bool _remoteVideoOn = true;              // 對方攝像頭是否開啟
   late final RtcEngineEventHandler _pageRtcHandler;
 
-  // SVGA 播放用
-  late final SVGAAnimationController _svgaCtrl = SVGAAnimationController(vsync: this);
-  OverlayEntry? _giftEntry;
-
-  final Queue<GiftTask> _giftQueue = Queue<GiftTask>();
-  bool _isPlayingGift = false;
-  Timer? _giftFallbackTimer;
-
   // 去重 WS 的 uuid（避免重放）
   final _liveSeenUuid = <String>{};
 
-  // SVGA 快取（記憶體）
-  final Map<String, Uint8List> _svgaBytesCache = {};
-  final Map<String, dynamic>   _svgaItemCache  = {};
-  static const int _svgaCacheCap = 8;
+  late final GiftEffectPlayer _giftFx;
 
   Map<String, dynamic> _dataOf(Map p) =>
       (p['data'] is Map) ? Map<String, dynamic>.from(p['data']) : const {};
@@ -162,12 +148,14 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     _rtc.remoteUids.addListener(_remoteListener);
 
     if (CallOverlay.isShowing) CallOverlay.hide();
-
+    _giftFx = GiftEffectPlayer(vsync: this);
   }
 
   Future<void> _endBecauseRemoteLeft() async {
     if (_closing) return;
     _closing = true;
+
+    _giftFx.stop(clearQueue: true);
 
     // 先停本地狀態與計時
     _cancelJoinTimeout();
@@ -211,7 +199,6 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
       final fs = (freeRaw is num) ? freeRaw.toInt() : int.tryParse('${freeRaw ?? ''}');
       if (fs != null && fs >= 0) _freeAtSec = fs;
       _inFreePeriod = _freeAtSec > 0;
-      _currentToken = rtcToken;
       _applyCallFlagFromArgs(args);
       _videoOn = !_isVoice;
 
@@ -474,7 +461,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
           // 立刻播特效（相對→完整）
           final effectUrl = cu.joinCdn(me?.cdnUrl, gift.url);
-          _enqueueGift(effectUrl);
+          _giftFx.enqueue(context, effectUrl);
           // 發送 payload（帶 gift_url，方便對端解析直接播）
           final payload = jsonEncode({
             'type': 'gift',
@@ -593,6 +580,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     if (_closing) return;
     _closing = true;
 
+    _giftFx.stop(clearQueue: true);
 
     // 後端規定：離開也用 respondCall(flag=2)
     final repo = ref.read(callRepositoryProvider);
@@ -660,16 +648,16 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
       } catch (_) {}
     }
     _wsUnsubs.clear();
-    try { _svgaCtrl.dispose(); } catch (_) {}
-    _giftFallbackTimer?.cancel();
-    _removeGiftOverlay();
     _stopFreeCountdown();
     WakelockPlus.disable();
-
+    _giftFx.dispose();
     super.dispose();
   }
 
   void _goMini() {
+
+    _giftFx.stop(clearQueue: true);
+
     final rootCtx = Navigator.of(context, rootNavigator: true).context;
 
     final navArgs = {
@@ -728,6 +716,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
     return WillPopScope(
       onWillPop: () async {
+        _giftFx.stop(clearQueue: true);
         if (Platform.isAndroid) {
           _goMini();
           return false; // ← 不要離開頁面
@@ -1062,7 +1051,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
         final urlFull  = _joinCdn(cdnBase, urlRel);
 
         if (fromUid != myUid && urlFull.isNotEmpty) {
-          _enqueueGift(urlFull);
+          _giftFx.enqueue(context, urlFull);
         }
 
         final msg = ChatMessage(
@@ -1204,105 +1193,6 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     session.updateSendState(uuid, sendResult.ok ? SendState.sent : SendState.failed);
   }
 
-  // 播放一次 SVGA，播完自動關閉
-  Future<void> _playGiftEffect(String url) async {
-    if (!mounted || url.isEmpty) { _onGiftDone(); return; }
-    if (!url.toLowerCase().endsWith('.svga')) { _onGiftDone(); return; }
-
-    try {
-      _removeGiftOverlay(); // 確保畫布乾淨
-
-      // ★ 先從快取/預取拿已解好的 item（第一次會下載+解析，之後秒拿）
-      final item = await _loadSVGAItem(url);
-
-      _svgaCtrl.videoItem = item;
-      _insertGiftOverlay();
-
-      // —— 估算動畫時長，作為 fallback（+10% 緩衝即可）——
-      int _estimateDurationMs(dynamic v) {
-        try {
-          final frames = v.frames as int?;
-          final fps    = v.FPS as int?;
-          if (frames != null && fps != null && frames > 0 && fps > 0) {
-            final sec = frames / fps;
-            return (sec * 1100).round();   // 比之前 20% 更短，縮減不必要等待
-          }
-        } catch (_) {}
-        return 4000; // 取不到就用 4s，比原先更短
-      }
-
-      final estMs = _estimateDurationMs(item);
-      _giftFallbackTimer?.cancel();
-      _giftFallbackTimer = Timer(Duration(milliseconds: estMs), () {
-        try { _svgaCtrl.stop(); _svgaCtrl.videoItem = null; } catch (_) {}
-        _removeGiftOverlay();
-        _onGiftDone();
-      });
-
-      void onStatus(AnimationStatus s) {
-        if (s != AnimationStatus.completed) return; // 忽略 reset 的 dismissed
-        _svgaCtrl.removeStatusListener(onStatus);
-        _giftFallbackTimer?.cancel();
-        _giftFallbackTimer = null;
-
-        try { _svgaCtrl.stop(); _svgaCtrl.videoItem = null; } catch (_) {}
-        _removeGiftOverlay();
-        _onGiftDone();
-      }
-
-      _svgaCtrl.addStatusListener(onStatus);
-
-      // 用 forward(from: 0) 避免剛設定 videoItem 就先出現 dismissed
-      _svgaCtrl.forward(from: 0.0);
-
-    } catch (e) {
-      debugPrint('[SVGA] play error: $e');
-      _removeGiftOverlay();
-      _onGiftDone();
-    }
-  }
-
-  void _enqueueGift(String url, {int? giftId}) {
-    if (url.isEmpty) return;
-    _giftQueue.add(GiftTask(url, giftId: giftId));
-    _prefetchNextSVGA();
-    _tryStartGiftPlayback();
-  }
-
-  void _tryStartGiftPlayback() {
-    if (_isPlayingGift || _giftQueue.isEmpty) return;
-    final task = _giftQueue.removeFirst();
-    _isPlayingGift = true;
-    _prefetchNextSVGA();
-    _playGiftEffect(task.url);
-  }
-
-  void _onGiftDone() {
-    _giftFallbackTimer?.cancel();
-    _giftFallbackTimer = null;
-    _isPlayingGift = false;
-    // 小間隔避免銜接太急
-    Future.delayed(const Duration(milliseconds: 150), _tryStartGiftPlayback);
-  }
-
-  void _insertGiftOverlay() {
-    if (_giftEntry != null) return;
-    _giftEntry = OverlayEntry(
-      builder: (_) => Positioned.fill(
-        child: IgnorePointer(
-          ignoring: true,
-          child: Center(child: SVGAImage(_svgaCtrl)),
-        ),
-      ),
-    );
-    Overlay.of(context, rootOverlay: true)!.insert(_giftEntry!);
-  }
-
-  void _removeGiftOverlay() {
-    _giftEntry?.remove();
-    _giftEntry = null;
-  }
-
   void _scrollLiveToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_liveScroll.hasClients) return;
@@ -1316,43 +1206,6 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
         );
       }
     });
-  }
-
-  Future<dynamic> _loadSVGAItem(String url) async {
-    // 1) 先看已解析快取
-    final cachedItem = _svgaItemCache[url];
-    if (cachedItem != null) return cachedItem;
-
-    // 2) 再看位元組快取（避免重複下載）
-    Uint8List? bytes = _svgaBytesCache[url];
-    if (bytes == null) {
-      final resp = await http.get(Uri.parse(url));
-      if (resp.statusCode != 200 || resp.bodyBytes.isEmpty) {
-        throw 'http ${resp.statusCode}';
-      }
-      bytes = resp.bodyBytes;
-      // 簡單 fifo 逐出
-      if (_svgaBytesCache.length >= _svgaCacheCap) {
-        _svgaBytesCache.remove(_svgaBytesCache.keys.first);
-      }
-      _svgaBytesCache[url] = bytes;
-    }
-
-    // 3) 解析（第一次會花時間；之後直接用 item 快取）
-    final item = await SVGAParser.shared.decodeFromBuffer(bytes);
-
-    if (_svgaItemCache.length >= _svgaCacheCap) {
-      _svgaItemCache.remove(_svgaItemCache.keys.first);
-    }
-    _svgaItemCache[url] = item;
-    return item;
-  }
-
-  void _prefetchNextSVGA() {
-    if (_giftQueue.isEmpty) return;
-    final nextUrl = _giftQueue.first.url;
-    // 背景預取，不影響當前播放
-    unawaited(_loadSVGAItem(nextUrl).catchError((_) {}));
   }
 
   Future<void> _refreshToken() async {

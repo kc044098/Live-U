@@ -459,9 +459,11 @@ class _CallButton extends StatelessWidget {
 
     if (raw != null) {
       switch (raw) {
-        case 1: return CalleeState.online;
-        case 3: return CalleeState.busy;
-        case 2:
+        case 1:
+        case 2: return CalleeState.online;
+        case 3:
+        case 4:
+        case 5: return CalleeState.busy;
         default: return CalleeState.offline;
       }
     }
