@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:djs_live_stream/features/auth/providers/auth_repository_provider.dart';
 import 'package:djs_live_stream/features/auth/register_screen.dart';
 import 'package:djs_live_stream/features/auth/reset_password_screen.dart';
@@ -30,6 +32,9 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
 
   final GoogleAuthService _googleAuthService = GoogleAuthService();
   bool _isLoading = false;
+
+  Timer? _codeTimer;
+  int _secondsLeft = 0;
 
   Future<void> _onLoginPressed() async {
     FocusScope.of(context).unfocus();
@@ -100,6 +105,8 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
   }
 
   Future<void> _onSendCode() async {
+    if (_secondsLeft > 0) return; // 保險：倒數中不再發送
+
     final email = _emailController.text.trim();
     if (email.isEmpty) {
       Fluttertoast.showToast(msg: '請輸入郵箱');
@@ -111,6 +118,7 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
       final authRepo = ref.read(authRepositoryProvider);
       await authRepo.sendEmailCode(email);
       Fluttertoast.showToast(msg: '驗證碼已發送');
+      _startCodeCountdown(60);        // ← 啟動 60s 倒數
     } catch (e) {
       if (e is EmailFormatException) {
         Fluttertoast.showToast(msg: 'Email 格式錯誤');
@@ -121,6 +129,7 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -186,14 +195,28 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
                           padding: const EdgeInsets.all(12),
                           child: SvgPicture.asset('assets/icon_password.svg'),
                         ),
-                        suffixIcon: TextButton(
-                          onPressed: _onSendCode,
-                          child: const Text(
-                            '获取验证码',
-                            style: TextStyle(
-                                color: Color(0xFFFF4D67), fontSize: 14),
+
+                        // 讓 suffix 區域保持固定寬度與位置
+                        suffixIconConstraints: const BoxConstraints(minWidth: 100, minHeight: 48),
+
+                        suffixIcon: Padding(
+                          padding: const EdgeInsets.only(right: 8.0),
+                          child: SizedBox(
+                            width: 92, // 固定一個寬度避免文字長短造成位移
+                            child: TextButton(
+                              onPressed: (_secondsLeft > 0 || _isLoading) ? null : _onSendCode,
+                              child: Text(
+                                _secondsLeft > 0 ? '${_secondsLeft}s' : '获取验证码',
+                                style: TextStyle(
+                                  color: _secondsLeft > 0 ? const Color(0xFFBBBBBB) : const Color(0xFFFF4D67),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
+
                         hintText: '请输入验证码',
                         filled: true,
                         fillColor: const Color(0xFFFAFAFA),
@@ -203,6 +226,7 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
                         ),
                       ),
                     ),
+
                   ] else ...[
                     TextField(
                       controller: _passwordController,
@@ -404,6 +428,15 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
     );
   }
 
+  @override
+  void dispose() {
+    _codeTimer?.cancel();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _codeController.dispose();
+    super.dispose();
+  }
+
   Future<void> _handleGoogleLogin() async {
 
     if (Firebase.apps.isEmpty) {
@@ -422,5 +455,19 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
     } else {
       Fluttertoast.showToast(msg: 'Google 登入失敗');
     }
+  }
+
+  void _startCodeCountdown([int seconds = 60]) {
+    _codeTimer?.cancel();
+    setState(() => _secondsLeft = seconds);
+    _codeTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      if (_secondsLeft <= 1) {
+        t.cancel();
+        setState(() => _secondsLeft = 0);
+      } else {
+        setState(() => _secondsLeft -= 1);
+      }
+    });
   }
 }

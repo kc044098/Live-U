@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:djs_live_stream/features/auth/providers/auth_repository_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,7 +26,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   bool _isLoading = false;
 
+  Timer? _codeTimer;
+  int _secondsLeft = 0;
+
   Future<void> _onSendCode() async {
+    if (_secondsLeft > 0) return; // 倒數中不可再發
     final email = _emailController.text.trim();
     if (email.isEmpty) {
       Fluttertoast.showToast(msg: '請輸入郵箱');
@@ -36,6 +42,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       final authRepo = ref.read(authRepositoryProvider);
       await authRepo.sendEmailCode(email);
       Fluttertoast.showToast(msg: '驗證碼已發送');
+      _startCodeCountdown(60); // 開始倒數
     } catch (e) {
       if (e is EmailFormatException) {
         Fluttertoast.showToast(msg: 'Email 格式錯誤');
@@ -143,16 +150,27 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         padding: const EdgeInsets.all(12),
                         child: SvgPicture.asset('assets/icon_password.svg'),
                       ),
-                      suffixIcon: TextButton(
-                        onPressed: _onSendCode,
-                        child: const Text(
-                          '获取验证码',
-                          style: TextStyle(
-                            color: Color(0xFFFF4D67),
-                            fontSize: 14,
+
+                      // 固定寬度，確保文字長短不影響位置
+                      suffixIconConstraints: const BoxConstraints(minWidth: 100, minHeight: 48),
+                      suffixIcon: Padding(
+                        padding: const EdgeInsets.only(right: 8.0),
+                        child: SizedBox(
+                          width: 92,
+                          child: TextButton(
+                            onPressed: (_secondsLeft > 0 || _isLoading) ? null : _onSendCode,
+                            child: Text(
+                              _secondsLeft > 0 ? '${_secondsLeft}s' : '获取验证码',
+                              style: TextStyle(
+                                color: _secondsLeft > 0 ? const Color(0xFFBBBBBB) : const Color(0xFFFF4D67),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ),
                         ),
                       ),
+
                       hintText: '请输入验证码',
                       filled: true,
                       fillColor: const Color(0xFFFAFAFA),
@@ -230,4 +248,28 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       ),
     );
   }
+
+  @override
+  void dispose() {
+    _codeTimer?.cancel();
+    _emailController.dispose();
+    _codeController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  void _startCodeCountdown([int seconds = 60]) {
+    _codeTimer?.cancel();
+    setState(() => _secondsLeft = seconds);
+    _codeTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      if (_secondsLeft <= 1) {
+        t.cancel();
+        setState(() => _secondsLeft = 0);
+      } else {
+        setState(() => _secondsLeft -= 1);
+      }
+    });
+  }
+
 }
