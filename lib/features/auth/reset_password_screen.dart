@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:djs_live_stream/features/auth/providers/auth_repository_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,7 +24,11 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
 
   bool _obscurePassword = true;
 
+  Timer? _codeTimer;
+  int _secondsLeft = 0;
+
   Future<void> _onSendCode() async {
+    if (_secondsLeft > 0) return;  // 倒數中禁止重複點
     final email = _emailController.text.trim();
     if (email.isEmpty) {
       Fluttertoast.showToast(msg: '請輸入郵箱');
@@ -34,6 +40,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
       final authRepo = ref.read(authRepositoryProvider);
       await authRepo.sendEmailCode(email);
       Fluttertoast.showToast(msg: '驗證碼已發送');
+      _startCodeCountdown(60);     // ← 啟動 60 秒倒數
     } catch (e) {
       if (e is EmailFormatException) {
         Fluttertoast.showToast(msg: 'Email 格式錯誤');
@@ -44,6 +51,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
 
   Future<void> _onConfirm() async {
     final email = _emailController.text.trim();
@@ -157,16 +165,30 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                         padding: const EdgeInsets.all(12),
                         child: SvgPicture.asset('assets/icon_password.svg'),
                       ),
-                      suffixIcon: TextButton(
-                        onPressed: _onSendCode,
-                        child: const Text(
-                          '获取验证码',
-                          style: TextStyle(
-                            color: Color(0xFFFF4D67),
-                            fontSize: 14,
+
+                      // 讓 suffix 區域有固定寬度，位置不會跳
+                      suffixIconConstraints: const BoxConstraints(minWidth: 100, minHeight: 48),
+
+                      suffixIcon: Padding(
+                        padding: const EdgeInsets.only(right: 8.0),
+                        child: SizedBox(
+                          width: 92, // 固定寬度，避免文字長短造成位移
+                          child: TextButton(
+                            // 倒數中禁用按鈕（保持在原位置）
+                            onPressed: _secondsLeft > 0 ? null : _onSendCode,
+                            child: Text(
+                              _secondsLeft > 0 ? '${_secondsLeft}s' : '获取验证码',
+                              style: TextStyle(
+                                // 顏色跟你原本一致；禁用時灰色
+                                color: _secondsLeft > 0 ? const Color(0xFFBBBBBB) : const Color(0xFFFF4D67),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ),
                         ),
                       ),
+
                       hintText: '请输入验证码',
                       filled: true,
                       fillColor: const Color(0xFFFAFAFA),
@@ -249,4 +271,31 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
       ),
     );
   }
+
+  void _startCodeCountdown([int seconds = 60]) {
+    _codeTimer?.cancel();
+    setState(() => _secondsLeft = seconds);
+    _codeTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      if (_secondsLeft <= 1) {
+        t.cancel();
+        setState(() => _secondsLeft = 0); // 倒數結束，可重新發送
+      } else {
+        setState(() => _secondsLeft -= 1);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _codeTimer?.cancel();
+    _emailController.dispose();
+    _codeController.dispose();
+    _newPasswordController.dispose();
+    super.dispose();
+  }
+
 }

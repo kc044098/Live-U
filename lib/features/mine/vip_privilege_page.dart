@@ -426,16 +426,13 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                                         final (gold, vipExpire) =
                                             await repo.fetchMoneyCash();
 
-                                        final user =
-                                            ref.read(userProfileProvider);
+                                        final user = ref.read(userProfileProvider);
                                         if (user != null) {
-                                          ref
-                                                  .read(userProfileProvider
-                                                      .notifier)
-                                                  .state =
-                                              user.copyWith(
-                                                  gold: gold,
-                                                  vipExpire: vipExpire);
+                                          ref.read(userProfileProvider.notifier).state = user.copyWith(
+                                            isVip: true,              // ★ 這行把本地 vip 設為 true
+                                            vipExpire: vipExpire,   // 同步最新到期時間
+                                            gold: gold,             // 同步最新餘額
+                                          );
                                         }
                                         setState(() {}); // 讓畫面上的「暫未開通」等依綁定狀態刷新
                                       } catch (e) {
