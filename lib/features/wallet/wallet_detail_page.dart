@@ -440,7 +440,7 @@ class _EmptyView extends StatelessWidget {
     return const Center(
       child: Padding(
         padding: EdgeInsets.only(top: 80),
-        child: Text('尚無帳變紀錄'),
+        child: Text('尚無紀錄'),
       ),
     );
   }

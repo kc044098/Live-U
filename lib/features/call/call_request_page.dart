@@ -171,12 +171,34 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
 
       final flag = widget.isVideoCall ? 1 : 2;
       final resp = await ref.read(callRepositoryProvider).liveCall(
-        flag: flag, // 1=視頻
+        flag: flag,
         toUid: int.parse(widget.broadcasterId),
       );
 
+      // ★ 先看 code
+      final int code = (resp['code'] is num) ? (resp['code'] as num).toInt()
+          : int.tryParse('${resp['code'] ?? ''}') ?? 0;
+
+      if (code == 102) {
+        // 餘額不足 → 提示並關閉頁面
+        Fluttertoast.showToast(msg: '餘額不足, 請前往充值～');
+        await _audioPlayer.stop();
+        if (mounted) Navigator.pop(context);
+        return;
+      }
+      if (code != 200) {
+        // 其他非 200 錯誤
+        final String msg = (resp['message']?.toString() ?? '撥打失敗');
+        Fluttertoast.showToast(msg: msg);
+        await _audioPlayer.stop();
+        if (mounted) Navigator.pop(context);
+        return;
+      }
+
+      // ★ 到這裡才是成功狀態，開始解析 data
       final Map<String, dynamic> data =
-      (resp['data'] is Map) ? Map<String, dynamic>.from(resp['data']) : Map<String, dynamic>.from(resp);
+      (resp['data'] is Map) ? Map<String, dynamic>.from(resp['data'])
+          : <String, dynamic>{};
 
       _channelId   = (data['channel_id'] ?? data['channel_name'] ?? data['channle_name'])?.toString();
       _callerToken = (data['string'] ?? data['token'])?.toString();
@@ -186,20 +208,20 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
       final fa = data['free_at'];
       _freeAtSec = (fa is num) ? fa.toInt() : int.tryParse(fa?.toString() ?? '') ?? 0;
 
-      if (_channelId == null) {
-        throw '電話撥打失敗 _channelId == null';
-      } else if (_channelId!.isEmpty) {
-        throw '電話撥打失敗 _callerToken!.isEmpty';
-      } else if (_callerToken == null) {
-        throw '電話撥打失敗 _channelId == null';
-      } else if (_callerToken!.isEmpty) {
-        throw '電話撥打失敗 _callerToken!.isEmpty';
+      if (_channelId == null || _channelId!.isEmpty) {
+        throw '電話撥打失敗 _channelId 空';
+      }
+      if (_callerToken == null || _callerToken!.isEmpty) {
+        throw '電話撥打失敗 _callerToken 空';
       }
 
+      // ★ 成功後才啟動超時計時
       _startTimeout();
+
     } catch (e) {
       if (_cancelled) return;
       Fluttertoast.showToast(msg: "發起呼叫失敗：$e");
+      await _audioPlayer.stop();
       if (mounted) Navigator.pop(context);
     }
   }
