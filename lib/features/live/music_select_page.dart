@@ -43,10 +43,10 @@ class _MusicSelectPageState extends ConsumerState<MusicSelectPage>
 
   Future<void> _playPreview(String absUrl) async {
     try {
-      await _player.stop();                 // 先停舊的
-      await _player.play(UrlSource(absUrl)); // 設定來源並開始播
+      await _player.stop();
+      await _player.play(UrlSource(absUrl));
     } catch (e) {
-      Fluttertoast.showToast(msg: '預聽失敗：$e');
+      debugPrint('預聽失敗： $e');
     }
   }
 
