@@ -1,8 +1,6 @@
 import 'dart:async';
-import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -19,13 +17,13 @@ import '../message/chat_message.dart';
 import '../message/chat_providers.dart';
 import '../message/chat_utils.dart' as cu;
 import '../message/gift/gift_bottom_sheet.dart';
+import '../message/gift/show_insufficient_gold_sheet.dart';
 import '../profile/profile_controller.dart';
 import 'call_session_provider.dart';
 import 'data_model/call_overlay.dart';
 import 'data_model/call_timer.dart';
 import 'data_model/free_digits_badge.dart';
 import 'data_model/gift_effect_player.dart';
-import 'data_model/gift_task.dart';
 import 'data_model/live_chat_input_bar.dart';
 import 'data_model/live_chat_panel.dart';
 import 'gift_providers.dart';
@@ -788,12 +786,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
                       ),
                       const SizedBox(height: 8),
                       GestureDetector(
-                        onTap: () {
-                          // TODO: 換成你的充值頁路由
-                          // Navigator.pushNamed(context, AppRoutes.recharge);
-                          // 或：
-                          // Navigator.push(context, MaterialPageRoute(builder: (_) => const PaymentMethodPage()));
-                        },
+                        onTap: _openRechargeSheetFromFreeBadge,
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
@@ -960,6 +953,16 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
           ],
         ),
       ),
+    );
+  }
+
+  void _openRechargeSheetFromFreeBadge() async {
+    await showInsufficientGoldSheet(
+      context,
+      ref,
+      onRechargeTap: (int? amount) {
+      },
+      suggestedAmount: null, // ★ 與禮物面板底部「儲值」按鈕一致
     );
   }
 

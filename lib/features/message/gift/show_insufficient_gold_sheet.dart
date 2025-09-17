@@ -90,7 +90,7 @@ class _InsufficientGoldSheetState extends ConsumerState<_InsufficientGoldSheet> 
                   if (isInsufficient)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
-                      child: Image.asset('assets/icon_logout_warning.png', width: 28, height: 28),
+                      child: Image.asset('assets/icon_logout_warning.png', width: 48, height: 48),
                     ),
                   if (isInsufficient) const SizedBox(width: 10),
                   Expanded(
@@ -101,23 +101,9 @@ class _InsufficientGoldSheetState extends ConsumerState<_InsufficientGoldSheet> 
                         const Text('當前金幣不足！',
                             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                         const SizedBox(height: 6),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF5F5F5),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            children: [
-                              Image.asset('assets/icon_gold1.png', width: 20, height: 20),
-                              const SizedBox(width: 8),
-                              Text(
-                                '餘額：${gold == null ? '—' : _fullFmt(context, gold)} 金幣',
-                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                              ),
-                            ],
-                          ),
+                        Text(
+                          '餘額：${gold == null ? '—' : _fullFmt(context, gold)} 金幣',
+                          style: const TextStyle(fontSize: 14, color: Colors.grey),
                         ),
                       ],
                     )

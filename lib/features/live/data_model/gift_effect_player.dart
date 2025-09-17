@@ -14,6 +14,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:svgaplayer_flutter/svgaplayer_flutter.dart';
 
+
+
 class GiftEffectPlayer {
   // ========= 公開參數 =========
   final bool logEnabled;
@@ -35,20 +37,16 @@ class GiftEffectPlayer {
   BuildContext? _lastCtx;
   AnimationStatusListener? _statusListener;
 
-  // 播放輪次 token（用來讓舊回調失效）
+  // 播放輪次 token（讓舊回調失效）
   int _playToken = 0;
-
-  // 同 URL 播放次數（用來定期「刷新 item」）
-  final Map<String, int> _replayCount = {};
-  static const int _freshEveryN = 4; // 播 4 次，第 5 次前會用 bytes 重新 decode 一個新 item
 
   // 下載連線
   late final IOClient _http;
   HttpClient? _raw;
 
   // 快取
-  final _itemCache = LinkedHashMap<String, dynamic>();      // url -> MovieEntity/VideoItem
-  final _bytesCache = LinkedHashMap<String, Uint8List>();   // url -> bytes
+  final _itemCache = LinkedHashMap<String, dynamic>();      // url -> MovieEntity/VideoItem（僅作預熱/加速，播放可被忽略）
+  final _bytesCache = LinkedHashMap<String, Uint8List>();   // url -> bytes（播放主要依賴）
 
   // 磁碟路徑
   Directory? _diskDir;
@@ -62,8 +60,14 @@ class GiftEffectPlayer {
   // 解碼鎖（嚴格串行）
   Completer<void>? _decodeGate;
 
-  // 播放佇列
-  final Queue<String> _queue = Queue<String>();
+  // 播放佇列（使用 job：url + playKey + attempts + freshOnly）
+  final Queue<_GiftJob> _queue = Queue<_GiftJob>();
+
+  // 遞增序號用來生成 playKey
+  int _seq = 0;
+
+  // 被判定為「舊 item 可能失效」的 URL
+  final Set<String> _staleUrl = <String>{};
 
   static const _tag = '[GiftFX]';
 
@@ -86,11 +90,14 @@ class GiftEffectPlayer {
   }
 
   // ---------- 公開 API ----------
-  void enqueue(BuildContext context, String url) {
+  void enqueue(BuildContext context, String url, {String? key}) {
     if (url.isEmpty || !url.toLowerCase().endsWith('.svga')) return;
     _lastCtx = context;
-    _queue.addLast(url);
-    _log('enqueue: $url (q=${_queue.length}) '
+    final playKey = key ?? _genPlayKey();
+    final job = _GiftJob(url: url, playKey: playKey);
+    _queue.addLast(job);
+
+    _log('enqueue: ${job.url} [key=${job.playKey}] (q=${_queue.length}) '
         'hitItem=${_itemCache.containsKey(url)} hitBytes=${_bytesCache.containsKey(url)}');
 
     _ensurePrefetch();
@@ -127,145 +134,118 @@ class GiftEffectPlayer {
     _queue.clear();
     _itemCache.clear();
     _bytesCache.clear();
+    _staleUrl.clear();
   }
 
   // ---------- 主要流程 ----------
   void _tryPlayNext(BuildContext context) {
     if (_playing || _queue.isEmpty) return;
 
-    // 1) 先挑「已解析 item」的
-    String? url = _queue.firstWhere(
-          (u) => _itemCache.containsKey(u),
-      orElse: () => '',
+    // 1) 先挑「已解析 item」的（但僅作排序優先，不強制使用）
+    _GiftJob? job = _queue.firstWhere(
+          (j) => _itemCache.containsKey(j.url),
+      orElse: () => _GiftJob.empty,
     );
+
     // 2) 再挑「有 bytes」的
-    url = (url?.isNotEmpty == true)
-        ? url
-        : _queue.firstWhere((u) => _bytesCache.containsKey(u), orElse: () => '');
+    job = (job.isValid)
+        ? job
+        : _queue.firstWhere((j) => _bytesCache.containsKey(j.url), orElse: () => _GiftJob.empty);
 
     // 3) 都沒有就挑隊首
-    if (url == null || url.isEmpty) url = _queue.first;
+    if (!job.isValid) job = _queue.first;
 
-    _queue.remove(url);
+    _queue.remove(job);
     _playing = true;
-    _log('tryPlayNext → $url (remain=${_queue.length})');
+    _log('tryPlayNext → ${job.url} [key=${job.playKey}] (remain=${_queue.length})');
 
-    _playOnce(context, url);
+    _playOnce(context, job);
   }
 
-  Future<void> _playOnce(BuildContext context, String url) async {
+  Future<void> _playOnce(BuildContext context, _GiftJob job) async {
     _removeOverlay();
 
+    final url = job.url;
     try {
-      // 1) 秒播：item 已在記憶體
-      dynamic item = _itemCache[url];
-      if (item != null) {
-        item = await _prepareItemForPlay(url, item);
-        _log('hit itemCache → play: $url');
-        await _startAnimation(context, url, item);
-        return;
+      dynamic item;
+
+      // ====== 首選路徑：若不是 freshOnly 且 URL 非 stale，才嘗試重用 item ======
+      if (!job.freshOnly && !_staleUrl.contains(url)) {
+        final cached = _itemCache[url];
+        if (cached != null) {
+          _log('hit itemCache → try play (reuse item): $url [key=${job.playKey}]');
+          item = cached;
+        }
       }
 
-      // 2) bytes 在記憶體或磁碟
-      Uint8List? bytes = _bytesCache[url] ?? await _readFromDisk(url);
-      if (bytes != null) {
-        _log('have bytes → decode & play: $url (len=${bytes.length})');
+      // ====== 沒有或不想用 cached item：用 bytes 重新 decode 作為全新 item ======
+      if (item == null) {
+        Uint8List? bytes = _bytesCache[url] ?? await _readFromDisk(url);
+        if (bytes == null) {
+          final fut = _getBytes(url);
+          try {
+            bytes = await fut.timeout(softWait);
+          } catch (_) {
+            _log('softWait miss → yield turn: $url [key=${job.playKey}]');
+            _onDone(context, requeue: true, job: job);
+            return;
+          }
+        }
         item = await _decodeWithLock(bytes, url);
-        if (item != null) {
-          _putItem(url, item);
-          item = await _prepareItemForPlay(url, item);
-          await _startAnimation(context, url, item);
+        if (item == null) {
+          _log('decode failed → rotate: $url [key=${job.playKey}]');
+          _onDone(context, requeue: true, job: job);
           return;
         }
-        // 解碼失敗，自癒：清掉，走下載
-        _evictBytes(url);
-        await _deleteFromDisk(url);
+        // 放入 cache 供下一次排序優先（不強制重用）
+        _putItem(url, item);
       }
 
-      // 3) 無快取：啟動下載（共用 in-flight）
-      final fut = _getBytes(url);
-
-      // 3.1 短等待（soft），避免任何等待 UI
-      try {
-        bytes = await fut.timeout(softWait);
-      } catch (_) {
-        // 不顯示等待 UI，等 bytes 到齊自動喚醒
-        _log('softWait miss → yield turn: $url');
-        _onDone(context, requeue: true, url: url);
-        return;
-      }
-
-      // 3.2 取得 bytes 後 decode & play
-      item = await _decodeWithLock(bytes, url);
-      if (item == null) {
-        _log('decode failed after download → rotate: $url');
-        _onDone(context, requeue: true, url: url);
-        return;
-      }
-      _putItem(url, item);
-      item = await _prepareItemForPlay(url, item);
-      await _startAnimation(context, url, item);
+      await _startAnimation(context, job, item);
     } on TimeoutException {
-      _log('download timeout → rotate: $url');
-      _onDone(context, requeue: true, url: url);
+      _log('download timeout → rotate: $url [key=${job.playKey}]');
+      _onDone(context, requeue: true, job: job);
     } catch (e, st) {
       _log('playOnce error: $e\n$st');
-      _onDone(context, requeue: true, url: url);
+      _onDone(context, requeue: true, job: job);
     }
   }
 
-  // 第 N 次播放前，必要時用 bytes 重新 decode 產生**全新 item**，避免「同一實例」不重繪
-  Future<dynamic> _prepareItemForPlay(String url, dynamic item) async {
-    final cnt = _replayCount[url] ?? 0;
-    // 第 4 次後（要播第 5 次）刷新 item
-    if (cnt >= _freshEveryN - 1) {
-      try {
-        final bytes = _bytesCache[url] ?? await _readFromDisk(url) ?? await _getBytes(url);
-        final fresh = await _decodeWithLock(bytes, url);
-        if (fresh != null) {
-          _putItem(url, fresh);
-          _replayCount[url] = 0;
-          _log('freshened item before replay #${cnt + 1}: $url');
-          return fresh;
-        }
-      } catch (e) {
-        _log('freshen failed (use old item): $e');
-      }
-    }
-    _replayCount[url] = cnt + 1;
-    return item;
-  }
-
-  Future<void> _startAnimation(BuildContext context, String url, dynamic item) async {
+  Future<void> _startAnimation(BuildContext context, _GiftJob job, dynamic item) async {
     final int token = ++_playToken; // 開啟新一輪
+    bool started = false;
 
-    // 先清任何殘留 listener / 計時器
+    // 清殘留
     _fallbackTimer?.cancel();
     if (_statusListener != null) {
       try { _ctrl.removeStatusListener(_statusListener!); } catch (_) {}
       _statusListener = null;
     }
 
-    // 1) 重新建立 overlay（確保真的會重繪）
+    // 1) 重新建立 overlay（用唯一 key 強制 mount 新 element）
     _removeOverlay();
-    _insertOverlay(context);
+    _insertOverlay(context, job.playKey);
 
     // 2) 強制重綁 item（null → endOfFrame → item）
     try { _ctrl.stop(); } catch (_) {}
     _ctrl.videoItem = null;
-    // 等待一幀，讓 widget 樹確實完成清空
     try { await SchedulerBinding.instance.endOfFrame; } catch (_) {}
     _ctrl.videoItem = item;
-    // 再等一幀，讓第一幀布局/貼圖準備好
     try { await SchedulerBinding.instance.endOfFrame; } catch (_) {}
 
-    // 3) 安裝 listener
+    // 3) 監聽與保底
     final sw = Stopwatch()..start();
     final est = _estimateDurationMs(item);
 
     _statusListener = (AnimationStatus s) {
+      // 抓到 forward 代表真的起跑了
+      if (s == AnimationStatus.forward) {
+        started = true;
+        _staleUrl.remove(job.url);
+        _log('animation started for ${job.url} [key=${job.playKey}]');
+      }
       if (s != AnimationStatus.completed) return;
-      if (token != _playToken) return; // 舊輪次回調，忽略
+      if (token != _playToken) return; // 舊輪次忽略
       _removeListenerSilently();
       _fallbackTimer?.cancel();
       final elapsed = sw.elapsed;
@@ -273,23 +253,59 @@ class GiftEffectPlayer {
       Future.delayed(more, () {
         if (token != _playToken) return;
         _teardownAnimation();
-        _log('animation done=${elapsed.inMilliseconds}ms (+${more.inMilliseconds}ms) for $url');
+        _log('animation done=${elapsed.inMilliseconds}ms (+${more.inMilliseconds}ms) for ${job.url} [key=${job.playKey}]');
         _onDone(context);
       });
     };
     _ctrl.addStatusListener(_statusListener!);
 
-    // 4) 啟動動畫（下一個 microtask，確保第一幀已準備）
+    // 啟動
     await Future<void>.delayed(Duration.zero);
     _ctrl.forward(from: 0);
 
-    // 5) 保底計時
+    // 3.1 起跑偵測踢一下：若 150ms 仍沒進入 forward，視為沒真的跑 → 用 fresh 重試一次
+    Timer(const Duration(milliseconds: 150), () {
+      if (token != _playToken) return;
+      if (!started) {
+        _log('kick: no-start within 150ms → mark stale & retry fresh: ${job.url} [key=${job.playKey}]');
+        _staleUrl.add(job.url);
+        _teardownAnimation();
+        _retryFresh(context, job, reason: 'no-start');
+      }
+    });
+
+    // 3.2 保底計時
     _fallbackTimer = Timer(Duration(milliseconds: est), () {
       if (token != _playToken) return;
-      _log('fallback end @~${est}ms for $url');
+      _log('fallback end @~${est}ms for ${job.url} [key=${job.playKey}] (started=$started)');
+      if (!started) {
+        // 還是沒跑到，丟棄舊 item 下次改 fresh
+        _staleUrl.add(job.url);
+        _teardownAnimation();
+        _retryFresh(context, job, reason: 'fallback-no-start');
+        return;
+      }
       _teardownAnimation();
       _onDone(context);
     });
+  }
+
+  void _retryFresh(BuildContext context, _GiftJob job, {required String reason}) {
+    if (job.attempts >= 2) {
+      _log('give up retry after ${job.attempts} attempts: ${job.url} [$reason]');
+      _onDone(context); // 放掉這筆，避免無限循環
+      return;
+    }
+    final freshJob = _GiftJob(
+      url: job.url,
+      playKey: _genPlayKey(),
+      attempts: job.attempts + 1,
+      freshOnly: true,
+    );
+    _playing = false;
+    // 立刻重試（放到佇列最前面）
+    _queue.addFirst(freshJob);
+    Future.microtask(() => _tryPlayNext(context));
   }
 
   void _removeListenerSilently() {
@@ -307,12 +323,11 @@ class GiftEffectPlayer {
     _removeOverlay();
   }
 
-  void _onDone(BuildContext context, {String? url, bool requeue = false}) {
+  void _onDone(BuildContext context, {bool requeue = false, _GiftJob? job}) {
     _playing = false;
-    if (requeue && url != null) {
-      _queue.addLast(url);
+    if (requeue && job != null) {
+      _queue.addLast(job);
     }
-    // 立刻嘗試下一個
     Future.microtask(() => _tryPlayNext(context));
   }
 
@@ -321,15 +336,17 @@ class GiftEffectPlayer {
     int room = maxConcurrentDownloads - _inflight.length;
     if (room <= 0) return;
 
-    for (final u in _queue) {
+    final seen = <String>{};
+    for (final j in _queue) {
       if (room <= 0) break;
-      if (_itemCache.containsKey(u) || _bytesCache.containsKey(u) || _inflight.containsKey(u)) {
+      if (!seen.add(j.url)) continue;
+      if (_itemCache.containsKey(j.url) || _bytesCache.containsKey(j.url) || _inflight.containsKey(j.url)) {
         continue;
       }
-      _getBytes(u).then((bytes) async {
-        final item = await _decodeWithLock(bytes, u);
-        if (item != null) _putItem(u, item);
-        _nudgeIfReady(u);
+      _getBytes(j.url).then((bytes) async {
+        final item = await _decodeWithLock(bytes, j.url);
+        if (item != null) _putItem(j.url, item);
+        _nudgeIfReady(j.url);
       }).catchError((_) {});
       room--;
     }
@@ -337,7 +354,7 @@ class GiftEffectPlayer {
 
   void _nudgeIfReady(String url) {
     if (_playing) return;
-    if (!_queue.contains(url)) return;
+    if (!_queue.any((j) => j.url == url)) return;
     final ctx = _lastCtx;
     if (ctx == null) return;
     Future.microtask(() => _tryPlayNext(ctx));
@@ -471,7 +488,7 @@ class GiftEffectPlayer {
       await _diskDir!.create(recursive: true);
     }
     _diskReady = true;
-    unawaited(_trimDiskIfNeeded());
+    _trimDiskIfNeeded();
   }
 
   File _fileOf(String url) {
@@ -504,7 +521,7 @@ class GiftEffectPlayer {
       await tmp.writeAsBytes(bytes, flush: true);
       await tmp.rename(f.path);
       _log('disk wrote: ${f.path} (${bytes.length})');
-      unawaited(_trimDiskIfNeeded());
+      _trimDiskIfNeeded();
     } catch (e) {
       _log('disk write error: $e for ${f.path}');
     }
@@ -559,23 +576,26 @@ class GiftEffectPlayer {
   }
 
   // ---------- Overlay ----------
-  void _insertOverlay(BuildContext context) {
+  void _insertOverlay(BuildContext context, String playKey) {
     if (_entry != null) return;
     _entry = OverlayEntry(
       builder: (_) => Positioned.fill(
         child: IgnorePointer(
           ignoring: true,
           child: SizedBox.expand(
-            child: SVGAImage(
-              _ctrl,
-              fit: BoxFit.contain,
+            child: KeyedSubtree(
+              key: ValueKey<String>(playKey),
+              child: SVGAImage(
+                _ctrl,
+                fit: BoxFit.contain,
+              ),
             ),
           ),
         ),
       ),
     );
     Overlay.of(context)?.insert(_entry!);
-    _log('overlay inserted');
+    _log('overlay inserted [key=$playKey]');
   }
 
   void _removeOverlay() {
@@ -589,7 +609,7 @@ class GiftEffectPlayer {
       ..idleTimeout = const Duration(seconds: 15)
       ..connectionTimeout = connectionTimeout
       ..maxConnectionsPerHost = 6
-      ..userAgent = 'GiftFX/1.2 (Flutter; svga)'
+      ..userAgent = 'GiftFX/1.4 (Flutter; svga)'
       ..autoUncompress = true;
     _raw = io;
     _http = IOClient(io);
@@ -625,6 +645,7 @@ class GiftEffectPlayer {
   }
 
   // ---------- 小工具 ----------
+  String _genPlayKey() => '${DateTime.now().microsecondsSinceEpoch}-${_seq++}';
   void _log(String s) { if (logEnabled) debugPrint('$_tag $s'); }
 
   /// 立即停止禮物播放；可選擇清空佇列與已解析快取
@@ -639,4 +660,19 @@ class GiftEffectPlayer {
     if (clearQueue) _queue.clear();
     if (clearDecodedCache) _itemCache.clear();
   }
+}
+
+class _GiftJob {
+  final String url;
+  final String playKey;
+  final int attempts;     // 自救重試次數
+  final bool freshOnly;   // 忽略 item cache，強制用 bytes 重新 decode
+  const _GiftJob({
+    required this.url,
+    required this.playKey,
+    this.attempts = 0,
+    this.freshOnly = false,
+  });
+  static const _GiftJob empty = _GiftJob(url: '', playKey: '');
+  bool get isValid => url.isNotEmpty && playKey.isNotEmpty;
 }
