@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter/cupertino.dart';
+
 import '../../data/network/api_client.dart';
 import '../../data/network/api_endpoints.dart';
 import 'chat_thread_item.dart';
@@ -93,38 +95,40 @@ class ChatRepository {
       throw Exception('拉取歷史失敗: 非預期回應');
     }
 
-    // ① 處理「沒有資料」
     final code = raw['code'] is num
         ? (raw['code'] as num).toInt()
         : int.tryParse('${raw['code']}') ?? -1;
     final msg  = '${raw['message'] ?? ''}';
     if (code == 100 && msg.toLowerCase().contains('not found')) {
-      return <Map<String, dynamic>>[]; // ← 當作空資料
+      return <Map<String, dynamic>>[];
     }
-
-    // ② 其它錯誤照舊丟出
     if (code != 200) {
       throw Exception('拉取歷史失敗: ${msg.isEmpty ? 'unknown' : msg}');
     }
 
-    // ③ 正常解析 + 過濾 + 去重
-    final items = (raw['data']?['list'] as List? ?? [])
+    // 1) 直接取 list
+    final listRaw = (raw['data']?['list'] as List? ?? [])
         .whereType<Map>()
-        .map((e) => Map<String, dynamic>.from(e))
-        .where((m) {
-      final id  = '${m['id'] ?? ''}'.trim();
-      final rid = '${m['request_id'] ?? ''}'.trim();
-      return id.isNotEmpty && rid.isNotEmpty;
-    });
+        .map((e) => Map<String, dynamic>.from(e));
 
+    // 2) 只檢查 id（必要），不要用 request_id 篩
+    final filtered = listRaw.where((m) => ('${m['id'] ?? ''}').trim().isNotEmpty);
+
+    // 3) 去重改用 id（或乾脆不去重）
     final seen = <String>{};
     final deduped = <Map<String, dynamic>>[];
-    for (final m in items) {
-      final key = '${m['request_id']}';
+    for (final m in filtered) {
+      final key = '${m['id']}'; // ✅ 唯一鍵
       if (seen.add(key)) deduped.add(m);
     }
+
+    // （可選）log 用來核對
+    debugPrint('[ChatAPI] history page=$page -> raw=${listRaw.length} '
+        'filtered=${filtered.length} deduped=${deduped.length}');
+
     return deduped;
   }
+
 
   Future<List<CallRecordItem>> fetchUserCallRecordList({
     required int page,

@@ -40,18 +40,6 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
       ref.invalidate(walletBalanceProvider);
       ref.refresh(walletBalanceProvider);
     });
-
-    // 錢包 API 回來就把 gold/vip 寫回 userProfile，保持一致
-    ref.listen(walletBalanceProvider, (prev, next) {
-      next.whenData((t) {
-        final (gold, vipExpire) = t;
-        final u = ref.read(userProfileProvider);
-        if (u != null) {
-          ref.read(userProfileProvider.notifier).state =
-              u.copyWith(gold: gold, vipExpire: vipExpire);
-        }
-      });
-    });
   }
 
   @override
@@ -63,6 +51,19 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
       orElse: () => user?.gold ?? 0,
     );
     final bottomGap = MediaQuery.of(context).padding.bottom + _tabBarHeight + 16;
+
+    ref.listen<AsyncValue<(int gold, int? vipExpire)>>(
+        walletBalanceProvider,
+            (prev, next) {
+          next.whenData((t) {
+            final (gold, vipExpire) = t;
+            final u = ref.read(userProfileProvider);
+            if (u != null && (u.gold != gold || u.vipExpire != vipExpire)) {
+              ref.read(userProfileProvider.notifier).state =
+                  u.copyWith(gold: gold, vipExpire: vipExpire);
+            }
+          });
+        },);
 
     if (user == null) {
       return const Scaffold(
