@@ -237,9 +237,11 @@ class _VideoRecorderPageState extends State<VideoRecorderPage> {
               children: [
                 _buildSideButton('assets/icon_reverse.svg', '翻轉', _onReverseCamera),
                 const SizedBox(height: 20),
+                /*
                 _buildSideButton('assets/icon_beauty.svg', '美顏', _onBeauty),
                 const SizedBox(height: 20),
                 _buildSideButton('assets/icon_filter.svg', '濾鏡', _onFilter),
+                 */
               ],
             ),
           ),
@@ -256,6 +258,7 @@ class _VideoRecorderPageState extends State<VideoRecorderPage> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   /// 特效
+     /*
                   GestureDetector(
                     onTap: () => Fluttertoast.showToast(msg: "特效功能尚未實現"),
                     child: Column(
@@ -266,7 +269,7 @@ class _VideoRecorderPageState extends State<VideoRecorderPage> {
                         const Text('特效', style: TextStyle(color: Colors.white, fontSize: 12)),
                       ],
                     ),
-                  ),
+                  ),*/
                   const SizedBox(width: 50),
 
                   /// 拍照 / 錄影按鈕

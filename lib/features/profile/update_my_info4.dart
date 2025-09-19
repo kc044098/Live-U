@@ -69,7 +69,7 @@ class _UpdateMyInfoPage4State extends ConsumerState<UpdateMyInfoPage4> {
       );
     } catch (e) {
       debugPrint("上傳失敗: $e");
-      Fluttertoast.showToast(msg: "上傳失敗：$e");
+      Fluttertoast.showToast(msg: "上傳失敗");
       Navigator.of(context).pop();
     }
   }

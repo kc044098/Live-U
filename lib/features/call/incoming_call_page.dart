@@ -61,6 +61,10 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
     _listenWs();
     _startTimeout();
     WakelockPlus.enable();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _requestPermsOnEnter();   // ⬅️ 頁面開啟就彈系統權限
+    });
   }
 
   @override
@@ -78,6 +82,37 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
 
     _hideMiniIfAny();
     super.dispose();
+  }
+
+  Future<void> _requestPermsOnEnter() async {
+    final needCam = (widget.callerFlag == 1); // 視訊才需要相機
+    final req = <Permission>[Permission.microphone, if (needCam) Permission.camera];
+
+    final results = await req.request();
+    final micOk = (results[Permission.microphone] == PermissionStatus.granted);
+    final camOk = !needCam || (results[Permission.camera] == PermissionStatus.granted);
+
+    final granted = micOk && camOk;
+    if (!granted && mounted) {
+      // 可選：若永久拒絕，可引導去系統設定
+      final perma = results.values.any((s) => s == PermissionStatus.permanentlyDenied);
+      if (perma) {
+        // 這兩行二選一：要不要直接帶去系統設定由你決定
+        // await openAppSettings();
+        // return;
+      }
+
+      // 停掉鈴聲 / 釋放喚醒，然後關頁 + toast
+      try { await _audioPlayer.stop(); } catch (_) {}
+      unawaited(WakelockPlus.disable());
+      Fluttertoast.showToast(msg: '請先授權相機與麥克風');
+
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      } else {
+        _backToHome(); // 沒有上一頁就回首頁
+      }
+    }
   }
 
   void _goMini() {

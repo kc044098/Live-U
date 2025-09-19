@@ -92,16 +92,18 @@ class _LiveListPageState extends ConsumerState<LiveListPage>
     if (!widget.isBroadcaster) {
       // 只顯示首頁內容
       return Scaffold(
-        body: SafeArea(top: false, child: _homeVideoTab),
+        backgroundColor: Colors.transparent,
+        body: SafeArea(top: false, bottom: false, child: _homeVideoTab),
       );
     }
     // 主播 保持原本兩個 tab 的邏輯
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: Stack(
         children: [
           _tabController.index == 0
-              ? SafeArea(top: false, child: _homeVideoTab)
-              : SafeArea(child: _buildFriendListView()),
+              ? SafeArea(top: false, bottom: false, child: _homeVideoTab)
+              : SafeArea( bottom: false, child: _buildFriendListView()),
           SafeArea(
             child: Container(
               color: _tabController.index == 0 ? Colors.transparent : Colors.white,

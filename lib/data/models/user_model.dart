@@ -62,8 +62,12 @@ class UserModel {
   final int? createAt;               // 註冊時間
   final int? loginTime;              // 登錄時間
 
-  final int? gold;               // 目前金幣餘額（從 moneyCash 取得）
-  final int? vipExpire;         // VIP 到期時間（Unix seconds, 例如 1759981616）
+  final int? gold;                   // 目前金幣餘額（從 moneyCash 取得）
+  final int? vipExpire;              // VIP 到期時間（Unix seconds）
+
+  /// 新增：通話價格（單位依後端定義，多為金幣/分鐘）
+  final int? videoPrice;             // 後端 key: video_price
+  final int? voicePrice;             // 後端 key: voice_price
 
   UserModel({
     required this.uid,
@@ -100,6 +104,8 @@ class UserModel {
     this.gold,
     this.vipExpire,
     this.isVideoCall = true,
+    this.videoPrice,                 // ← 新增
+    this.voicePrice,                 // ← 新增
   });
 
   /// 取得主要頭像的 ImageProvider
@@ -116,7 +122,6 @@ class UserModel {
     if (raw.isHttp)   return CachedNetworkImageProvider(raw);
     if (raw.isLocalAbs) return FileImage(File(raw));
     if (raw.isServerRelative) return CachedNetworkImageProvider(joinCdnIfNeeded(raw, cdn));
-    // 其他情況（例如奇怪的相對檔名）直接當本地檔嘗試
     return FileImage(File(raw));
   }
 
@@ -142,6 +147,8 @@ class UserModel {
   bool get isVipEffective => isVip || isVipActiveByExpire;
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
+    int? _intOf(dynamic v) => v is num ? v.toInt() : (v == null ? null : int.tryParse(v.toString()));
+
     return UserModel(
       uid: (json['uid'] ?? json['id'] ?? '').toString(),
       displayName: json['nick_name']?.toString() ?? 'Guest',
@@ -182,8 +189,12 @@ class UserModel {
       password: json['pwd']?.toString(),
       createAt: json['create_at'],
       loginTime: json['update_at'],
-      gold: json['gold'] is num ? (json['gold'] as num).toInt() : (json['gold'] ?? 0),
-      vipExpire: json['vip_expire'] is num ? (json['vip_expire'] as num).toInt() : json['vip_expire'],
+      gold: _intOf(json['gold']) ?? 0,
+      vipExpire: _intOf(json['vip_expire']),
+
+      // 新增兩個欄位
+      videoPrice: _intOf(json['video_price']),
+      voicePrice: _intOf(json['voice_price']),
     );
   }
 
@@ -222,6 +233,10 @@ class UserModel {
       'update_at': loginTime,
       'gold': gold,
       'vip_expire': vipExpire,
+
+      // 新增輸出
+      'video_price': videoPrice,
+      'voice_price': voicePrice,
     };
   }
 
@@ -260,6 +275,8 @@ class UserModel {
     int? loginTime,
     int? gold,
     int? vipExpire,
+    int? videoPrice,     // ← 新增
+    int? voicePrice,     // ← 新增
   }) {
     return UserModel(
       uid: uid ?? this.uid,
@@ -296,6 +313,10 @@ class UserModel {
       loginTime: loginTime ?? this.loginTime,
       gold: gold ?? this.gold,
       vipExpire: vipExpire ?? this.vipExpire,
+
+      // 新增
+      videoPrice: videoPrice ?? this.videoPrice,
+      voicePrice: voicePrice ?? this.voicePrice,
     );
   }
 }
@@ -314,5 +335,6 @@ extension _CdnJoinX on String? {
     return '$b$path';
   }
 }
+
 
 

@@ -158,10 +158,12 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
       if (CancelToken.isCancel(e)) {
         Fluttertoast.showToast(msg: '已取消上傳');
       } else {
-        Fluttertoast.showToast(msg: '上傳失敗: ${e.message}');
+        debugPrint('上傳失敗: ${e.message}');
+        Fluttertoast.showToast(msg: '資料上傳失敗');
       }
     } catch (e) {
-      Fluttertoast.showToast(msg: '上傳失敗: $e');
+      debugPrint('上傳失敗: ${e.toString()}');
+      Fluttertoast.showToast(msg: '資料上傳失敗');
     } finally {
       if (mounted) {
         setState(() {

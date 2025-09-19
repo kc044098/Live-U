@@ -77,26 +77,46 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
+    // 把非同步啟動流程移出去；放到 frame 之後做，避免在 build 前用到 context
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _kickoffFlow();
+    });
+  }
+
+  // 啟動整體流程（同步入口）
+  void _kickoffFlow() {
     switch (widget.calleeState) {
       case CalleeState.busy:
-      // 忙線：不真正撥號、不聽 WS，播忙音，N 秒自動關閉
         _playUnavailableTone();
         _startTimeout(toast: '對方忙線中');
         break;
-
       case CalleeState.offline:
-      // 離線：不真正撥號、不聽 WS，播同一段提示音或靜音，短一點自動關閉
-        _playUnavailableTone(); // 想靜音就註解掉這行
+        _playUnavailableTone();
         _startTimeout(toast: '對方不在線');
         break;
-
       case CalleeState.online:
-      // 在線：照舊流程
-        _playRingtone();
-        _initiateCall();
-        _listenSignaling();
+        _handleOnlineFlow(); // 非同步，但不要在這裡 await
         break;
     }
+  }
+
+  // 在線時的非同步處理：權限 -> 鈴聲 -> 撥號 -> 監聽
+  Future<void> _handleOnlineFlow() async {
+    final ok = await ensureMicCam(
+      needCam: widget.isVideoCall == true,
+      context: context,
+    );
+    if (!mounted) return;
+    if (!ok) {
+      Fluttertoast.showToast(msg: '請先授權相機與麥克風');
+      return; // ensureMicCam 內已處理返回或引導設定
+    }
+
+    await _playRingtone();
+    if (!mounted) return;
+
+    _initiateCall();
+    _listenSignaling();
   }
 
   @override
@@ -122,6 +142,25 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
 
     WakelockPlus.disable();
     super.dispose();
+  }
+
+  Future<bool> ensureMicCam({required bool needCam, BuildContext? context}) async {
+    final req = <Permission>[Permission.microphone, if (needCam) Permission.camera];
+    final before = await Future.wait(req.map((p) => p.status));
+    final res = await req.request();
+    final micOk = res[Permission.microphone] == PermissionStatus.granted;
+    final camOk = !needCam || res[Permission.camera] == PermissionStatus.granted;
+
+    if (micOk && camOk) return true;
+
+    // 若永久拒絕 → 引導去設定
+    final perma = res.values.any((s) => s.isPermanentlyDenied);
+    if (perma) {
+      Fluttertoast.showToast(msg: '請到系統設定開啟相機/麥克風權限');
+      unawaited(openAppSettings());
+    }
+    if (context != null && Navigator.of(context).canPop()) Navigator.of(context).pop();
+    return false;
   }
 
   void _goMini() {
