@@ -11,6 +11,8 @@ import '../../data/network/api_client.dart';
 import '../../data/network/api_endpoints.dart';
 import 'model/fan_user.dart';
 import 'model/focus_user.dart';
+import 'model/invite_user_item.dart';
+import 'model/reward_item.dart';
 import 'model/vip_plan.dart';
 
 class UserRepository {
@@ -460,6 +462,51 @@ class UserRepository {
       throw Exception("邀請連結為空");
     }
     return url;
+  }
+
+  Future<InviteUserPage> fetchInviteList({int page = 1}) async {
+    final resp = await _api.post(ApiEndpoints.inviteList, data: {'page': page});
+    final raw = resp.data is String ? jsonDecode(resp.data) : resp.data;
+
+    // ✅ 這裡把 code == 100 視為「沒有更多資料」
+    if (raw is Map && raw['code'] == 100) {
+      return InviteUserPage(list: const [], count: 0);
+    }
+
+    final data = (raw['data'] as Map).cast<String, dynamic>();
+    final listJson = (data['list'] as List?) ?? const [];
+
+    final list = listJson
+        .map((e) => InviteUserItem.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
+
+    final countRaw = data['count'];
+    final count = countRaw is int ? countRaw : int.tryParse('$countRaw') ?? 0;
+
+    return InviteUserPage(list: list, count: count);
+  }
+
+  Future<RewardPage> fetchRewardList({int flag = 3, int page = 1}) async {
+    final resp = await _api.post(ApiEndpoints.rewordList, data: {
+      'flag': flag,
+      'page': page,
+    });
+    final raw = resp.data is String ? jsonDecode(resp.data) : resp.data;
+
+    if (raw is Map && raw['code'] == 100) {
+      return RewardPage(list: const [], count: 0);
+    }
+
+    final data = (raw['data'] as Map).cast<String, dynamic>();
+    final listJson = (data['list'] as List?) ?? const [];
+    final list = listJson
+        .map((e) => RewardItem.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
+
+    final countRaw = data['count'];
+    final count = countRaw is int ? countRaw : int.tryParse('$countRaw') ?? 0;
+
+    return RewardPage(list: list, count: count);
   }
 
   // 通用：上傳任何檔案到 S3（支援進度、取消）

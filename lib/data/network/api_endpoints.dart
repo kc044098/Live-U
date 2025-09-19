@@ -48,6 +48,8 @@ class ApiEndpoints {
   static const String config = '/api/member/config/list'; // 用於讀取主播視頻或語音價格配置
 
   static const String inviteUrl = '/api/member/share'; // 邀請碼
+  static const String inviteList = '/api/member/invite/list'; // 我邀請的人的列表
+  static const String rewordList = '/api/finance/log'; // 用來獲取我的獎勵
 
 
   static const String dndSet = '/api/member/mode/set'; // 用於用戶勿擾模式配置

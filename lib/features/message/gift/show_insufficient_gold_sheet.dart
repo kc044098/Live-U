@@ -67,7 +67,7 @@ class _InsufficientGoldSheetState extends ConsumerState<_InsufficientGoldSheet> 
   @override
   Widget build(BuildContext context) {
     final walletAsync = ref.watch(walletBalanceProvider);
-    final gold = walletAsync.maybeWhen(data: (t) => t.$1, orElse: () => null);
+    final gold = walletAsync.maybeWhen(data: (t) => t.gold, orElse: () => null);
     final isInsufficient = widget.suggestedAmount != null;
     final double h = (MediaQuery.of(context).size.height * 0.5).clamp(420.0, 560.0);
 
