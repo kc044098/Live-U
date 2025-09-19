@@ -47,23 +47,25 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
     final user = ref.watch(userProfileProvider);
     final wallet = ref.watch(walletBalanceProvider);
     final coinLatest = wallet.maybeWhen(
-      data: (t) => t.$1,              // t = (gold, vipExpire)
+      data: (w) => w.gold,
       orElse: () => user?.gold ?? 0,
     );
     final bottomGap = MediaQuery.of(context).padding.bottom + _tabBarHeight + 16;
 
-    ref.listen<AsyncValue<(int gold, int? vipExpire)>>(
-        walletBalanceProvider,
-            (prev, next) {
-          next.whenData((t) {
-            final (gold, vipExpire) = t;
-            final u = ref.read(userProfileProvider);
-            if (u != null && (u.gold != gold || u.vipExpire != vipExpire)) {
-              ref.read(userProfileProvider.notifier).state =
-                  u.copyWith(gold: gold, vipExpire: vipExpire);
-            }
-          });
-        },);
+    ref.listen<
+        AsyncValue<({int gold, int? vipExpire, int inviteNum, int totalIncome, int cashAmount})>
+    >(
+      walletBalanceProvider,
+          (prev, next) {
+        next.whenData((w) {
+          final u = ref.read(userProfileProvider);
+          if (u != null && (u.gold != w.gold || u.vipExpire != w.vipExpire)) {
+            ref.read(userProfileProvider.notifier).state =
+                u.copyWith(gold: w.gold, vipExpire: w.vipExpire);
+          }
+        });
+      },
+    );
 
     if (user == null) {
       return const Scaffold(

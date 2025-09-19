@@ -421,17 +421,16 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                                         Fluttertoast.showToast(msg: '開通成功');
 
                                         // 刷新使用者/錢包，更新 vip 到期時間
-                                        final repo =
-                                            ref.read(walletRepositoryProvider);
-                                        final (gold, vipExpire) =
-                                            await repo.fetchMoneyCash();
+                                        final walletRepo =
+                                        ref.read(walletRepositoryProvider);
+                                        final w =
+                                        await walletRepo.fetchMoneyCash(); // ({gold, vipExpire, inviteNum, totalIncome, cashAmount})
 
                                         final user = ref.read(userProfileProvider);
-                                        if (user != null) {
-                                          ref.read(userProfileProvider.notifier).state = user.copyWith(
-                                            isVip: true,              // ★ 這行把本地 vip 設為 true
-                                            vipExpire: vipExpire,   // 同步最新到期時間
-                                            gold: gold,             // 同步最新餘額
+                                        if (user != null) { ref.read(userProfileProvider.notifier).state = user.copyWith(
+                                            isVip: true,
+                                            vipExpire: w.vipExpire,
+                                            gold: w.gold,
                                           );
                                         }
                                         setState(() {}); // 讓畫面上的「暫未開通」等依綁定狀態刷新

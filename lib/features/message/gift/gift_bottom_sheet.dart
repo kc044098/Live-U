@@ -57,11 +57,15 @@ class _GiftBottomSheetState extends ConsumerState<GiftBottomSheet> {
 
   Future<int?> _getGoldEnsured() async {
     final wa = ref.read(walletBalanceProvider);
-    final cached = wa.maybeWhen(data: (t) => t.$1, orElse: () => null);
+    final cached = wa.maybeWhen(
+      data: (w) => w.gold,   // ★ 改成讀 record 的 gold
+      orElse: () => null,
+    );
     if (cached != null) return cached;
+
     try {
-      final tuple = await ref.refresh(walletBalanceProvider.future);
-      return tuple.$1;
+      final w = await ref.refresh(walletBalanceProvider.future);
+      return w.gold;         // ★ 這裡也改
     } catch (_) {
       return null;
     }
@@ -78,7 +82,10 @@ class _GiftBottomSheetState extends ConsumerState<GiftBottomSheet> {
     final giftsAsync = ref.watch(giftListProvider);
     final cdnBase = ref.watch(userProfileProvider)?.cdnUrl ?? '';
     final walletAsync = ref.watch(walletBalanceProvider);
-    final gold = walletAsync.maybeWhen(data: (t) => t.$1, orElse: () => null);
+    final gold = walletAsync.maybeWhen(
+      data: (w) => w.gold,
+      orElse: () => null,
+    );
 
     const double kBottomBarH = 56;
 

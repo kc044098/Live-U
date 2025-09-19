@@ -16,15 +16,39 @@ class WalletRepository {
   WalletRepository(this._api);
   final ApiClient _api;
 
-  Future<(int gold, int? vipExpire)> fetchMoneyCash() async {
+  /// 取金幣/VIP 以及推廣相關數據
+  /// 回傳：gold, vipExpire, inviteNum, totalIncome, cashAmount
+  Future<({
+  int gold,
+  int? vipExpire,
+  int inviteNum,
+  int totalIncome,
+  int cashAmount,
+  })> fetchMoneyCash() async {
     final response = await _api.post(ApiEndpoints.moneyCash);
     final raw = response.data is String ? jsonDecode(response.data) : response.data;
     final data = (raw['data'] ?? {}) as Map<String, dynamic>;
-    final gold = (data['gold'] ?? 0) is num ? (data['gold'] as num).toInt() : 0;
-    final vipExpire = (data['vip_expire'] == null)
-        ? null
-        : ((data['vip_expire'] as num).toInt());
-    return (gold, vipExpire);
+
+    int _intOf(dynamic v) =>
+        (v is num) ? v.toInt() : (int.tryParse(v?.toString() ?? '') ?? 0);
+
+    final gold       = _intOf(data['gold'] ?? 0);
+    final vipExpireN = data['vip_expire'];
+    final vipExpire  = (vipExpireN == null) ? null
+        : ((vipExpireN is num) ? vipExpireN.toInt()
+        : int.tryParse('$vipExpireN'));
+
+    final inviteNum   = _intOf(data['invite_num'] ?? 0);
+    final totalIncome = _intOf(data['total_income'] ?? 0);
+    final cashAmount  = _intOf(data['amount'] ?? 0);
+
+    return (
+    gold: gold,
+    vipExpire: vipExpire,
+    inviteNum: inviteNum,
+    totalIncome: totalIncome,
+    cashAmount: cashAmount,
+    );
   }
 
   /// 測試充值 API：POST ApiEndpoints.recharge，body: {"gold": <int>}
@@ -150,19 +174,32 @@ final walletRepositoryProvider = Provider<WalletRepository>((ref) {
   return WalletRepository(api);
 });
 
-final walletBalanceProvider = FutureProvider<(int gold, int? vipExpire)>((ref) async {
-  final repo = ref.read(walletRepositoryProvider);
+final walletBalanceProvider = FutureProvider<({
+int gold,
+int? vipExpire,
+int inviteNum,
+int totalIncome,
+int cashAmount,
+})>((ref) async {
+  final repo = ref.read(walletRepositoryProvider); // ← 用到 UserRepository
   return repo.fetchMoneyCash();
 });
 
+// 會把錢包資料（gold / vipExpire / inviteNum / totalIncome / cashAmount）合併到目前使用者
 final currentUserWithWalletProvider = Provider<UserModel?>((ref) {
   final user = ref.watch(userProfileProvider);
-  final walletAsync = ref.watch(walletBalanceProvider);
+  final walletAsync = ref.watch(walletBalanceProvider); // 已改成具名 record 的那個
 
   if (user == null) return null;
 
   return walletAsync.maybeWhen(
-    data: (tuple) => user.copyWith(gold: tuple.$1, vipExpire: tuple.$2),
+    data: (w) => user.copyWith(
+      gold:        w.gold,
+      vipExpire:   w.vipExpire,
+      inviteNum:   w.inviteNum,
+      totalIncome: w.totalIncome,
+      cashAmount:  w.cashAmount,
+    ),
     orElse: () => user,
   );
 });

@@ -65,9 +65,14 @@ class UserModel {
   final int? gold;                   // 目前金幣餘額（從 moneyCash 取得）
   final int? vipExpire;              // VIP 到期時間（Unix seconds）
 
-  /// 新增：通話價格（單位依後端定義，多為金幣/分鐘）
+  // 通話價格（單位依後端定義，多為金幣/分鐘）
   final int? videoPrice;             // 後端 key: video_price
   final int? voicePrice;             // 後端 key: voice_price
+
+  // 新增：推廣/佣金相關（來自 moneyCash）
+  final int? inviteNum;              // invite_num 邀請人數
+  final int? totalIncome;            // total_income 總佣金
+  final int? cashAmount;             // amount 可提現佣金
 
   UserModel({
     required this.uid,
@@ -104,8 +109,11 @@ class UserModel {
     this.gold,
     this.vipExpire,
     this.isVideoCall = true,
-    this.videoPrice,                 // ← 新增
-    this.voicePrice,                 // ← 新增
+    this.videoPrice,
+    this.voicePrice,
+    this.inviteNum,
+    this.totalIncome,
+    this.cashAmount,
   });
 
   /// 取得主要頭像的 ImageProvider
@@ -195,6 +203,10 @@ class UserModel {
       // 新增兩個欄位
       videoPrice: _intOf(json['video_price']),
       voicePrice: _intOf(json['voice_price']),
+
+      inviteNum: _intOf(json['invite_num']),
+      totalIncome: _intOf(json['total_income']),
+      cashAmount: _intOf(json['amount']),
     );
   }
 
@@ -233,10 +245,11 @@ class UserModel {
       'update_at': loginTime,
       'gold': gold,
       'vip_expire': vipExpire,
-
-      // 新增輸出
       'video_price': videoPrice,
       'voice_price': voicePrice,
+      'invite_num': inviteNum,
+      'total_income': totalIncome,
+      'amount': cashAmount,
     };
   }
 
@@ -275,8 +288,11 @@ class UserModel {
     int? loginTime,
     int? gold,
     int? vipExpire,
-    int? videoPrice,     // ← 新增
-    int? voicePrice,     // ← 新增
+    int? videoPrice,
+    int? voicePrice,
+    int? inviteNum,
+    int? totalIncome,
+    int? cashAmount,
   }) {
     return UserModel(
       uid: uid ?? this.uid,
@@ -313,10 +329,12 @@ class UserModel {
       loginTime: loginTime ?? this.loginTime,
       gold: gold ?? this.gold,
       vipExpire: vipExpire ?? this.vipExpire,
-
-      // 新增
       videoPrice: videoPrice ?? this.videoPrice,
       voicePrice: voicePrice ?? this.voicePrice,
+
+      inviteNum: inviteNum ?? this.inviteNum,
+      totalIncome: totalIncome ?? this.totalIncome,
+      cashAmount: cashAmount ?? this.cashAmount,
     );
   }
 }

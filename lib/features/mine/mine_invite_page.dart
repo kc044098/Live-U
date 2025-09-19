@@ -2,8 +2,13 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pull_to_refresh_flutter3/pull_to_refresh_flutter3.dart';
 import '../profile/profile_controller.dart';
 import '../wallet/withdraw_page.dart';
+import 'model/invite_list_state.dart';
+import 'model/invite_user_item.dart';
+import 'model/reward_item.dart';
+import 'model/reward_list_state.dart';
 
 class MyInvitePage extends ConsumerStatefulWidget {
   const MyInvitePage({super.key});
@@ -31,6 +36,8 @@ class _MyInvitePageState extends ConsumerState<MyInvitePage>
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(userProfileProvider);
+    final int totalIncome = user?.totalIncome ?? 0; // 累計佣金獎勵
+    final int cashAmount  = user?.cashAmount  ?? 0; // 可提現金額
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -137,7 +144,7 @@ class _MyInvitePageState extends ConsumerState<MyInvitePage>
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Row(
+                    child: Row(
                       children: [
                         Expanded(
                           child: Column(
@@ -148,7 +155,7 @@ class _MyInvitePageState extends ConsumerState<MyInvitePage>
                               ),
                               SizedBox(height: 8),
                               Text(
-                                '\$ 100.00',
+                                  '\$ ${(totalIncome / 100).toStringAsFixed(2)}',
                                 style: TextStyle(
                                     fontSize: 20,
                                     fontWeight: FontWeight.bold,
@@ -169,7 +176,7 @@ class _MyInvitePageState extends ConsumerState<MyInvitePage>
                                 ),
                                 SizedBox(height: 8),
                                 Text(
-                                  '\$ 100.00',
+                                  '\$ ${(cashAmount / 100).toStringAsFixed(2)}',
                                   style: TextStyle(
                                       fontSize: 20,
                                       fontWeight: FontWeight.bold,
@@ -273,228 +280,85 @@ class _GradientPainter extends BoxPainter {
   }
 }
 
-class RewardTabView extends StatefulWidget {
+class RewardTabView extends ConsumerStatefulWidget {
   const RewardTabView({super.key});
 
   @override
-  State<RewardTabView> createState() => _RewardTabViewState();
+  ConsumerState<RewardTabView> createState() => _RewardTabViewState();
 }
 
-class _RewardTabViewState extends State<RewardTabView> {
-  int selectedIndex = 0;
+class _RewardTabViewState extends ConsumerState<RewardTabView> {
+  int selectedIndex = 0; // 0=今日, 1=昨日, 2=累計
+  final tabs = const ['今日', '昨日', '累計'];
 
-  final tabs = ['今日', '昨日', '累計'];
+  final RefreshController _rc = RefreshController(initialRefresh: false);
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(rewardListProvider.notifier).loadFirstPage();
+    });
+  }
 
+  @override
+  void dispose() {
+    _rc.dispose();
+    super.dispose();
+  }
+
+  // ---------- 時間工具（與 InviteTabView 一致） ----------
+  DateTime _startOfTodayLocal() {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day);
+  }
+
+  bool _isToday(int epochSec) {
+    if (epochSec <= 0) return false;
+    final dt = DateTime.fromMillisecondsSinceEpoch(epochSec * 1000, isUtc: true).toLocal();
+    final start = _startOfTodayLocal();
+    final end = start.add(const Duration(days: 1));
+    return !dt.isBefore(start) && dt.isBefore(end);
+  }
+
+  bool _isYesterday(int epochSec) {
+    if (epochSec <= 0) return false;
+    final dt = DateTime.fromMillisecondsSinceEpoch(epochSec * 1000, isUtc: true).toLocal();
+    final startToday = _startOfTodayLocal();
+    final startY = startToday.subtract(const Duration(days: 1));
+    return !dt.isBefore(startY) && dt.isBefore(startToday);
+  }
+
+  List<RewardItem> _applyFilter(List<RewardItem> all) {
+    switch (selectedIndex) {
+      case 0: return all.where((e) => _isToday(e.createAt)).toList();     // 今日
+      case 1: return all.where((e) => _isYesterday(e.createAt)).toList();  // 昨日
+      case 2:
+      default: return all;                                                // 累計
+    }
+  }
+
+  String _fmtMoneyCents(int cents) => '\$ ${(cents / 100).toStringAsFixed(2)}';
+
+  String _fullUrl(String base, String p) {
+    if (p.isEmpty) return p;
+    if (p.startsWith('http')) return p;
+    if (base.isEmpty) return p;
+    return p.startsWith('/') ? '$base$p' : '$base/$p';
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        // 上方切換按鈕
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.start,
-            children: List.generate(tabs.length, (index) {
-              final isSelected = selectedIndex == index;
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      selectedIndex = index;
-                    });
-                  },
-                  child: Container(
-                    width: 70,
-                    height: 30,
-                    decoration: BoxDecoration(
-                      color: isSelected ? Color(0xFFFFEFEF) : Color(0xFFFAFAFA),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      tabs[index],
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: isSelected ? Color(0xFFFF4D67) : Color(0xFF888888),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }),
-          ),
-        ),
+    final state = ref.watch(rewardListProvider);
+    final cdn   = ref.watch(userProfileProvider)?.cdnUrl ?? '';
 
-        // 下方資料區塊
-        Expanded(
-          child: _buildContentForSelectedIndex(),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildContentForSelectedIndex() {
-    // 模擬每種 tab 對應的金額與次數
-    final rewardStats = [
-      RewardStat(amount: 10.0, times: 3),  // 今日
-      RewardStat(amount: 20.0, times: 5),  // 昨日
-      RewardStat(amount: 100.0, times: 15), // 累計
-    ];
-
-    final currentStat = rewardStats[selectedIndex];
+    final filtered = _applyFilter(state.items);
+    final int totalCents = filtered.fold(0, (s, it) => s + it.gold);
+    final int times = filtered.length;
 
     return Column(
       children: [
-        Container(
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFEEEF4),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    const Text('佣金獎勵', style: TextStyle(fontSize: 12, color: Color(0xFFB1A3A9))),
-                    const SizedBox(height: 8),
-                    Text(
-                      '\$ ${currentStat.amount.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    const Text('獎勵次數', style: TextStyle(fontSize: 12, color: Color(0xFFB1A3A9))),
-                    const SizedBox(height: 8),
-                    Text(
-                      '\$ ${currentStat.times.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 8),
-        Expanded(
-          child: Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFFFAFAFA),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              children: [
-                // 標題列
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  child: Row(
-                    children: const [
-                      Expanded(
-                        child: Text(
-                          '用戶',
-                          textAlign: TextAlign.start,
-                          style: TextStyle(fontSize: 14, color: Color(0xFF9E9E9E), fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      Expanded(
-                        child: Text(
-                          '充值獎勵',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 14, color: Color(0xFF9E9E9E), fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // 假資料列表
-                Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                    itemCount: 8,
-                    itemBuilder: (context, index) {
-                      return Container(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        child: Row(
-                          children: [
-                            // 頭像
-                            const CircleAvatar(
-                              radius: 15,
-                              backgroundImage: NetworkImage('https://i.imgur.com/BoN9kdC.png'), // 假資料
-                            ),
-                            const SizedBox(width: 8),
-                            const Expanded(
-                              child: Text(
-                                '帥氣的小哥哥',
-                                style: TextStyle(fontSize: 14),
-                              ),
-                            ),
-                            const Text(
-                              '\$ 1.00',
-                              style: TextStyle(fontSize: 14),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
-      ],
-    );
-  }
-}
-
-class RewardStat {
-  final double amount;
-  final int times;
-
-  RewardStat({required this.amount, required this.times});
-}
-
-class InviteTabView extends StatefulWidget {
-  const InviteTabView({super.key});
-
-  @override
-  State<InviteTabView> createState() => _InviteTabViewState();
-}
-
-class _InviteTabViewState extends State<InviteTabView> {
-  int selectedIndex = 0;
-  final tabs = ['今日', '昨日', '累計'];
-
-  final inviteCounts = [20, 50, 100]; // 假資料
-
-  @override
-  Widget build(BuildContext context) {
-    final currentCount = inviteCounts[selectedIndex];
-
-    return Column(
-      children: [
-        // 🔘 切換按鈕
+        // 🔘 過濾切換（今日/昨日/累計）
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 10),
           child: Row(
@@ -528,7 +392,294 @@ class _InviteTabViewState extends State<InviteTabView> {
           ),
         ),
 
-        // 🟣 上方粉紅區塊：顯示邀請人數
+        // ▲ 上方統計卡
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFEEEF4),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const Text('佣金獎勵', style: TextStyle(fontSize: 12, color: Color(0xFFB1A3A9))),
+                    const SizedBox(height: 8),
+                    Text(
+                      _fmtMoneyCents(totalCents),
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const Text('獎勵次數', style: TextStyle(fontSize: 12, color: Color(0xFFB1A3A9))),
+                    const SizedBox(height: 8),
+                    Text(
+                      '$times',
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 8),
+
+        // ▼ 清單 + 分頁（用 SmartRefresher，僅顯示它的進度圈）
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFFFAFAFA),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                // 標題列
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  child: const Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '用戶',
+                          textAlign: TextAlign.start,
+                          style: TextStyle(fontSize: 14, color: Color(0xFF9E9E9E), fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          '充值獎勵',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 14, color: Color(0xFF9E9E9E), fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                Expanded(
+                  child: SmartRefresher(
+                    controller: _rc,
+                    enablePullDown: true,
+                    enablePullUp: state.hasMore, // 只有還有更多時才開啟，避免尾頁的 "No more data"
+                    onRefresh: () async {
+                      await ref.read(rewardListProvider.notifier).loadFirstPage();
+                      final ns = ref.read(rewardListProvider);
+                      _rc.refreshCompleted();
+                      // 只有完全 0 筆才顯示 "No more data"
+                      if (ns.items.isEmpty) {
+                        _rc.loadNoData();
+                      } else {
+                        _rc.resetNoData();
+                      }
+                    },
+                    onLoading: () async {
+                      await ref.read(rewardListProvider.notifier).loadNextPage();
+                      final ns = ref.read(rewardListProvider);
+                      if (ns.hasMore) {
+                        _rc.loadComplete();
+                      } else {
+                        // 沒更多頁：若總數為 0 才顯示 "No more data"；已有資料就不顯示
+                        if (ns.items.isEmpty) {
+                          _rc.loadNoData();
+                        } else {
+                          _rc.loadComplete();
+                        }
+                      }
+                    },
+                    header: const ClassicHeader(),
+                    footer: const ClassicFooter(),
+                    // ❗ 只渲染清單/空態/錯誤，不再加自訂 spinner，避免雙進度圈
+                    child: _buildList(filtered, state, cdn),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+  Widget _buildList(List<RewardItem> filtered, RewardListState state, String cdnBase) {
+    if (filtered.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.only(top: 40),
+          child: Text('暫無資料', style: TextStyle(color: Colors.grey)),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      itemCount: filtered.length,
+      separatorBuilder: (_, __) => const Divider(),
+      itemBuilder: (_, index) {
+        final it = filtered[index];
+        final avatarRel = it.avatar.isNotEmpty ? it.avatar.first : '';
+        final avatarUrl = _fullUrl(cdnBase, avatarRel);
+        final nick = it.nickName.isNotEmpty ? it.nickName : '用戶 ${it.uid}';
+        final amount = _fmtMoneyCents(it.gold);
+
+        return Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 15,
+                backgroundImage: avatarUrl.isNotEmpty
+                    ? NetworkImage(avatarUrl)
+                    : const AssetImage('assets/my_icon_defult.jpeg') as ImageProvider,
+              ),
+              const SizedBox(width: 8),
+              Expanded(child: Text(nick, style: const TextStyle(fontSize: 14))),
+              Text(amount, style: const TextStyle(fontSize: 14)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class RewardStat {
+  final double amount;
+  final int times;
+
+  RewardStat({required this.amount, required this.times});
+}
+
+class InviteTabView extends ConsumerStatefulWidget {
+  const InviteTabView({super.key});
+
+  @override
+  ConsumerState<InviteTabView> createState() => _InviteTabViewState();
+}
+
+class _InviteTabViewState extends ConsumerState<InviteTabView> {
+  int selectedIndex = 0; // 0=今日, 1=昨日, 2=累計
+  final tabs = ['今日', '昨日', '累計'];
+
+  final RefreshController _rc = RefreshController(initialRefresh: false);
+
+  @override
+  void initState() {
+    super.initState();
+    // 首次載入第一頁
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(inviteListProvider.notifier).loadFirstPage();
+    });
+  }
+
+  @override
+  void dispose() {
+    _rc.dispose();
+    super.dispose();
+  }
+
+  // ---------- 時間工具 ----------
+  DateTime _startOfTodayLocal() {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day);
+  }
+
+  bool _isToday(int epochSec) {
+    if (epochSec <= 0) return false;
+    final dt = DateTime.fromMillisecondsSinceEpoch(epochSec * 1000, isUtc: true).toLocal();
+    final start = _startOfTodayLocal();
+    final end = start.add(const Duration(days: 1));
+    return !dt.isBefore(start) && dt.isBefore(end);
+  }
+
+  bool _isYesterday(int epochSec) {
+    if (epochSec <= 0) return false;
+    final dt = DateTime.fromMillisecondsSinceEpoch(epochSec * 1000, isUtc: true).toLocal();
+    final startToday = _startOfTodayLocal();
+    final startY = startToday.subtract(const Duration(days: 1));
+    return !dt.isBefore(startY) && dt.isBefore(startToday);
+  }
+
+  List<InviteUserItem> _applyFilter(List<InviteUserItem> all) {
+    switch (selectedIndex) {
+      case 0: // 今日
+        return all.where((e) => _isToday(e.createAt)).toList();
+      case 1: // 昨日
+        return all.where((e) => _isYesterday(e.createAt)).toList();
+      case 2: // 累計
+      default:
+        return all;
+    }
+  }
+
+  String _fmtFull(int epochSec) {
+    if (epochSec <= 0) return '';
+    final dt = DateTime.fromMillisecondsSinceEpoch(epochSec * 1000, isUtc: true).toLocal();
+    return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} '
+        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}:${dt.second.toString().padLeft(2, '0')}';
+  }
+
+  String _fullUrl(String base, String p) {
+    if (p.isEmpty) return p;
+    if (p.startsWith('http')) return p;
+    if (base.isEmpty) return p;
+    return p.startsWith('/') ? '$base$p' : '$base/$p';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(inviteListProvider);
+    final cdn   = ref.watch(userProfileProvider)?.cdnUrl ?? '';
+
+    final filtered = _applyFilter(state.items);
+    final currentCount = filtered.length; // 頂部顯示當前篩選的數量
+
+    return Column(
+      children: [
+        // 🔘 篩選切換
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: List.generate(tabs.length, (index) {
+              final isSelected = selectedIndex == index;
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: GestureDetector(
+                  onTap: () => setState(() => selectedIndex = index),
+                  child: Container(
+                    width: 70,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: isSelected ? const Color(0xFFFFEFEF) : const Color(0xFFFAFAFA),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      tabs[index],
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: isSelected ? const Color(0xFFFF4D67) : const Color(0xFF888888),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
+
+        // 🟣 邀請人數（依過濾後）
         Container(
           padding: const EdgeInsets.symmetric(vertical: 16),
           decoration: BoxDecoration(
@@ -550,7 +701,7 @@ class _InviteTabViewState extends State<InviteTabView> {
 
         const SizedBox(height: 8),
 
-        // 📝 列表區塊
+        // 📝 列表 + 分頁
         Expanded(
           child: Container(
             decoration: BoxDecoration(
@@ -582,37 +733,41 @@ class _InviteTabViewState extends State<InviteTabView> {
                   ),
                 ),
 
-                // 用戶資料
                 Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: 9,
-                    itemBuilder: (_, index) {
-                      return Container(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        child: Row(
-                          children: [
-                            // 頭像
-                            const CircleAvatar(
-                              radius: 15,
-                              backgroundImage: NetworkImage('https://i.imgur.com/wedIDwN.jpeg'), // 假資料
-                            ),
-                            const SizedBox(width: 8),
-                            const Expanded(
-                              child: Text(
-                                '淘氣的小弟弟',
-                                style: TextStyle(fontSize: 14),
-                              ),
-                            ),
-                            Text(
-                              '2025-02-02 12:00:00',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(fontSize: 14),
-                            ),
-                          ],
-                        ),
-                      );
+                  child: SmartRefresher(
+                    controller: _rc,
+                    enablePullDown: true,
+                    enablePullUp: state.hasMore,
+                    onRefresh: () async {
+                      await ref.read(inviteListProvider.notifier).loadFirstPage();
+                      final ns = ref.read(inviteListProvider);
+                      _rc.refreshCompleted();
+                      // 只有清單真的是 0 筆，才顯示 "No more data"
+                      if (ns.items.isEmpty) {
+                        _rc.loadNoData();
+                      } else {
+                        _rc.resetNoData(); // 恢復成可載入狀態（避免殘留 noData 狀態）
+                      }
                     },
+                    onLoading: () async {
+                      await ref.read(inviteListProvider.notifier).loadNextPage();
+                      final ns = ref.read(inviteListProvider);
+
+                      if (ns.hasMore) {
+                        _rc.loadComplete(); // 還有下一頁 → 正常結束這次 loading
+                      } else {
+                        // 沒有更多了：只有完全沒有資料才顯示 "No more data"
+                        if (ns.items.isEmpty) {
+                          _rc.loadNoData();
+                        } else {
+                          // 列表已有資料，但到尾頁 → 不顯示 "No more data"
+                          _rc.loadComplete();
+                        }
+                      }
+                    },
+                    header: const ClassicHeader(),
+                    footer: const ClassicFooter(),
+                    child: _buildList(filtered, state, cdn),
                   ),
                 ),
               ],
@@ -623,4 +778,60 @@ class _InviteTabViewState extends State<InviteTabView> {
       ],
     );
   }
+
+  Widget _buildList(List<InviteUserItem> filtered, InviteListState state, String cdnBase) {
+    if (state.isLoading && state.items.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.only(top: 40),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+    if (filtered.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.only(top: 40),
+          child: Text('暫無資料', style: TextStyle(color: Colors.grey)),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      itemCount: filtered.length,
+      separatorBuilder: (_, __) => const Divider(),
+      itemBuilder: (_, index) {
+        final it = filtered[index];
+        final avatarRel = it.avatar.isNotEmpty ? it.avatar.first : '';
+        final avatarUrl = _fullUrl(cdnBase, avatarRel);
+        final nick = it.nickName.isNotEmpty ? it.nickName : '用戶 ${it.inviteUid}';
+        final when = _fmtFull(it.createAt);
+
+        return Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 15,
+                backgroundImage: avatarUrl.isNotEmpty
+                    ? NetworkImage(avatarUrl)
+                    : const AssetImage('assets/my_icon_defult.jpeg') as ImageProvider,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(nick, style: const TextStyle(fontSize: 14)),
+              ),
+              Text(
+                when,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 14),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }
+

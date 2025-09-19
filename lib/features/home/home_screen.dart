@@ -56,14 +56,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
-        // 獲取錢包狀態
+        // ① 取得錢包/分潤快照（已擴充含三個欄位）
         final repo = ref.read(walletRepositoryProvider);
-        final (gold, vipExpire) = await repo.fetchMoneyCash();
+        final w = await repo.fetchMoneyCash(); // -> ({ gold, vipExpire, inviteNum, totalIncome, cashAmount })
 
+        // ② 合併到當前使用者
         final user = ref.read(userProfileProvider);
         if (user != null) {
-          ref.read(userProfileProvider.notifier).state =
-              user.copyWith(gold: gold, vipExpire: vipExpire);
+          ref.read(userProfileProvider.notifier).state = user.copyWith(
+            gold:        w.gold,
+            vipExpire:   w.vipExpire,
+            inviteNum:   w.inviteNum,
+            totalIncome: w.totalIncome,
+            cashAmount:  w.cashAmount,
+          );
         }
 
         // 獲取禮物列表

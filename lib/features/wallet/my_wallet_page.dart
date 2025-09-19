@@ -25,7 +25,6 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
   int? _gold;        // ← 從 moneyCash 取得後暫存於此
   final TextEditingController _customAmountController = TextEditingController();
 
-
   @override
   void initState() {
     super.initState();
@@ -33,16 +32,17 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
         final repo = ref.read(walletRepositoryProvider);
-        final (gold, vipExpire) = await repo.fetchMoneyCash();
+        final w = await repo.fetchMoneyCash();
+
         if (!mounted) return;
         setState(() {
-          _gold = gold;
+          _gold = w.gold;
         });
 
         final user = ref.read(userProfileProvider);
         if (user != null) {
           ref.read(userProfileProvider.notifier).state =
-              user.copyWith(gold: gold, vipExpire: vipExpire);
+              user.copyWith(gold: w.gold, vipExpire: w.vipExpire);
         }
       } catch (e) {
         // 靜默失敗即可，避免打擾 UI；需要時可加上 toast
