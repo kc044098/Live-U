@@ -47,6 +47,9 @@ class ApiEndpoints {
   static const String configSet = '/api/member/config/set'; // 用於主播視頻或語音價格配置
   static const String config = '/api/member/config/list'; // 用於讀取主播視頻或語音價格配置
 
+  static const String inviteUrl = '/api/member/share'; // 邀請碼
+
+
   static const String dndSet = '/api/member/mode/set'; // 用於用戶勿擾模式配置
   static const String dndRead = '/api/member/mode'; // 用於查詢用戶勿擾模式配置
   static const String renewRtcToken = '/api/live/token/renew';
