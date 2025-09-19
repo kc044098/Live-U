@@ -442,6 +442,26 @@ class UserRepository {
     return fileUrl;
   }
 
+  /// 取得邀請連結
+  /// API: ApiEndpoints.inviteUrl
+  /// 回傳格式：
+  /// {"code":200,"message":"success","data":{"values":"https://share.liveu.live/code=fVvAJI6SER"}}
+  Future<String> fetchInviteUrl() async {
+    final resp = await _api.post(ApiEndpoints.inviteUrl, data: {});
+    final raw = resp.data is String ? jsonDecode(resp.data) : resp.data;
+
+    if (raw is! Map || raw['code'] != 200 || raw['data'] == null) {
+      debugPrint('取得邀請連結失敗: $raw');
+      throw Exception("取得邀請連結失敗 , 請確認網路狀態");
+    }
+    final data = raw['data'];
+    final url = data['values']?.toString() ?? '';
+    if (url.isEmpty) {
+      throw Exception("邀請連結為空");
+    }
+    return url;
+  }
+
   // 通用：上傳任何檔案到 S3（支援進度、取消）
   Future<String> uploadToS3({
     required File file,
