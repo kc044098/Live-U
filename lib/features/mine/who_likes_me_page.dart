@@ -50,7 +50,8 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage>
     // 非 VIP 遮罩
     Future.delayed(const Duration(milliseconds: 500), () {
       final user = ref.read(userProfileProvider);
-      if (user?.isVip != true) {
+      // 只有非vip 且非主播才會跳購買vip彈窗
+      if (user?.isVip != true && user?.isBroadcaster != true) {
         setState(() => _showBlockLayer = true);
       }
     });

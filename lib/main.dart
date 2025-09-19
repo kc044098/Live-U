@@ -20,18 +20,26 @@ import 'features/home/home_screen.dart';
 import 'features/live/video_recorder_page.dart';
 import 'routes/app_routes.dart';
 
+import 'package:firebase_core/firebase_core.dart';
+// 如果你有用 flutterfire cli 生成的 options：
+// import 'firebase_options.dart';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  unawaited(_initFirebase());
+  // 1) 先把 Firebase 初始化完成
+  // 如果有 firebase_options.dart：
+  // await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await Firebase.initializeApp();
 
+  // 2) 再做你其他初始化
   final mgr = RtcEngineManager();
   final logPath = await mgr.prepareRtcLogPath();
   await mgr.init(appId: AppConfig.agoraAppId, logPath: logPath);
 
-  // 通話時的system pip
   PipSystemUi.init(navigatorKey: rootNavigatorKey);
 
+  // 3) 最后再 runApp
   runApp(
     ProviderScope(
       child: legacy.ChangeNotifierProvider(
@@ -40,17 +48,6 @@ Future<void> main() async {
       ),
     ),
   );
-}
-
-Future<void> _initFirebase() async {
-  try {
-    if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp();
-    }
-  } catch (e, st) {
-    // 不讓錯誤卡住啟動流程，只記錄
-    debugPrint('Firebase init failed: $e\n$st');
-  }
 }
 
 class MyApp extends ConsumerWidget {

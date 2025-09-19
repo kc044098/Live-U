@@ -17,6 +17,7 @@ import 'package:http/http.dart' as http;
 import '../../data/models/gift_item.dart';
 import '../../data/models/user_model.dart';
 import '../call/call_request_page.dart';
+import '../live/data_model/gift_effect_player.dart';
 import '../live/data_model/gift_task.dart';
 import '../live/gift_providers.dart';
 import '../mine/edit_mine_page.dart';
@@ -97,16 +98,13 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
 
   int _lastReadPostMs = 0;
 
-  late final SVGAAnimationController _svgaCtrl = SVGAAnimationController(vsync: this);
-  OverlayEntry? _giftEntry;
-  final Queue<GiftTask> _giftQueue = Queue<GiftTask>();
-  Timer? _giftFallbackTimer;
-  bool _isPlayingGift = false;
+  late final GiftEffectPlayer _giftFx;
 
   @override
   void initState() {
     super.initState();
     _textController = TextEditingController();
+    _giftFx = GiftEffectPlayer(vsync: this);
 
     _attachCursorGuard(_textController);
 
@@ -278,9 +276,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
     _recorder.dispose();
     _audioPlayer.dispose();
     _textController.dispose();
-    _giftFallbackTimer?.cancel();
-    _removeGiftOverlay();
-    try { _svgaCtrl.dispose(); } catch (_) {}
+    try { _giftFx.dispose(); } catch (_) {}
     super.dispose();
   }
 
@@ -494,6 +490,9 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
   }
 
   void _sendMessage() async {
+    _inputFocus.unfocus();
+    FocusManager.instance.primaryFocus?.unfocus();
+
     final text = _textController.text.trim();
     if (text.isEmpty) return;
 
@@ -1461,73 +1460,6 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
     }
   }
 
-  void _insertGiftOverlay() {
-    if (_giftEntry != null) return;
-    _giftEntry = OverlayEntry(
-      builder: (_) => Positioned.fill(
-        child: IgnorePointer(
-          ignoring: true,
-          child: Center(child: SVGAImage(_svgaCtrl)),
-        ),
-      ),
-    );
-    Overlay.of(context, rootOverlay: true)!.insert(_giftEntry!);
-  }
-
-  void _removeGiftOverlay() {
-    _giftEntry?.remove();
-    _giftEntry = null;
-  }
-
-  // 播放一次 SVGA，播完自動隱藏
-  Future<void> _playGiftEffect(String url) async {
-    if (!mounted || url.isEmpty) { _onGiftDone(); return; }
-    if (!url.toLowerCase().endsWith('.svga')) { _onGiftDone(); return; }
-
-    try {
-      // 保險：開始前先清一次（避免上次殘留）
-      _removeGiftOverlay();
-
-      final resp = await http.get(Uri.parse(url));
-      if (resp.statusCode != 200 || resp.bodyBytes.isEmpty) {
-        throw 'http ${resp.statusCode}';
-      }
-      final item = await SVGAParser.shared.decodeFromBuffer(resp.bodyBytes);
-
-      _svgaCtrl.videoItem = item;
-      _insertGiftOverlay();
-
-      // 3s 保底，避免沒有完成事件而卡住
-      _giftFallbackTimer?.cancel();
-      _giftFallbackTimer = Timer(const Duration(seconds: 3), () {
-        try { _svgaCtrl.stop(); _svgaCtrl.videoItem = null; } catch (_) {}
-        _removeGiftOverlay();
-        _onGiftDone();
-      });
-
-      void onStatus(AnimationStatus s) {
-        if (s == AnimationStatus.completed || s == AnimationStatus.dismissed) {
-          _svgaCtrl.removeStatusListener(onStatus);
-          _giftFallbackTimer?.cancel();
-          _giftFallbackTimer = null;
-
-          try { _svgaCtrl.stop(); _svgaCtrl.videoItem = null; } catch (_) {}
-          _removeGiftOverlay();
-          _onGiftDone();
-        }
-      }
-
-      _svgaCtrl.addStatusListener(onStatus);
-      _svgaCtrl
-        ..reset()
-        ..forward(); // 播一次
-    } catch (e) {
-      debugPrint('SVGA play error: $e');
-      _removeGiftOverlay();
-      _onGiftDone(); // 失敗也讓隊列繼續
-    }
-  }
-
   // 從 ChatMessage 嘗試取得 SVGA url（ws/歷史皆可）
   void _tryPlayGiftFromMessage(ChatMessage msg) {
     if (msg.contentType != ChatContentType.gift) return;
@@ -1644,25 +1576,9 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
     );
   }
 
-  void _enqueueGift(String url, {int? giftId}) {
+  void _enqueueGift(String url) {
     if (url.isEmpty) return;
-    _giftQueue.add(GiftTask(url, giftId: giftId));
-    _tryStartGiftPlayback();
-  }
-
-  void _tryStartGiftPlayback() {
-    if (_isPlayingGift || _giftQueue.isEmpty) return;
-    final task = _giftQueue.removeFirst();
-    _isPlayingGift = true;
-    _playGiftEffect(task.url); // 播放完成/逾時會自動接下一個（見下方改造）
-  }
-
-  void _onGiftDone() {
-    _giftFallbackTimer?.cancel();
-    _giftFallbackTimer = null;
-    _isPlayingGift = false;
-    // 小間隔 0.5s 再播下一個，避免銜接太急
-    Future.delayed(const Duration(milliseconds: 500), _tryStartGiftPlayback);
+    _giftFx.enqueue(context, url);
   }
 
   Future<bool> _handleBack() async {

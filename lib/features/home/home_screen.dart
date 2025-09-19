@@ -1,6 +1,7 @@
 // # 主頁面含 BottomNavigationBar
 
 import 'package:flutter/material.dart';
+import '../../core/permission_service.dart';
 import '../../l10n/l10n.dart';
 import '../live/data_model/home_feed_state.dart';
 import '../live/gift_providers.dart';
@@ -9,6 +10,7 @@ import 'live_list_page.dart';
 import 'mine_page.dart';
 import 'message_page.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:geolocator/geolocator.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../profile/update_my_info.dart';
@@ -166,4 +168,5 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
     );
   }
+
 }

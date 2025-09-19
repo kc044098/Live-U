@@ -26,6 +26,7 @@ import 'data_model/free_digits_badge.dart';
 import 'data_model/gift_effect_player.dart';
 import 'data_model/live_chat_input_bar.dart';
 import 'data_model/live_chat_panel.dart';
+import 'data_model/stable_remote_video_view.dart';
 import 'gift_providers.dart';
 import 'mini_call_view.dart';
 
@@ -511,33 +512,6 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     );
   }
 
-  Widget _buildRemoteView(ImageProvider avatarProvider) {
-    if (_isVoice) return const ColoredBox(color: Colors.white);
-    if (!_rtc.isInited || _rtc.engine == null || _remoteUids.isEmpty) {
-      return const ColoredBox(color: Colors.black);
-    }
-
-    // 對方關相機 → 黑底 + 對方頭像
-    if (!_remoteVideoOn) {
-      return Container(
-        color: Colors.black,
-        child: Center(child: CircleAvatar(radius: 60, backgroundImage: avatarProvider)),
-      );
-    }
-
-    // 對方開相機 → 顯示遠端視訊
-    final remoteUid = _remoteUids.first;
-    return AgoraVideoView(
-      controller: VideoViewController.remote(
-        rtcEngine: _rtc.engine,
-        canvas: VideoCanvas(uid: remoteUid),
-        connection: RtcConnection(channelId: roomId),
-        useFlutterTexture: true,
-        useAndroidSurfaceView: false,
-      ),
-    );
-  }
-
   Widget _buildLocalViewMirrored() {
     if (_isVoice || !_rtc.isInited) return const SizedBox.shrink();
     return AgoraVideoView(
@@ -726,7 +700,15 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
         body: Stack(
           children: [
             // 遠端畫面全屏
-            Positioned.fill(child: _buildRemoteView(avatarProvider)),
+            Positioned.fill(
+              child: StableRemoteVideoView(
+                engine: _rtc.engine,
+                roomId: roomId,
+                remoteUid: _remoteUid,
+                remoteVideoOn: _remoteVideoOn,
+                avatar: avatarProvider,
+              ),
+            ),
 
             // 左上：縮小（改成 App 內小窗）
             Positioned(
@@ -879,14 +861,21 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: _buildLocalViewMirrored(),
+                    child: StableLocalPreviewView(
+                      engine: _rtc.engine, // 你的全域引擎
+                      mirrorFront: _frontCamera, // 你現有的狀態
+                      show: _videoOn, // 你現有的狀態（true 顯示預覽）
+                      // 如果你不想讓元件幫忙 start/stopPreview，就設 false，
+                      // 並保持你原本 _toggleVideo 的 Agora 呼叫：
+                      manageLifecycle: true,
+                    ),
                   ),
                 ),
               ),
 
             // ====== 透明聊天紀錄框（左下，顯示最近訊息）======
             Positioned(
-              left: 12,
+              left: 10,
               bottom: 70, // 留給輸入框高度
               child: LiveChatPanel(
                 messages: ref.watch(callSessionProvider(roomId).select((s) => s.messages)),
@@ -896,59 +885,72 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
               ),
             ),
 
-            // ====== 左下輸入框 ======
+            // === 底部輸入 + 功能鍵（同一個 Positioned / 同一個 Row）===
             Positioned(
               left: 12,
-              bottom: 20,
-              right: 225, // ← 精確預留給右側按鈕列
-              child: LiveChatInputBar(
-                controller: _liveInputCtrl,
-                focusNode: _liveInputFocus,
-                onSend: _sendLiveText,
-                onTapField: () {},
-              ),
-            ),
-
-            Positioned(
               right: 12,
-              bottom: 20,
-              child: Row(
-                children: [
-                  // 1) 禮物
-                  _assetBtn(
-                    asset: 'assets/icon_gift.png',
-                    onTap: _openGiftSheetLive,
-                  ),
-                  // 揚聲器（開/關圖示）
-                  _assetBtn(
-                    asset: 'assets/icon_speaker_1.png',     // 開啟
-                    offAsset: 'assets/icon_speaker_2.png',  // 關閉
-                    onTap: _toggleSpeaker,
-                    on: _speakerOn,
-                  ),
-                  // 麥克風（開/關圖示）
-                  _assetBtn(
-                    asset: 'assets/icon_mic_1.png',     // 開啟
-                    offAsset: 'assets/icon_mic_2.png',  // 關閉
-                    onTap: _toggleMic,
-                    on: _micOn,
-                  ),
-                  // 4) 視訊（語音模式禁用）
-                  if (!_isVoice)
-                  _assetBtn(
-                    asset: 'assets/icon_vedio.png',
-                    onTap: _toggleVideo,
-                    on: _videoOn,
-                  ),
-                  // 5) 切換鏡頭（語音模式禁用）
-                  if (!_isVoice && _videoOn)
-                  _assetBtn(
-                    asset: 'assets/icon_switch.png',
-                    onTap: _switchCamera,
-                  ),
-                ],
+              bottom: 0, // 交給 SafeArea + 鍵盤 inset 處理
+              child: SafeArea(
+                bottom: true,
+                // 最低想留的視覺間距（home indicator 上方再加 12）
+                minimum: const EdgeInsets.only(bottom: 12),
+                child: Builder(
+                  builder: (context) {
+                    final media = MediaQuery.of(context);
+                    // 鍵盤彈出時，多墊出鍵盤高度（iOS 會自動動畫）
+                    final keyboard = media.viewInsets.bottom;
+
+                    return Padding(
+                      padding: EdgeInsets.only(bottom: keyboard),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          // 輸入框（吃掉剩餘寬度）
+                          Expanded(
+                            child: LiveChatInputBar(
+                              controller: _liveInputCtrl,
+                              focusNode: _liveInputFocus,
+                              onSend: _sendLiveText,
+                              onTapField: () {},
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+
+                          // 右側按鈕列（固定高度，和輸入框垂直置中）
+                          _assetBtn(
+                            asset: 'assets/icon_gift.png',
+                            onTap: _openGiftSheetLive,
+                          ),
+                          _assetBtn(
+                            asset: 'assets/icon_speaker_1.png',
+                            offAsset: 'assets/icon_speaker_2.png',
+                            onTap: _toggleSpeaker,
+                            on: _speakerOn,
+                          ),
+                          _assetBtn(
+                            asset: 'assets/icon_mic_1.png',
+                            offAsset: 'assets/icon_mic_2.png',
+                            onTap: _toggleMic,
+                            on: _micOn,
+                          ),
+                          if (!_isVoice)
+                            _assetBtn(
+                              asset: 'assets/icon_vedio.png',
+                              onTap: _toggleVideo,
+                              on: _videoOn,
+                            ),
+                          if (!_isVoice && _videoOn)
+                            _assetBtn(
+                              asset: 'assets/icon_switch.png',
+                              onTap: _switchCamera,
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
+            )
 
           ],
         ),

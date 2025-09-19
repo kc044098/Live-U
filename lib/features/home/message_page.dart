@@ -204,17 +204,20 @@ class _MessagePageState extends ConsumerState<MessagePage>
                       title: Text(titleText, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                       subtitle: Text(subtitleText, style: const TextStyle(color: Colors.grey)),
                       onTap: () async {
-                        if (me.isVip == true) {
+                        // ✅ 條件更新：主播 或 VIP → 直接進頁；否則彈窗
+                        final canEnter = (me.isBroadcaster == true) || (me.isVip == true);
+                        if (canEnter) {
                           await Navigator.push(
                             context,
                             MaterialPageRoute(builder: (_) => const WhoLikesMePage()),
                           );
+                          // 回來後刷新
                           ref.read(memberFansProvider.notifier).loadFirstPage();
                         } else {
                           showLikeAlertDialog(
                             context,
                             ref,
-                                () {},
+                                () {}, // 按鈕一（例如查看介紹）
                             onConfirmWithAmount: (amount) {
                               Navigator.push(
                                 context,

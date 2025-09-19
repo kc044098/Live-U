@@ -274,14 +274,16 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
                 ),
               ),
               const SizedBox(height: 4),
-              const Text(
-                '1金幣/分钟',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey, fontSize: 10),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-                softWrap: false,
-              ),
+              if (u.videoPrice != null && u.isBroadcaster)
+                Text(
+                  (u.videoPrice! <= 0) ? '免費' : '${u.videoPrice}金幣/分鐘',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.grey, fontSize: 10),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  softWrap: false,
+                ),
+
             ],
           ),
         ),

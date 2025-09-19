@@ -1,11 +1,31 @@
+# Uncomment this line to define a global platform for your project
 platform :ios, '13.0'
 
+# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
-flutter_root = '/Users/Frankie/development/flutter'
-flutter_application_path = File.expand_path('..')
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
 
-load File.join(flutter_root, 'packages', 'flutter_tools', 'bin', 'podhelper.rb')
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
+  end
+
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_ios_podfile_setup
 
 target 'Runner' do
   use_frameworks!
@@ -13,3 +33,26 @@ target 'Runner' do
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    # 保留 Flutter 內建設定（你同事版）
+    flutter_additional_ios_build_settings(target)
+
+    # 只針對 permission_handler 設定要啟用的權限
+    if target.name == 'permission_handler_apple' # 你的 Pod 列表顯示是這個名字
+      target.build_configurations.each do |config|
+        defs = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
+        defs << 'PERMISSION_CAMERA=1'
+        defs << 'PERMISSION_MICROPHONE=1'
+        defs << 'PERMISSION_PHOTOS=1'
+        defs << 'PERMISSION_NOTIFICATIONS=1'
+        defs << 'PERMISSION_LOCATION=1'
+        # 不用的就別開，或改成 =0 以縮包
+        # defs << 'PERMISSION_CONTACTS=0'
+        # defs << 'PERMISSION_CALENDAR=0'
+      end
+    end
+  end
+end
+
