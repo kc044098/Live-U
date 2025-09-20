@@ -140,50 +140,61 @@ class _MyInvitePageState extends ConsumerState<MyInvitePage>
                   right: 16,
                   top: 90,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
                       children: [
+                        // 左側：累計佣金獎勵（佔 50%）
                         Expanded(
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              Text('累計佣金獎勵',
+                              const Text(
+                                '累計佣金獎勵',
                                 style: TextStyle(fontSize: 14, color: Colors.black54),
                               ),
-                              SizedBox(height: 8),
-                              Text(
+                              const SizedBox(height: 8),
+                              // 長數字自動縮小以避免溢出
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
                                   '\$ ${(totalIncome / 100).toStringAsFixed(2)}',
-                                style: TextStyle(
+                                  maxLines: 1,
+                                  style: const TextStyle(
                                     fontSize: 20,
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.black),
+                                    color: Colors.black,
+                                  ),
+                                ),
                               ),
                             ],
                           ),
                         ),
+                        // 右側：可提現金額（佔 50%）
                         Expanded(
-                          child: Padding(
-                            padding: EdgeInsets.only(left: 36),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('可提現金額',
-                                  style: TextStyle(
-                                      fontSize: 14, color: Colors.black54),
-                                ),
-                                SizedBox(height: 8),
-                                Text(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              const Text(
+                                '可提現金額',
+                                style: TextStyle(fontSize: 14, color: Colors.black54),
+                              ),
+                              const SizedBox(height: 8),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
                                   '\$ ${(cashAmount / 100).toStringAsFixed(2)}',
-                                  style: TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.black),
+                                  maxLines: 1,
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black,
+                                  ),
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
