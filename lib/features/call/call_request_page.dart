@@ -81,6 +81,7 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _kickoffFlow();
     });
+
   }
 
   // 啟動整體流程（同步入口）

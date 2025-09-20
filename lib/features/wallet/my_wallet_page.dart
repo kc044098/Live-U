@@ -10,6 +10,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
 import '../../data/models/user_model.dart';
+import '../pay/purchase_router.dart';
 import '../profile/profile_controller.dart';
 import 'model/coin_packet.dart';
 
@@ -404,9 +405,7 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
   }
 
   void _onRechargePressed() {
-    final packetsAsync = ref.read(coinPacketsProvider);
-    final packets = packetsAsync.asData?.value ?? [];
-
+    final packets = ref.read(coinPacketsProvider).asData?.value ?? [];
     if (packets.isEmpty) {
       Fluttertoast.showToast(msg: '禮包尚未載入，請稍候');
       return;
@@ -416,55 +415,41 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
     final isCustom = selectedIndex == customIndex;
 
     if (isCustom) {
-      // 自訂金額 → 只帶 amount
       final input = _customAmountController.text.trim();
       final parsed = double.tryParse(input);
 
-      if (parsed == null || parsed < 1) {
-        Fluttertoast.showToast(msg: '至少輸入1元');
+      if (parsed == null || parsed < 1 || parsed % 1 != 0) {
+        Fluttertoast.showToast(msg: '請輸入整數金額（至少 1）');
         return;
       }
-      if (parsed % 1 != 0) {
-        Fluttertoast.showToast(msg: '金額必須是整數');
-        return;
-      }
-
       FocusScope.of(context).unfocus();
 
-      Navigator.push(
+      PurchaseRouter.open(
         context,
-        MaterialPageRoute(
-          builder: (_) => PaymentMethodPage(
-            amount: parsed,
-            // packetId: null  // 可不寫，預設就是 null
-          ),
-        ),
+        amount: parsed,
+        packetId: null,
+        isCustom: true, // Release 下會提示不支援；Debug 走舊測試頁
       );
       return;
     }
 
-    // 選擇前面禮包 → 帶入 packetId + amount
     if (selectedIndex < 0 || selectedIndex >= packets.length) {
       Fluttertoast.showToast(msg: '請先選擇禮包');
       return;
     }
-    final picked = packets[selectedIndex];
 
-    // 若後端 price 為「分」，你可用規則轉成實際金額（這裡沿用之前示例）
+    final picked = packets[selectedIndex];
     final amountToPay = (picked.price >= 1000)
         ? picked.price / 100.0
         : picked.price.toDouble();
 
     FocusScope.of(context).unfocus();
 
-    Navigator.push(
+    PurchaseRouter.open(
       context,
-      MaterialPageRoute(
-        builder: (_) => PaymentMethodPage(
-          amount: amountToPay,
-          packetId: picked.id, // ★ 帶禮包 id
-        ),
-      ),
+      amount: amountToPay,
+      packetId: picked.id, // ★ 用來對應 Play/Store 的 productId
+      isCustom: false,
     );
   }
 }

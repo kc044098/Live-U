@@ -88,6 +88,9 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
   late final GiftEffectPlayer _giftFx;
 
+  Timer? _remoteGoneTimer;
+  static const int _remoteGoneGraceSec = 5;
+
   Map<String, dynamic> _dataOf(Map p) =>
       (p['data'] is Map) ? Map<String, dynamic>.from(p['data']) : const {};
 
@@ -134,13 +137,26 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
       }
     };
 
+    // ② 改你的 _remoteListener：偵測遠端在/不在 & 啟停計時器
     _remoteListener = () {
       if (!mounted) return;
+
       setState(() {
         _remoteUids
           ..clear()
           ..addAll(_rtc.remoteUids.value);
       });
+
+      final nowHasRemote = _remoteUids.isNotEmpty;
+
+      // 只有在「我已加入房間」後才判斷對方
+      if (_joined) {
+        if (nowHasRemote) {
+          _cancelRemoteGoneTimer();   // 對方回來（或本來就在）→ 取消計時
+        } else {
+          _armRemoteGoneTimer();      // 對方不在 → 開始 5 秒倒數
+        }
+      }
     };
     // 綁定全域通知
     _rtc.joined.addListener(_joinedListener);
@@ -605,6 +621,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     WidgetsBinding.instance.removeObserver(this);
     _rtc.joined.removeListener(_joinedListener);
     _rtc.remoteUids.removeListener(_remoteListener);
+    _cancelRemoteGoneTimer();
 
     try { _rtc.engine.unregisterEventHandler(_pageRtcHandler); } catch (_) {}
 
@@ -1148,6 +1165,23 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     _freeTimer = null;
   }
 
+  void _armRemoteGoneTimer() {
+    _cancelRemoteGoneTimer();
+    _remoteGoneTimer = Timer(const Duration(seconds: _remoteGoneGraceSec), () async {
+      if (!mounted || _closing) return;
+      // 再確認一次確實沒人
+      if (_rtc.remoteUids.value.isEmpty) {
+        Fluttertoast.showToast(msg: '對方已離開直播間');
+        await _endBecauseRemoteLeft(); // 已有離房邏輯
+      }
+    });
+  }
+
+  void _cancelRemoteGoneTimer() {
+    _remoteGoneTimer?.cancel();
+    _remoteGoneTimer = null;
+  }
+
   Future<void> _sendLiveText() async {
     _liveInputFocus.unfocus();
     final txt = _liveInputCtrl.text.trim();
@@ -1229,7 +1263,6 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
       // 失敗策略（可選）：稍後重試/提示/視情況離房
     }
   }
-
 
   void _applyCallFlagFromArgs(Map<String, dynamic> args) {
     // 優先吃 callFlag (1=video, 2=voice)

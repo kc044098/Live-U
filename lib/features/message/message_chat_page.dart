@@ -12,13 +12,10 @@ import 'package:flutter_svg/svg.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
-import 'package:svgaplayer_flutter/svgaplayer_flutter.dart';
-import 'package:http/http.dart' as http;
 import '../../data/models/gift_item.dart';
 import '../../data/models/user_model.dart';
 import '../call/call_request_page.dart';
 import '../live/data_model/gift_effect_player.dart';
-import '../live/data_model/gift_task.dart';
 import '../live/gift_providers.dart';
 import '../mine/edit_mine_page.dart';
 import '../mine/user_repository_provider.dart';
@@ -106,7 +103,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
     _textController = TextEditingController();
     _giftFx = GiftEffectPlayer(vsync: this);
 
-    _attachCursorGuard(_textController);
+    attachCursorGuardForPlatform(_textController, EmojiPack.tokenReg);
 
     // 監聽輸入焦點
     _inputFocus = FocusNode();
@@ -123,7 +120,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
       _textController = EmojiEditingController(pack: pack, emojiSize: 18, text: old.text)
         ..selection = old.selection;
       old.dispose();
-      _attachCursorGuard(_textController);
+      attachCursorGuardForPlatform(_textController, EmojiPack.tokenReg);
       setState(() {});      // 讓 TextField 重建後就能顯示圖片
       return pack;
     });
@@ -247,23 +244,6 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
     }
 
     return inserted;
-  }
-
-  void _attachCursorGuard(TextEditingController c) {
-    c.addListener(() {
-      final sel = c.selection;
-      if (!sel.isCollapsed) return;
-      final i = sel.baseOffset;
-      if (i < 0 || i > c.text.length) return;
-
-      for (final m in EmojiPack.tokenReg.allMatches(c.text)) {
-        if (i > m.start && i <= m.end) {
-          // 游標在 token 內部 → 推到 token 後
-          c.selection = TextSelection.collapsed(offset: m.end);
-          break;
-        }
-      }
-    });
   }
 
   @override
@@ -1304,7 +1284,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
                 focusNode: _inputFocus,
                 maxLines: null,
                 inputFormatters: [
-                  EmojiBackspaceFixFormatter(EmojiPack.tokenReg),
+                  platformEmojiBackspaceFormatter(EmojiPack.tokenReg),
                 ],
                 decoration: const InputDecoration(
                   hintText: '請輸入消息…',
