@@ -15,6 +15,7 @@ import '../live/gift_providers.dart';
 import '../message/chat_providers.dart';
 import '../message/chat_repository.dart';
 import '../message/chat_thread_item.dart';
+import '../message/chat_ws_service.dart';
 import '../message/data_model/call_record_item.dart';
 import '../message/emoji/emoji_pack.dart';
 import '../message/emoji/emoji_text.dart';
@@ -42,6 +43,12 @@ class _MessagePageState extends ConsumerState<MessagePage>
   bool _loading = true;
   String? _error;
   int _page = 1;
+
+  final RefreshController _inboxRc = RefreshController(initialRefresh: false);
+  bool _inboxHasMore = true;
+  bool _inboxPaging = false; // 防重入
+
+  int _lastSilentReloadMs = 0;
 
   final RefreshController _callRc = RefreshController(initialRefresh: false);
   List<CallRecordItem> _callItems = [];
@@ -72,33 +79,73 @@ class _MessagePageState extends ConsumerState<MessagePage>
 
   Future<void> _loadThreads({int page = 1}) async {
     setState(() {
-      _loading = true;
+      _loading = page == 1 ? true : _loading; // 首載時顯示進度；分頁時維持現狀
       _error = null;
     });
     try {
       final repo = ref.read(chatRepositoryProvider);
       final res = await repo.fetchUserMessageList(page: page);
       if (!mounted) return;
+
       setState(() {
-        _threads = res.items;
+        if (page == 1) {
+          _threads = res.items;
+        } else {
+          // 追加時去重（依 fromUid/toUid 或 threadId 做 key）
+          final seen = <String>{
+            for (final t in _threads) '${t.fromUid}-${t.toUid}'
+          };
+          for (final t in res.items) {
+            if (seen.add('${t.fromUid}-${t.toUid}')) {
+              _threads.add(t);
+            }
+          }
+        }
         _page = page;
         _loading = false;
+        _inboxHasMore = res.items.isNotEmpty; // 簡單判斷是否還有下一頁
       });
     } catch (e) {
       if (!mounted) return;
       if (_isNetworkIssue(e)) {
         _toastNetworkError();
         setState(() {
-          _loading = false; // ❗ 不設 _error → 不顯示錯誤畫面，保留原清單
+          _loading = false; // 不顯示錯頁
         });
       } else {
         setState(() {
-          _error = '$e';    // 非網路型錯誤才顯示錯誤畫面
+          _error = '$e';
           _loading = false;
         });
       }
     }
   }
+
+// 下拉：第一頁
+  Future<void> _refreshInbox() async {
+    await _loadThreads(page: 1);
+    _inboxRc.refreshCompleted();
+    // 重新開始可以上拉
+    _inboxHasMore ? _inboxRc.resetNoData() : _inboxRc.loadNoData();
+  }
+
+// 上拉：下一頁
+  Future<void> _loadMoreInbox() async {
+    if (_inboxPaging || !_inboxHasMore) {
+      _inboxRc.loadNoData();
+      return;
+    }
+    _inboxPaging = true;
+    try {
+      await _loadThreads(page: _page + 1);
+      _inboxHasMore ? _inboxRc.loadComplete() : _inboxRc.loadNoData();
+    } catch (_) {
+      _inboxRc.loadFailed();
+    } finally {
+      _inboxPaging = false;
+    }
+  }
+
 
   Future<void> _onRefresh() => _loadThreads(page: 1);
 
@@ -112,6 +159,14 @@ class _MessagePageState extends ConsumerState<MessagePage>
 
   @override
   Widget build(BuildContext context) {
+
+    ref.listen<AsyncValue<void>>(inboxBumpProvider, (prev, next) {
+      next.whenData((_) {
+        if (!mounted) return;
+        _reloadThreadsSilently();
+      });
+    });
+
     final user = ref.watch(userProfileProvider);
     return Column(
       children: [
@@ -183,8 +238,14 @@ class _MessagePageState extends ConsumerState<MessagePage>
 
     return Stack(
       children: [
-        RefreshIndicator(
-          onRefresh: _onRefresh,
+        SmartRefresher(
+          controller: _inboxRc,
+          enablePullDown: true,
+          enablePullUp: _inboxHasMore,
+          header: const ClassicHeader(),
+          footer: const ClassicFooter(),
+          onRefresh: _refreshInbox,
+          onLoading: _loadMoreInbox,
           child: ListView.builder(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.only(bottom: 120),
@@ -289,23 +350,23 @@ class _MessagePageState extends ConsumerState<MessagePage>
                           ),
                       ],
                     ),
-                    onTap: () {
-                      final partnerUid = _partnerUid(it, me);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => MessageChatPage(
-                            partnerName: _partnerName(it, me),
-                            partnerAvatar: it.avatars.isNotEmpty
-                                ? '${me.cdnUrl}${it.avatars.first}'
-                                : 'assets/my_icon_defult.jpeg',
-                            vipLevel: it.vip,
-                            statusText: it.status,
-                            partnerUid: partnerUid,
+                      onTap: () async {
+                        final partnerUid = _partnerUid(it, me);
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => MessageChatPage(
+                              partnerName: _partnerName(it, me),
+                              partnerAvatar: it.avatars.isNotEmpty ? '${me.cdnUrl}${it.avatars.first}' : 'assets/my_icon_defult.jpeg',
+                              vipLevel: it.vip,
+                              statusText: it.status,
+                              partnerUid: partnerUid,
+                            ),
                           ),
-                        ),
-                      );
-                    },
+                        );
+                        if (!mounted) return;
+                        _silentReloadDebounced(force: true);
+                      }
                   ),
                   const Divider(indent: 20, endIndent: 20),
                 ],
@@ -456,7 +517,16 @@ class _MessagePageState extends ConsumerState<MessagePage>
           if (iconFull.isNotEmpty)
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
-              child: Image.network(iconFull, width: 16, height: 16, fit: BoxFit.cover),
+              child: Image.network(
+                iconFull,
+                width: 16,
+                height: 16,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) {
+                  _silentReloadDebounced();
+                  return const SizedBox(width: 16, height: 16);
+                },
+              ),
             ),
           const SizedBox(width: 6),
           Text('x$count', style: greyStyle),  // ★ 數量在這裡
@@ -492,6 +562,12 @@ class _MessagePageState extends ConsumerState<MessagePage>
     // ---------- 文字（含表情渲染） ----------
     final t = it.lastText.trim();
     if (t.isNotEmpty) {
+      // ⭐ 如果看起來是錯誤訊息，觸發靜默刷新，UI 不顯示錯誤原文
+      if (_looksLikeTransportError(t)) {
+        _silentReloadDebounced();                   // ← 節流觸發
+        return const Text('…',              // 或者 '…'
+            style: TextStyle(color: Colors.grey, fontSize: 14));
+      }
       return _subtitleWithEmoji(t);
     }
 
@@ -529,6 +605,29 @@ class _MessagePageState extends ConsumerState<MessagePage>
     }
 
     return const Text('…', style: TextStyle(color: Colors.grey));
+  }
+
+  Future<void> _reloadThreadsSilently() async {
+    // 簡單節流：避免 WS 一次來太多
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastSilentReloadMs < 800) return;
+    _lastSilentReloadMs = now;
+
+    try {
+      final repo = ref.read(chatRepositoryProvider);
+      final res  = await repo.fetchUserMessageList(page: 1);
+
+      if (!mounted) return;
+      setState(() {
+        // 只「替換資料」，不動 _loading / _error
+        _threads = res.items;
+        _page = 1;
+        // 其他狀態完全不變，UI 不會有進度圈或清空閃爍
+      });
+    } catch (e) {
+      // 靜默失敗：完全不動 UI，避免跳錯或清單抖動
+    }
+    _inboxHasMore ? _inboxRc.resetNoData() : _inboxRc.loadNoData();
   }
 
   String _formatRelative(int epochSec) {
@@ -710,4 +809,24 @@ class _MessagePageState extends ConsumerState<MessagePage>
     return false;
   }
 
+  void _silentReloadDebounced({int gapMs = 800, bool force = false}) {
+    if (!force) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (now - _lastSilentReloadMs < gapMs) return;
+      _lastSilentReloadMs = now;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _reloadThreadsSilently());
+  }
+
+
+  bool _looksLikeTransportError(String s) {
+    final t = s.toLowerCase();
+    return t.contains('httpexception')
+        || t.contains('socketexception')
+        || t.contains('connection closed')
+        || t.contains('failed host lookup')
+        || t.contains('timed out')
+        || t.contains('network is unreachable')
+        || t.contains('sslhandshake');
+  }
 }

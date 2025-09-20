@@ -342,6 +342,59 @@ extension _ChatWsServiceReads on ChatWsService {
 
     return ReadReceipt(uuid: uuid, createAt: ts, fromUid: from, toUid: to);
   }
+
+  Stream<void> inboxBumpStream() {
+    final ws   = _ref.read(wsProvider);
+    final me   = _ref.read(userProfileProvider);
+    final myUid = int.tryParse(me?.uid ?? '') ?? -1;
+
+    ws.ensureConnected();
+
+    final controller = StreamController<void>(sync: true);
+
+    // 命名事件（優先用）
+    final unsubRoom = ws.on('room_chat', (payload) {
+      try {
+        final Map data = (payload['data'] is Map)
+            ? payload['data']
+            : (payload['Data'] is Map)
+            ? payload['Data']
+            : const {};
+
+        // 只在「跟我有關」的訊息時觸發（你想更嚴格可改成：只要 toUid==myUid）
+        final fromUid = (data['Uid'] ?? data['uid'])?.toString() ?? '';
+        final toUid   = (data['ToUid'] ?? data['to_uid'] ?? data['toUid'])?.toString() ?? '';
+        if (fromUid.isEmpty && toUid.isEmpty) return;
+
+        // 有效 → 通知
+        controller.add(null);
+      } catch (_) {}
+    });
+
+    // 保底：若伺服器沒命名事件，只丟 raw
+    final untap = ws.tapRaw((raw) {
+      try {
+        String? text;
+        if (raw is String) text = raw;
+        if (raw is List<int>) text = utf8.decode(raw, allowMalformed: true);
+        if (text == null || text.isEmpty) return;
+
+        // 這裡與你的 RAW 偵錯規則保持一致（type:8 或 type:"room_chat"）
+        if (text.contains('"type":8') ||
+            text.contains('"Type":8') ||
+            text.contains('"type":"room_chat"')) {
+          controller.add(null);
+        }
+      } catch (_) {}
+    });
+
+    controller.onCancel = () {
+      try { unsubRoom(); } catch (_) {}
+      try { untap(); } catch (_) {}
+    };
+
+    return controller.stream;
+  }
 }
 
 
@@ -360,4 +413,9 @@ final roomReadProvider = StreamProvider.autoDispose
     .family<ReadReceipt, int>((ref, partnerUid) {
   final svc = ref.read(chatWsServiceProvider);
   return svc.roomReadStream(partnerUid: partnerUid);
+});
+
+final inboxBumpProvider = StreamProvider.autoDispose<void>((ref) {
+  final svc = ref.read(chatWsServiceProvider);
+  return svc.inboxBumpStream();
 });

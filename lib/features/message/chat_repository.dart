@@ -157,7 +157,7 @@ class ChatRepository {
     }
 
     if (raw is! Map || raw['code'] != 200 || raw['data'] == null) {
-      throw Exception('載入失敗: ${raw is Map ? (raw['message'] ?? '未知錯誤') : '非預期回應'}');
+      throw Exception('載入失敗, 非預期回應 , 請檢查網路');
     }
 
     final data = Map<String, dynamic>.from(raw['data']);
