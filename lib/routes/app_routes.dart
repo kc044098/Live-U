@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class AppRoutes {
   static const login = '/';
@@ -12,3 +13,5 @@ class AppRoutes {
 
 final RouteObserver<ModalRoute<void>> routeObserver =
 RouteObserver<ModalRoute<void>>();
+
+final homePlayGateProvider = StateProvider<bool>((ref) => true);

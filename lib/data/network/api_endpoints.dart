@@ -40,6 +40,7 @@ class ApiEndpoints {
   static const String giftList = '/api/live/gift/list'; // 禮物列表
   static const String musicList = '/api/member/music/list'; // 音樂列表
   static const String recharge = '/api/finance/recharge'; // 充值金幣 （測試用）
+  static const String withdraw = '/api/finance/withdraw'; // 提現金幣 （測試用）
   static const String rechargeList = '/api/finance/recharge/list'; // 充值明細
   static const String rechargeDetail = '/api/finance/recharge/info'; // 充值詳情
   static const String financeList = '/api/finance/list'; // 帳變紀錄

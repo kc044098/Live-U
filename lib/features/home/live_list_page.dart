@@ -293,6 +293,7 @@ class _HomeVideoTabState extends ConsumerState<HomeVideoTab>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(homeFeedProvider.notifier).loadFirst();
     });
+
   }
 
   @override
@@ -372,6 +373,12 @@ class _HomeVideoTabState extends ConsumerState<HomeVideoTab>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+
+    final allow = ref.watch(homePlayGateProvider);
+    if (_playGate.value != allow) {
+      _playGate.value = allow;
+    }
+
     final feed = ref.watch(homeFeedProvider);
     final ctl  = ref.read(homeFeedProvider.notifier);
     final items = feed.items;
@@ -451,7 +458,7 @@ class _HomeVideoTabState extends ConsumerState<HomeVideoTab>
   }
 }
 
-class _CallButton extends StatelessWidget {
+class _CallButton extends ConsumerWidget {
   final FeedItem item;
   const _CallButton({required this.item});
 
@@ -477,37 +484,45 @@ class _CallButton extends StatelessWidget {
     return CalleeState.offline;
   }
 
-  void _handleCallRequest(BuildContext context) {
+  Future<void> _handleCallRequest(BuildContext context, WidgetRef ref) async {
     final broadcasterId   = item.uid.toString();
     final broadcasterName = (item.nickName?.isNotEmpty == true)
         ? item.nickName!
         : (item.title.isEmpty ? '主播' : item.title);
     final broadcasterImage = item.firstAvatar ?? item.coverCandidate ?? 'assets/default.jpg';
 
-    final calleeState = _mapToCalleeState(item);   // ← 新增
+    // ★ 進入撥打頁前，先把首頁影片關掉
+    ref.read(homePlayGateProvider.notifier).state = false;
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => CallRequestPage(
-          broadcasterId: broadcasterId,
-          broadcasterName: broadcasterName,
-          broadcasterImage: broadcasterImage,
-          isVideoCall: true,              // 或依你的 UI 传 true/false
-          calleeState: calleeState,       // ← 关键
+    try {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CallRequestPage(
+            broadcasterId: broadcasterId,
+            broadcasterName: broadcasterName,
+            broadcasterImage: broadcasterImage,
+            isVideoCall: true,
+            calleeState: _mapToCalleeState(item),
+          ),
         ),
-      ),
-    );
+      );
+    } finally {
+      // ★ 返回首頁後，再打開
+      if (context.mounted) {
+        ref.read(homePlayGateProvider.notifier).state = true;
+      }
+    }
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Positioned(
       left: 0,
       right: 0,
       bottom: 220,
       child: GestureDetector(
-        onTap: () => _handleCallRequest(context),
+        onTap: () => _handleCallRequest(context, ref),
         child: SvgPicture.asset('assets/live_start_1.svg'),
       ),
     );
