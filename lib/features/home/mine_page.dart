@@ -61,7 +61,7 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
           final u = ref.read(userProfileProvider);
           if (u != null && (u.gold != w.gold || u.vipExpire != w.vipExpire)) {
             ref.read(userProfileProvider.notifier).state =
-                u.copyWith(gold: w.gold, vipExpire: w.vipExpire);
+                u.copyWith(gold: w.gold, vipExpire: w.vipExpire, totalIncome: w.totalIncome, cashAmount: w.cashAmount);
           }
         });
       },

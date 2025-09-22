@@ -29,6 +29,8 @@ class GiftItemModel {
     this.createAt,
   });
 
+  bool get isQuickGift => isQuick == 1;
+
   factory GiftItemModel.fromJson(Map<String, dynamic> json) {
     DateTime? _toDT(dynamic v) {
       if (v == null) return null;

@@ -43,3 +43,24 @@ class GiftListNotifier extends StateNotifier<AsyncValue<List<GiftItemModel>>> {
 final giftListProvider = StateNotifierProvider<GiftListNotifier, AsyncValue<List<GiftItemModel>>>(
       (ref) => GiftListNotifier(ref.read(giftRepositoryProvider)),
 );
+
+/// 快捷禮物：直接從 repo 的快取取，若無則用全部過濾作為 fallback
+final quickGiftListProvider = Provider<AsyncValue<List<GiftItemModel>>>((ref) {
+  final base = ref.watch(giftListProvider);
+  return base.whenData((all) {
+    final repo = ref.read(giftRepositoryProvider);
+    if (repo.cachedQuick.isNotEmpty) return repo.cachedQuick;
+    // Fallback（首次還未觸發 repo 分類時）
+    return all.where((g) => g.isQuick == 1).toList(growable: false);
+  });
+});
+
+/// 一般禮物
+final normalGiftListProvider = Provider<AsyncValue<List<GiftItemModel>>>((ref) {
+  final base = ref.watch(giftListProvider);
+  return base.whenData((all) {
+    final repo = ref.read(giftRepositoryProvider);
+    if (repo.cachedNormal.isNotEmpty) return repo.cachedNormal;
+    return all.where((g) => g.isQuick != 1).toList(growable: false);
+  });
+});

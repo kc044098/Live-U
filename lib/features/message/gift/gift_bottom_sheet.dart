@@ -79,7 +79,7 @@ class _GiftBottomSheetState extends ConsumerState<GiftBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final giftsAsync = ref.watch(giftListProvider);
+    final giftsAsync = ref.watch(normalGiftListProvider);
     final cdnBase = ref.watch(userProfileProvider)?.cdnUrl ?? '';
     final walletAsync = ref.watch(walletBalanceProvider);
     final gold = walletAsync.maybeWhen(

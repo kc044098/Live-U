@@ -9,6 +9,7 @@ class AppRoutes {
   static const incomingCall = '/incoming_call';
   static const videoRecorder = '/video_recorder';
   static const live_video = '/live_video';
+  static const live_end = '/live_end';
 }
 
 final RouteObserver<ModalRoute<void>> routeObserver =

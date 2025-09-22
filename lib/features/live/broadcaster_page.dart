@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:djs_live_stream/features/live/video_repository.dart';
+import 'package:djs_live_stream/features/live/video_repository_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -61,7 +63,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
   int _freeLeftSec = 0;
   Timer? _freeTimer;
 
-  late final RtcEngineManager _rtc; // ✅ 使用全域 manager
+  late final RtcEngineManager _rtc;
   late final VoidCallback _joinedListener;
   late final VoidCallback _remoteListener;
 
@@ -80,7 +82,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
   bool _frontCamera = true;
 
-  bool _remoteVideoOn = true;              // 對方攝像頭是否開啟
+  bool _remoteVideoOn = true;
   late final RtcEngineEventHandler _pageRtcHandler;
 
   // 去重 WS 的 uuid（避免重放）
@@ -191,7 +193,9 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     unawaited(WakelockPlus.disable());
 
     await _closeMiniIfAny();
-    _goHome();
+
+    await _goLiveEndIfBroadcaster();
+
   }
 
   @override
@@ -574,17 +578,12 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     final repo = ref.read(callRepositoryProvider);
     ref.read(callSessionProvider(roomId).notifier).clearAll();
     unawaited(
-      repo
-          .respondCall(
-            channelName: roomId,
-            callId: null,
-            accept: false,
-          )
-          .timeout(const Duration(seconds: 2),
-              onTimeout: () => <String, dynamic>{})
-          .then<void>((_) {}, onError: (e) {
-        debugPrint('[hangup] notify fail: $e');
-      }),
+      repo.respondCall(
+        channelName: roomId,
+        callId: null,
+        accept: false,
+      ).timeout(const Duration(seconds: 2), onTimeout: () => <String, dynamic>{})
+          .then<void>((_) {}, onError: (e) => debugPrint('[hangup] notify fail: $e')),
     );
 
     await _rtc.safeLeave();
@@ -593,7 +592,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     ref.read(callTimerProvider).reset();
 
     await _closeMiniIfAny();
-    _goHome();
+    await _goLiveEndIfBroadcaster();
   }
 
   Future<void> _ensureAwake() async {
@@ -614,6 +613,23 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
       // 等一幀避免 overlay 殘影疊在新頁上
       await Future<void>.delayed(const Duration(milliseconds: 1));
     }
+  }
+
+  Future<void> _goLiveEndIfBroadcaster() async {
+    if (!ref.read(userProfileProvider)!.isBroadcaster) {
+       _goHome();
+       return;
+    }
+
+    // 取結算資料（失敗也會回傳全 0 的 LiveEndSummary）
+    final liveEnd =
+    await ref.read(videoRepositoryProvider).fetchLiveEnd(channelName: roomId);
+
+    await _closeMiniIfAny();
+
+    // 用 replace，避免返回到通話頁
+    Navigator.of(rootNavigatorKey.currentContext ?? context, rootNavigator: true)
+        .pushReplacementNamed(AppRoutes.live_end, arguments: liveEnd);
   }
 
   @override
@@ -689,7 +705,6 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     final Color chipFg = _isVoice ? Colors.black87 : Colors.white;
 
     final avatarRadius = 60.0;               // 可調
-    final avatarDia    = avatarRadius * 2;
     final elapsedText = ref.watch(callTimerProvider.select((t) => t.text));
     final mUser = ref.read(userProfileProvider);
     final ImageProvider avatarProvider = (peerAvatar.isNotEmpty)
@@ -718,7 +733,9 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
           children: [
             // 遠端畫面全屏
             Positioned.fill(
-              child: StableRemoteVideoView(
+              child: _isVoice
+                  ? const ColoredBox(color: Colors.white)
+                  : StableRemoteVideoView(
                 engine: _rtc.engine,
                 roomId: roomId,
                 remoteUid: _remoteUid,
@@ -893,12 +910,77 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
             // ====== 透明聊天紀錄框（左下，顯示最近訊息）======
             Positioned(
               left: 10,
-              bottom: 70, // 留給輸入框高度
+              bottom: 70 + 52, // 留給輸入框高度
               child: LiveChatPanel(
                 messages: ref.watch(callSessionProvider(roomId).select((s) => s.messages)),
                 controller: _liveScroll,
                 myName: mUser?.displayName ?? '用戶 ${_remoteUids.first}',
                 peerName: title,
+              ),
+            ),
+
+            // 快捷禮物列（輸入框正上方）
+            Positioned(
+              left: 12,
+              bottom: 62, // 略高於輸入列（預留 SafeArea + 間距）
+              child: SizedBox(
+                width: 170,
+                height: 50,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Consumer(
+                      builder: (_, ref, __) {
+                        final quickGifts = ref.watch(quickGiftListProvider);
+
+                        return quickGifts.when(
+                          loading: () => const Center(
+                            child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                          ),
+                          error: (_, __) => const SizedBox.shrink(), // 靜默；不影響輸入與聊天
+                          data: (list) {
+                            if (list.isEmpty) return const SizedBox.shrink();
+
+                            final cdnBase = ref.watch(userProfileProvider)?.cdnUrl ?? '';
+                            // 只顯示 3 個寬度，但可以水平滑到更多
+                            return ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+                              itemCount: list.length,
+                              separatorBuilder: (_, __) => const SizedBox(width: 6),
+                              itemBuilder: (_, i) {
+                                final g = list[i];
+                                final icon = g.icon.startsWith('http') ? g.icon : cu.joinCdn(cdnBase, g.icon);
+                                return InkWell(
+                                  borderRadius: BorderRadius.circular(10),
+                                  onTap: () => _sendQuickGift(g),
+                                  child: Ink(
+                                    width: 48,
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      color: _isVoice ? Colors.white : const Color(0xFF0F0F10),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: (icon.isNotEmpty)
+                                          ? Image.network(icon, fit: BoxFit.cover)
+                                          : const SizedBox.shrink(),
+                                    ),
+                                  ),
+                                );
+                              },
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ),
               ),
             ),
 
@@ -931,7 +1013,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
                               onTapField: () {},
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 20),
 
                           // 右側按鈕列（固定高度，和輸入框垂直置中）
                           _assetBtn(
@@ -1230,6 +1312,71 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
     if (!mounted) return;
     session.updateSendState(uuid, sendResult.ok ? SendState.sent : SendState.failed);
+  }
+
+  Future<void> _sendQuickGift(GiftItemModel gift) async {
+    if (_remoteUids.isEmpty) {
+      Fluttertoast.showToast(msg: '尚未連線到對方');
+      return;
+    }
+    final me = ref.read(userProfileProvider);
+    final toUid = _remoteUids.first;
+
+    // 立刻播放本地特效（把相對路徑補成完整 CDN）
+    final effectUrl = cu.joinCdn(me?.cdnUrl, gift.url);
+    if (effectUrl.isNotEmpty) {
+      _giftFx.enqueue(context, effectUrl);
+    }
+
+    // 組裝 payload（與彈窗送禮一致，後端解析扣款）
+    final payload = jsonEncode({
+      'type': 'gift',
+      'gift_id': gift.id,
+      'gift_title': gift.title,
+      'gift_gold': gift.gold,
+      'gift_icon': gift.icon,   // 相對路徑
+      'gift_count': 1,
+      'gift_url': gift.url,     // 相對路徑
+    });
+
+    final myUid = int.tryParse(me?.uid ?? '0') ?? 0;
+    final uuid  = cu.genUuid(myUid);
+    final iconFull = cu.joinCdn(me?.cdnUrl, gift.icon);
+
+    // 樂觀加入面板
+    ref.read(callSessionProvider(roomId).notifier).addOptimistic(
+      ChatMessage(
+        type: MessageType.self,
+        contentType: ChatContentType.gift,
+        text: gift.title,
+        uuid: uuid,
+        flag: 'chat_room',
+        toUid: toUid,
+        data: {
+          'gift_id': gift.id,
+          'gift_title': gift.title,
+          'gift_icon': iconFull,
+          'gift_gold': gift.gold,
+          'gift_count': 1,
+          'gift_url': gift.url,
+        },
+        sendState: SendState.sending,
+        createAt: cu.nowSec(),
+      ),
+    );
+    _scrollLiveToBottom();
+
+    // 真正送出
+    final sendResult = await ref.read(chatRepositoryProvider)
+        .sendText(uuid: uuid, toUid: toUid, text: payload, flag: 'chat_room');
+
+    if (!mounted) return;
+    ref.read(callSessionProvider(roomId).notifier)
+        .updateSendState(uuid, sendResult.ok ? SendState.sent : SendState.failed);
+
+    if (!sendResult.ok) {
+      Fluttertoast.showToast(msg: '送禮失敗，請稍後重試');
+    }
   }
 
   void _scrollLiveToBottom() {

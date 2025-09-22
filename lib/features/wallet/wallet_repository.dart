@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/cupertino.dart';
 import 'package:riverpod/riverpod.dart';
 import '../../data/models/user_model.dart';
 import '../../data/network/api_client.dart';
@@ -11,6 +12,7 @@ import 'model/coin_packet.dart';
 import 'model/finance_record.dart';
 import 'model/recharge_detail.dart';
 import 'model/recharge_record.dart';
+import 'model/withdraw_record.dart';
 
 class WalletRepository {
   WalletRepository(this._api);
@@ -113,7 +115,7 @@ class WalletRepository {
         .toList();
   }
 
-  // 充值明細
+  /// 充值明細
   Future<RechargeDetail> fetchRechargeDetail({required int id}) async {
     final res = await _api.post(ApiEndpoints.rechargeDetail, data: {'id': id});
     final raw = res.data is String ? jsonDecode(res.data) : res.data;
@@ -134,7 +136,6 @@ class WalletRepository {
     if (data is! Map) throw Exception('充值詳情資料缺失');
     return RechargeDetail.fromJson(Map<String, dynamic>.from(data));
   }
-
 
   /// 充值明細列表
   /// 參數：page 起始 1
@@ -157,6 +158,58 @@ class WalletRepository {
         .whereType<Map>()
         .map((e) => RechargeRecord.fromJson(Map<String, dynamic>.from(e)))
         .toList();
+  }
+
+
+  /// 提現
+  Future<void> withdraw({
+    required String account,
+    required int amount,        // 後端範例是整數 10
+    required String bankCode,   // 例如: paypal / bank 等
+    required String cardName,   // 後端欄位叫 card_name（目前用「提現戶名」傳）
+  }) async {
+    final payload = {
+      "account": account,
+      "amount": amount,
+      "bank_code": bankCode,
+      "card_name": cardName,
+    };
+
+    final resp = await _api.post(ApiEndpoints.withdraw, data: payload);
+
+    // 預期回傳：{"code":200,"message":"success","data":null}
+    if (resp.statusCode != 200) {
+      debugPrint('Network error: ${resp.statusCode}');
+      throw Exception('提現申請失敗, 請聯絡客服');
+    }
+    final data = resp.data;
+    if (data is Map && data['code'] == 200) return;
+
+    final msg = (data is Map ? data['message'] : null) ?? 'Withdraw failed';
+    debugPrint('msg: $msg');
+    throw Exception('提現申請失敗, 請聯絡客服');
+  }
+
+  /// 取得提現列表（分頁）
+  Future<List<WithdrawRecord>> fetchWithdrawList({required int page}) async {
+    final resp = await _api.post(ApiEndpoints.withdrawList, data: {'page': page});
+    final raw = resp.data is String ? jsonDecode(resp.data) : resp.data;
+
+    // 只在 code 非 200 時丟錯
+    if (raw is! Map || raw['code'] != 200) {
+      debugPrint('資料取回有誤 : $raw');
+      throw Exception('資料取回有誤, 請聯絡管理員');
+    }
+
+    final data = raw['data'];
+    if (data == null) return <WithdrawRecord>[];
+
+    final listAny = (data is Map) ? data['list'] : null;
+    if (listAny is! List) return <WithdrawRecord>[];
+
+    return listAny.map<WithdrawRecord>((e) {
+      return WithdrawRecord.fromJson(Map<String, dynamic>.from(e as Map));
+    }).toList();
   }
 
   Future<List<CoinPacket>> fetchCoinPackets({int page = 1}) async {
@@ -208,3 +261,5 @@ final coinPacketsProvider = FutureProvider<List<CoinPacket>>((ref) async {
   final repo = ref.read(walletRepositoryProvider);
   return repo.fetchCoinPackets(page: 1);
 });
+
+
