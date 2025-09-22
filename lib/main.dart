@@ -10,6 +10,7 @@ import 'core/ws/ws_provider.dart';
 import 'features/call/call_signal_listener.dart';
 import 'features/call/rtc_engine_manager.dart';
 import 'features/live/broadcaster_page.dart';
+import 'features/live/live_end_page.dart';
 import 'features/live/pip_system_ui.dart';
 import 'firebase_options.dart';
 import 'globals.dart';
@@ -79,6 +80,7 @@ class MyApp extends ConsumerWidget {
         AppRoutes.login: (context) => const LoginScreen(),
         AppRoutes.home: (context) => const HomeScreen(),
         AppRoutes.videoRecorder: (context) => const VideoRecorderPage(),
+        AppRoutes.live_end: (_) => const LiveEndPage(),
       },
       onGenerateRoute: (settings) {
         if (settings.name == AppRoutes.broadcaster) {

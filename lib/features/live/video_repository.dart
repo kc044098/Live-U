@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../config/app_config.dart';
@@ -7,6 +9,7 @@ import '../../data/network/api_client.dart';
 import '../../data/network/api_endpoints.dart';
 import '../profile/profile_controller.dart';
 import 'data_model/feed_item.dart';
+import 'data_model/live_end_summary.dart';
 import 'data_model/music_track.dart';
 
 class VideoRepository {
@@ -116,6 +119,21 @@ class VideoRepository {
       "is_top": isTop,
     };
     await _api.post(ApiEndpoints.videoUpdate, data: data);
+  }
+
+  Future<LiveEndSummary> fetchLiveEnd({required String channelName}) async {
+    final resp = await _api.post(ApiEndpoints.live_end, data: {
+      'channel_name': channelName,
+    });
+    final raw = resp.data is String ? jsonDecode(resp.data) : resp.data;
+
+    // 允許 data 為空，用預設 0 值回傳
+    if (raw is Map && raw['code'] == 200) {
+      final data = (raw['data'] ?? const {}) as Map;
+      return LiveEndSummary.fromJson(Map<String, dynamic>.from(data));
+    }
+    // 後備：全部 0
+    return const LiveEndSummary();
   }
 }
 

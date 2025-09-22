@@ -7,14 +7,19 @@ import '../network/api_endpoints.dart';
 
 class GiftRepository {
   GiftRepository(this._api);
-
   final ApiClient _api;
 
-  List<GiftItemModel>? _cache;
+  List<GiftItemModel>? _cacheAll;
+  List<GiftItemModel>? _cacheQuick;
+  List<GiftItemModel>? _cacheNormal;
+  Map<int, GiftItemModel>? _byId;
   DateTime? _fetchedAt;
 
-  bool get hasCache => _cache != null && _cache!.isNotEmpty;
-  List<GiftItemModel> get cached => _cache ?? const [];
+  bool get hasCache => (_cacheAll != null && _cacheAll!.isNotEmpty);
+  List<GiftItemModel> get cached => _cacheAll ?? const [];
+  List<GiftItemModel> get cachedQuick  => _cacheQuick  ?? const [];
+  List<GiftItemModel> get cachedNormal => _cacheNormal ?? const [];
+  GiftItemModel? getById(int id) => _byId?[id];
 
   bool isStale(Duration ttl) {
     if (_fetchedAt == null) return true;
@@ -22,30 +27,31 @@ class GiftRepository {
   }
 
   Future<List<GiftItemModel>> fetchGiftList({bool force = false}) async {
-    if (!force && hasCache) {
-      return _cache!;
-    }
+    if (!force && hasCache) return _cacheAll!;
 
-    Response resp = await _api.post(
-      ApiEndpoints.giftList,
-      data: const {}, // 無參數
-    );
+    final resp = await _api.post(ApiEndpoints.giftList, data: {"page": 1});
     final raw = resp.data is String ? jsonDecode(resp.data) : resp.data;
 
-    if (raw is Map && (raw['code'] == 200)) {
+    if (raw is Map && raw['code'] == 200) {
       final data = (raw['data'] ?? {}) as Map;
       final list = (data['list'] as List? ?? [])
           .map((e) => GiftItemModel.fromJson(Map<String, dynamic>.from(e)))
           .toList();
 
-      // 依後端可能回傳的 sort 排序（小到大）
+      // 後端 sort 由小到大
       list.sort((a, b) => a.sort.compareTo(b.sort));
 
-      _cache = list;
-      _fetchedAt = DateTime.now();
-      return list;
+      // ➜ 同步建立多個視圖/索引
+      _cacheAll    = list;
+      _cacheQuick  = list.where((g) => g.isQuick == 1).toList(growable: false);
+      _cacheNormal = list.where((g) => g.isQuick != 1).toList(growable: false);
+      _byId        = { for (final g in list) g.id : g };
+      _fetchedAt   = DateTime.now();
+
+      return _cacheAll!;
     }
 
     throw Exception('fetchGiftList failed: $resp');
   }
 }
+

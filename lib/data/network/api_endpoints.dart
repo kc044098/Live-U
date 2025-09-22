@@ -42,6 +42,7 @@ class ApiEndpoints {
   static const String recharge = '/api/finance/recharge'; // 充值金幣 （測試用）
   static const String withdraw = '/api/finance/withdraw'; // 提現金幣 （測試用）
   static const String rechargeList = '/api/finance/recharge/list'; // 充值明細
+  static const String withdrawList = '/api/finance/withdraw/list'; // 提現明細
   static const String rechargeDetail = '/api/finance/recharge/info'; // 充值詳情
   static const String financeList = '/api/finance/list'; // 帳變紀錄
   static const String buyVip = '/api/finance/vip/buy'; // 購買vip
@@ -52,9 +53,10 @@ class ApiEndpoints {
   static const String inviteList = '/api/member/invite/list'; // 我邀請的人的列表
   static const String rewordList = '/api/finance/log'; // 用來獲取我的獎勵
 
-
   static const String dndSet = '/api/member/mode/set'; // 用於用戶勿擾模式配置
   static const String dndRead = '/api/member/mode'; // 用於查詢用戶勿擾模式配置
   static const String renewRtcToken = '/api/live/token/renew';
+
+  static const String live_end = '/api/live/report';
 
 }
