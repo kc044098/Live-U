@@ -402,6 +402,8 @@ class WsService {
         case 5: return 'notice';
         case 6: return 'call';
         case 8: return 'room_chat';
+        case 9: return 'read';
+        case 10: return 'countdown';
         default: return 'unknown';
       }
     }
