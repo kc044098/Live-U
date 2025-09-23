@@ -1,4 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
@@ -6,6 +7,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../l10n/l10n.dart';
+import '../widgets/webview_flutter.dart';
 import 'account_login_screen.dart';
 import 'email_login_screen.dart';
 import 'google_auth_service.dart';
@@ -22,10 +24,34 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _isLoading = false;
   String _appVersion = '';
 
+  final _termsTap = TapGestureRecognizer();
+  final _anchorTap = TapGestureRecognizer();
+  final _privacyTap = TapGestureRecognizer();
+
   @override
   void initState() {
     super.initState();
     _loadVersion();
+
+    _termsTap.onTap   = () => _openDoc('使用条款');
+    _anchorTap.onTap  = () => _openDoc('主播协议');
+    _privacyTap.onTap = () => _openDoc('隐私政策');
+  }
+
+  @override
+  void dispose() {
+    _termsTap.dispose();
+    _anchorTap.dispose();
+    _privacyTap.dispose();
+    super.dispose();
+  }
+
+  void _openDoc(String title) {
+    const url = 'https://www.liveu.live/privacy_policy.html';
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => WebDocPage(title: title, url: url)),
+    );
   }
 
   Future<void> _handleGoogleLogin() async {
@@ -172,14 +198,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           TextSpan(
                             text: '登录及代表您确认已满18岁，并同意我们的 ',
                             children: [
-                              TextSpan(text: '《使用条款》',
-                                  style: const TextStyle(color: Color(0xFFFF4D67))),
+                              TextSpan(
+                                text: '《使用条款》',
+                                style: const TextStyle(color: Color(0xFFFF4D67)),
+                                recognizer: _termsTap,
+                              ),
                               const TextSpan(text: ' 和 '),
-                              TextSpan(text: '《主播协议》',
-                                  style: const TextStyle(color: Color(0xFFFF4D67))),
+                              TextSpan(
+                                text: '《主播协议》',
+                                style: const TextStyle(color: Color(0xFFFF4D67)),
+                                recognizer: _anchorTap,
+                              ),
                               const TextSpan(text: ' 与 '),
-                              TextSpan(text: '《隐私政策》',
-                                  style: const TextStyle(color: Color(0xFFFF4D67))),
+                              TextSpan(
+                                text: '《隐私政策》',
+                                style: const TextStyle(color: Color(0xFFFF4D67)),
+                                recognizer: _privacyTap,
+                              ),
                             ],
                           ),
                           textAlign: TextAlign.center,

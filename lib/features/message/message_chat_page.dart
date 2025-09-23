@@ -1525,7 +1525,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
                 'gift_icon': iconFull,
                 'gift_gold': gift.gold,
                 'gift_count': 1,
-                'gift_url': gift.url, // ★ 帶上，若 ws 會 echo 也更好解析
+                'gift_url': gift.url,
               },
               sendState: SendState.sending,
               createAt: cu.nowSec(),

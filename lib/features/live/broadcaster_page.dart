@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:djs_live_stream/features/live/video_repository.dart';
 import 'package:djs_live_stream/features/live/video_repository_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -71,8 +70,6 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
   late final TextEditingController _liveInputCtrl = TextEditingController();
   late final FocusNode _liveInputFocus = FocusNode();
   final ScrollController _liveScroll = ScrollController();
-
-  VoidCallback? _wsUnsubLiveChat;
 
   final GlobalKey _localPreviewKey = GlobalKey();
 
@@ -388,8 +385,9 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
       if (_isThisChannel(p)) _endBecauseRemoteLeft();
     }));
 
-    _wsUnsubLiveChat = ws.on('live_chat', _onWsLiveChat);
-    _wsUnsubs.add(_wsUnsubLiveChat!);
+    _wsUnsubs.add(ws.on('live_chat', _onWsLiveChat));
+    _wsUnsubs.add(ws.on('gift',      _onWsLiveChat));
+
   }
 
   /// 圖片按鈕：不加任何底色，圖片自帶圓底
@@ -503,7 +501,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
               contentType: ChatContentType.gift,
               text: gift.title,
               uuid: uuid,
-              flag: 'chat_room',
+              flag: 'gift',
               toUid: toUid,
               data: {
                 'gift_id': gift.id,
@@ -521,30 +519,13 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
           // 真正發送（旗標用 chat_room）
           final sendResult = await ref.read(chatRepositoryProvider)
-              .sendText(uuid: uuid, toUid: toUid, text: payload, flag: 'chat_room');
+              .sendText(uuid: uuid, toUid: toUid, text: payload, flag: 'gift');
 
           ref.read(callSessionProvider(roomId).notifier)
               .updateSendState(uuid, sendResult.ok ? SendState.sent : SendState.failed);
 
           return sendResult.ok;
         },
-      ),
-    );
-  }
-
-  Widget _buildLocalViewMirrored() {
-    if (_isVoice || !_rtc.isInited) return const SizedBox.shrink();
-    return AgoraVideoView(
-      controller: VideoViewController(
-        rtcEngine: _rtc.engine, // ✅ 全域引擎
-        canvas: VideoCanvas(
-          uid: 0,
-          mirrorMode: _frontCamera
-              ? VideoMirrorModeType.videoMirrorModeEnabled
-              : VideoMirrorModeType.videoMirrorModeDisabled,
-        ),
-        useFlutterTexture: true,
-        useAndroidSurfaceView: false,
       ),
     );
   }
@@ -644,7 +625,6 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     _liveInputCtrl.dispose();
     _liveInputFocus.dispose();
     _liveScroll.dispose();
-    try { _wsUnsubLiveChat?.call(); } catch (_) {}
 
     _cancelJoinTimeout();
     for (final u in _wsUnsubs) {
@@ -910,7 +890,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
             // ====== 透明聊天紀錄框（左下，顯示最近訊息）======
             Positioned(
               left: 10,
-              bottom: 70 + 52, // 留給輸入框高度
+              bottom: 110, // 留給輸入框高度
               child: LiveChatPanel(
                 messages: ref.watch(callSessionProvider(roomId).select((s) => s.messages)),
                 controller: _liveScroll,
@@ -922,7 +902,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
             // 快捷禮物列（輸入框正上方）
             Positioned(
               left: 12,
-              bottom: 62, // 略高於輸入列（預留 SafeArea + 間距）
+              bottom: 55, // 略高於輸入列（預留 SafeArea + 間距）
               child: SizedBox(
                 width: 170,
                 height: 50,
@@ -1084,6 +1064,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
   }
 
   void _onWsLiveChat(Map<String, dynamic> payload) {
+    if (!mounted || _closing) return;  // ★ 避免頁面關閉後還處理
     try {
       final data = (payload['Data'] is Map)
           ? Map<String, dynamic>.from(payload['Data'])
@@ -1094,7 +1075,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
       // 保險型過濾：只收 live_chat（flag/type=3）
       final tRaw = payload['type'] ?? payload['Type'] ?? payload['flag'] ?? payload['Flag'];
       final tVal = (tRaw is num) ? tRaw.toInt() : int.tryParse('$tRaw');
-      if (tVal != null && tVal != 3) return;
+      if (tVal != null && tVal != 3 && tVal != 1) return;
 
       final content = (data['Content'] ?? data['content'] ?? '').toString();
       if (content.isEmpty) return;
@@ -1350,7 +1331,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
         contentType: ChatContentType.gift,
         text: gift.title,
         uuid: uuid,
-        flag: 'chat_room',
+        flag: 'gift',
         toUid: toUid,
         data: {
           'gift_id': gift.id,
@@ -1368,7 +1349,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
     // 真正送出
     final sendResult = await ref.read(chatRepositoryProvider)
-        .sendText(uuid: uuid, toUid: toUid, text: payload, flag: 'chat_room');
+        .sendText(uuid: uuid, toUid: toUid, text: payload, flag: 'gift');
 
     if (!mounted) return;
     ref.read(callSessionProvider(roomId).notifier)
