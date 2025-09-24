@@ -521,6 +521,8 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
                               isLike: u.isLike == 1,
                               message: item.title,
                               uid: u.uid,
+                              isBroadcaster: u.isBroadcaster,
+                              isTop: item.isTop,
                             ),
                           ),
                         );
@@ -540,6 +542,8 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
                               isLike: u.isLike == 1,
                               message: item.title,
                               uid: u.uid,
+                              isBroadcaster: u.isBroadcaster,
+                              isTop: item.isTop,
                             ),
                           ),
                         );
@@ -567,20 +571,6 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
                                             color: Colors.white, fontSize: 10)),
                                   ),
                                 ),
-                              const Positioned(
-                                bottom: 6,
-                                right: 6,
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.visibility,
-                                        color: Colors.white, size: 14),
-                                    SizedBox(width: 2),
-                                    Text('1.1K',
-                                        style: TextStyle(
-                                            color: Colors.white, fontSize: 10)),
-                                  ],
-                                ),
-                              ),
                             ],
                           ),
                         ),

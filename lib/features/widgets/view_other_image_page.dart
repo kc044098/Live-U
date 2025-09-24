@@ -19,6 +19,8 @@ class ViewOtherImagePage extends ConsumerStatefulWidget {
   final bool isVip;
   final bool isLike;
   final String uid;
+  final bool isBroadcaster;
+  final int isTop; // 1=精選, 2=日常（和你另一頁一致）
 
   const ViewOtherImagePage({
     super.key,
@@ -29,6 +31,8 @@ class ViewOtherImagePage extends ConsumerStatefulWidget {
     this.isVip = false,
     required this.isLike,
     required this.uid,
+    required this.isBroadcaster,
+    required this.isTop,
   });
 
   @override
@@ -40,6 +44,9 @@ class _ViewOtherImagePageState extends ConsumerState<ViewOtherImagePage>
   late bool isLiked;
   double _scale = 1.0;
   late final int _intUid;
+
+  String _catText(int v) => v == 1 ? '精選' : '日常';
+  Color _catColor(int v) => v == 1 ? const Color(0xFFFF4D67) : const Color(0xFF3A9EFF);
 
   @override
   void initState() {
@@ -235,6 +242,29 @@ class _ViewOtherImagePageState extends ConsumerState<ViewOtherImagePage>
               ),
             ),
           ): SizedBox(height: 40),
+
+          // 右下角分類膠囊（僅當擁有者是主播時顯示；不可點擊）
+          if (widget.isBroadcaster)
+            Positioned(
+              bottom: 60,
+              right: 16,
+              child: IgnorePointer( // 不可點擊且保留顏色
+                ignoring: true,
+                child: ElevatedButton(
+                  onPressed: () {}, // 不會被觸發（被 IgnorePointer 擋住）
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _catColor(widget.isTop),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    elevation: 0,
+                  ),
+                  child: Text(
+                    _catText(widget.isTop),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

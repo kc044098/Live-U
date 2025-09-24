@@ -40,7 +40,12 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
   late String currentCity = "";
 
   Widget _buildProfileHeader(UserModel? user) {
-    final photos = user?.photoURLAbs ?? [];
+    debugPrint('[_buildProfileHeader] user.photoURL=${ref.read(userProfileProvider)?.photoURL}');
+    debugPrint('[_buildProfileHeader] user.photoURL=${ref.read(userProfileProvider)?.photoURLAbs}');
+    // 先把空項目濾掉（避免被當成一張圖）
+    final photos = (user?.photoURLAbs ?? [])
+        .where((e) => e.trim().isNotEmpty)
+        .toList(growable: false);
 
     // 沒有圖片 → 顯示預設圖
     if (photos.isEmpty) {
@@ -55,34 +60,30 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
       );
     }
 
-    // 只有一張圖片 → 顯示單圖（不輪播）
+    // 只有一張 → 單圖
     if (photos.length == 1) {
-      final path = photos.first;
       return SizedBox(
         width: double.infinity,
         height: 288,
-        child: _buildImageByPath(path),
+        child: _buildImageByPath(photos.first),
       );
     }
 
-    // 兩張及以上 → 輪播
+    // 兩張以上 → 輪播
     return Stack(
       alignment: Alignment.bottomCenter,
       children: [
         CarouselSlider.builder(
+          key: ValueKey(photos.join('|')), // 用過濾後的清單做 key
           itemCount: photos.length,
           carouselController: _carouselController,
           options: CarouselOptions(
             height: 288,
             viewportFraction: 1.0,
             autoPlay: true,
-            onPageChanged: (index, reason) {
-              _currentIndexNotifier.value = index;
-            },
+            onPageChanged: (index, reason) => _currentIndexNotifier.value = index,
           ),
-          itemBuilder: (context, index, realIndex) {
-            return _buildImageByPath(photos[index]);
-          },
+          itemBuilder: (context, index, realIndex) => _buildImageByPath(photos[index]),
         ),
         Positioned(
           bottom: 12,
@@ -90,7 +91,7 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
             valueListenable: _currentIndexNotifier,
             builder: (context, currentIndex, _) {
               return AnimatedSmoothIndicator(
-                activeIndex: currentIndex,
+                activeIndex: currentIndex.clamp(0, photos.length - 1),
                 count: photos.length,
                 effect: const ExpandingDotsEffect(
                   activeDotColor: Colors.white,
@@ -99,8 +100,7 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
                   dotWidth: 8,
                   spacing: 6,
                 ),
-                onDotClicked: (index) =>
-                    _carouselController.animateToPage(index),
+                onDotClicked: (index) => _carouselController.animateToPage(index),
               );
             },
           ),
@@ -234,13 +234,14 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
                     borderRadius: BorderRadius.circular(30),
                   ),
                 ),
-                onPressed: () {
-                  Navigator.push(
+                onPressed: () async {
+                  await Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (context) => const EditProfilePage(),
-                    ),
+                    MaterialPageRoute(builder: (_) => const EditProfilePage()),
                   );
+                  if (!mounted) return;
+                  _currentIndexNotifier.value = 0; // 回到第一張，避免越界
+                  setState(() {});                 // 觸發重建（用最新 photoURLAbs）
                 },
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,

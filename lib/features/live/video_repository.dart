@@ -122,7 +122,7 @@ class VideoRepository {
   }
 
   Future<LiveEndSummary> fetchLiveEnd({required String channelName}) async {
-    final resp = await _api.post(ApiEndpoints.live_end, data: {
+    final resp = await _api.post(ApiEndpoints.liveEnd, data: {
       'channel_name': channelName,
     });
     final raw = resp.data is String ? jsonDecode(resp.data) : resp.data;

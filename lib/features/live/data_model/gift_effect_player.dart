@@ -39,6 +39,8 @@ class GiftEffectPlayer {
   late final IOClient _http;
   HttpClient? _raw;
 
+  bool _disposed = false;
+
   // 下載去重、下載併發控制
   final Map<String, Future<Uint8List>> _inflight = {}; // 同 URL 併發合流，但不做任何快取
   final _dlWaiters = Queue<Completer<void>>();
@@ -66,6 +68,7 @@ class GiftEffectPlayer {
 
   // ---------- 公開 API ----------
   void enqueue(BuildContext context, String url, {String? key}) {
+    if (_disposed) return;
     if (url.isEmpty || !url.toLowerCase().endsWith('.svga')) return;
     _lastCtx = context;
     final playKey = key ?? _genPlayKey();
@@ -80,6 +83,9 @@ class GiftEffectPlayer {
   Future<void> warmUp(List<String> urls) async {}
 
   void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+
     _playToken++; // 讓所有舊回調失效
     _fallbackTimer?.cancel();
     if (_statusListener != null) {
@@ -88,6 +94,8 @@ class GiftEffectPlayer {
     }
     try { _ctrl.stop(); _ctrl.videoItem = null; } catch (_) {}
     _entry?.remove(); _entry = null;
+
+    try { _ctrl.dispose(); } catch (_) {}
 
     try { _http.close(); } catch (_) {}
     try { _raw?.close(force: true); } catch (_) {}
@@ -399,6 +407,7 @@ class GiftEffectPlayer {
 
   /// 立即停止禮物播放；（無快取，清佇列即可）
   void stop({bool clearQueue = false, bool clearDecodedCache = false}) {
+    if (_disposed) return;
     _playToken++; // 讓所有計時器/回調失效
     _fallbackTimer?.cancel();
     _fallbackTimer = null;

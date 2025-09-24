@@ -67,6 +67,8 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
   bool _sentCancel = false;
   int _freeAtSec = 0;
 
+  bool _inMini = false;
+
   static const String _kToastTimeout = '電話撥打超時，對方無回應';
 
   BuildContext get _rootCtx =>
@@ -165,6 +167,7 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
   }
 
   void _goMini() {
+    _inMini = true;
     CallOverlay.show(
       navigatorKey: rootNavigatorKey,
       child: MiniCallView(
@@ -173,6 +176,7 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
         isVoice: !widget.isVideoCall,
         remoteUid: _calleeUid,
         onExpand: () {
+          _inMini = false;
           CallOverlay.hide();
           Navigator.of(rootNavigatorKey.currentContext!).push(
             MaterialPageRoute(builder: (_) => CallRequestPage(
@@ -410,23 +414,33 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
   }
 
   void _closeMiniAndGoHome() async {
-    // 先關掉小窗（若有）
     if (CallOverlay.isShowing) {
       CallOverlay.hide();
-      // 等一幀避免 overlay 殘影
       await Future<void>.delayed(const Duration(milliseconds: 1));
     }
 
-    // 回到上一頁（使用 root navigator）
     final nav = Navigator.of(_rootCtx);
 
-    // 盡量 pop 當前頁面；沒有上一頁時 maybePop 也不會崩
-    if (nav.canPop()) {
-      nav.pop();
+    if (_inMini) {
+      int popped = 0;
+      while (popped < 2 && nav.canPop()) {
+        nav.pop();
+        popped++;
+      }
+      _inMini = false;
+      if (mounted && (ModalRoute.of(context)?.isCurrent ?? false)) {
+        if (nav.canPop()) {
+          nav.pop();
+        } else {
+          nav.pushNamedAndRemoveUntil(AppRoutes.home, (_) => false);
+        }
+      }
     } else {
-      await nav.maybePop();
-      // 如果你想在「真的沒有上一頁」時保底回首頁，再解開下一行：
-      // nav.pushNamedAndRemoveUntil(AppRoutes.home, (route) => false);
+      if (nav.canPop()) {
+        nav.pop();
+      } else {
+        nav.pushNamedAndRemoveUntil(AppRoutes.home, (_) => false);
+      }
     }
   }
 

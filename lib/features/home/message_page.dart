@@ -485,7 +485,7 @@ class _MessagePageState extends ConsumerState<MessagePage>
       final id      = _asInt(gift['gift_id'] ?? gift['id']) ?? -1;
       String title  = (gift['gift_title'] ?? gift['title'] ?? '').toString();
       String iconRel= (gift['gift_icon']  ?? gift['icon']  ?? '').toString();
-      final count   = _asInt(gift['gift_count'] ?? gift['count'] ?? 1) ?? 1;
+      final count   = _asInt(gift['gift_count']  ?? 1) ?? 1;
 
       // 用禮物清單補齊缺資料
       if ((title.isEmpty || iconRel.isEmpty) && id >= 0) {

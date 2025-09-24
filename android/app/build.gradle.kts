@@ -21,6 +21,13 @@ android {
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
+
+        manifestPlaceholders.putAll(
+            mapOf(
+                "facebookAppId" to "763928952697178",
+                "fbLoginProtocolScheme" to "fb763928952697178"
+            )
+        )
     }
 
     compileOptions {

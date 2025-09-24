@@ -35,9 +35,6 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     return list;
   }
 
-  List<String> _compress(List<String> src) =>
-      src.where((e) => e.isNotEmpty).toList(growable: false);
-
   Future<void> _pickMedia(int tappedIndex) async {
     final XFile? file = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 100);
     if (file == null) return;
@@ -60,49 +57,41 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
 
   /// 新增或更新圖片
   void _updatePhoto(int index, String filePath) {
-    final current = _normalizeSlots(ref.read(userProfileProvider)?.photoURL ?? []);
-    current[index] = filePath;
-    _savePhotoList(current);
+    // 用 temp 為主，沒有就用 user.photoURL
+    final base = _normalizeSlots(_photosShadow ?? ref.read(userProfileProvider)?.photoURL ?? []);
+    base[index] = filePath; // 此處可能是本地路徑
+    _savePhotoList(base);   // 直接把 3 格送進去（不壓縮）
   }
 
   // 同步更新到 user model
   Future<void> _savePhotoList(List<String> slots) async {
-    // 先樂觀更新 UI（保留 3 格）
+    // 先只更新 temp（畫面用），不要動 user.photoURL（它只能存 S3 相對路徑）
     _applyOptimisticAvatarList(slots);
 
-    final svc = ref.read(backgroundApiServiceProvider);
-    final me  = ref.read(userProfileProvider);
+    // 上傳前 log
+    debugPrint('[Avatar] BEFORE UPLOAD tempSlots=${slots.toString()} '
+        'user.photoURL=${ref.read(userProfileProvider)?.photoURL}');
 
+    final svc = ref.read(backgroundApiServiceProvider);
     try {
-      // 後端只收非空的
-      await svc.uploadAvatarsAndUpdate(paths: _compress(slots));
+      // 直接送 3 格（不壓縮），service 內會就地把本地檔轉 S3 相對路徑並保留位置
+      await svc.uploadAvatarsAndUpdate(paths: _normalizeSlots(slots));
     } catch (e) {
-      debugPrint('背景上傳/更新失敗：$e');
-      if (me != null) _rollbackAvatarList(_normalizeSlots(me.photoURL));
+      debugPrint('[Avatar] 上傳失敗：$e');
+      // 回滾 temp → 以後端（或本地儲存）為準
+      final me = ref.read(userProfileProvider);
+      _rollbackAvatarList(_normalizeSlots(me?.photoURL ?? []));
     }
   }
 
   void _applyOptimisticAvatarList(List<String> slots) {
-    final currentUser = ref.read(userProfileProvider);
-    if (currentUser == null) return;
-
-    final normalized = _normalizeSlots(slots);
-    final updated = currentUser.copyWith(photoURL: normalized);
-    ref.read(userProfileProvider.notifier).setUser(updated);
-    unawaited(UserLocalStorage.saveUser(updated));
-    if (mounted) setState(() => _photosShadow = List<String>.from(normalized));
+    if (mounted) setState(() => _photosShadow = _normalizeSlots(slots));
   }
 
   void _rollbackAvatarList(List<String> oldList) {
-    final currentUser = ref.read(userProfileProvider);
-    if (currentUser == null) return;
-
-    final normalized = _normalizeSlots(oldList);
-    final updated = currentUser.copyWith(photoURL: normalized);
-    ref.read(userProfileProvider.notifier).setUser(updated);
-    unawaited(UserLocalStorage.saveUser(updated));
-    if (mounted) setState(() => _photosShadow = List<String>.from(normalized));
+    if (mounted) setState(() => _photosShadow = _normalizeSlots(oldList));
   }
+
 
   Future<void> _persistAvatarList(
       List<String> newList, {
@@ -110,22 +99,46 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
       }) async {
     final svc = ref.read(backgroundApiServiceProvider);
     try {
+      // 直接送 3 格（包含空字串）
       await svc.updateMemberInfoQueued({'avatar': newList});
-      // ✅ 成功：什麼都不做，UI 早就改好了
+
+      // 成功 → 把 user.photoURL 同步成 3 格的最終結果（只會是 S3 相對路徑或空字串）
+      final me = ref.read(userProfileProvider);
+      if (me != null) {
+        final updated = me.copyWith(photoURL: _normalizeSlots(newList));
+        ref.read(userProfileProvider.notifier).setUser(updated);
+        unawaited(UserLocalStorage.saveUser(updated));
+      }
     } catch (e, st) {
-      // ❌ 失敗：回滾到刪除前
+      debugPrint('[Avatar] DELETE failed: $e\n$st');
       if (mounted) _rollbackAvatarList(rollbackOnFail);
     }
   }
 
   void _deletePhotoAtIndexImmediately(int index) {
+    // 刪除前 log
+    debugPrint('[Avatar] BEFORE DELETE index=$index '
+        'temp=${_photosShadow} user=${ref.read(userProfileProvider)?.photoURL}');
+
     setState(() => _mediaFiles[index] = null);
 
     final oldSlots = _normalizeSlots(_photosShadow ?? ref.read(userProfileProvider)?.photoURL ?? []);
-    final newSlots = List<String>.from(oldSlots)..[index] = '';  // 不位移
+    final newSlots = List<String>.from(oldSlots)..[index] = ''; // 不位移
+
+    final me = ref.read(userProfileProvider);
+    if (me != null) {
+      final serverSlots = _normalizeSlots(me.photoURL)..[index] = '';
+      final updated = me.copyWith(photoURL: serverSlots);
+      ref.read(userProfileProvider.notifier).setUser(updated);
+      unawaited(UserLocalStorage.saveUser(updated));
+      debugPrint('[Avatar] OPTIMISTIC photoURL=$serverSlots');
+    }
+
+    // 刪除「要送出去」的內容 log
+    debugPrint('[Avatar] WILL SEND (DELETE) slots=$newSlots');
 
     _applyOptimisticAvatarList(newSlots);
-    unawaited(_persistAvatarList(_compress(newSlots), rollbackOnFail: oldSlots));
+    unawaited(_persistAvatarList(_normalizeSlots(newSlots), rollbackOnFail: oldSlots));
   }
 
   bool _isVideo(XFile file) {

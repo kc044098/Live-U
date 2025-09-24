@@ -27,6 +27,7 @@ import 'data_model/free_digits_badge.dart';
 import 'data_model/gift_effect_player.dart';
 import 'data_model/live_chat_input_bar.dart';
 import 'data_model/live_chat_panel.dart';
+import 'data_model/live_end_summary.dart';
 import 'data_model/stable_remote_video_view.dart';
 import 'gift_providers.dart';
 import 'mini_call_view.dart';
@@ -598,20 +599,23 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
   Future<void> _goLiveEndIfBroadcaster() async {
     if (!ref.read(userProfileProvider)!.isBroadcaster) {
-       _goHome();
-       return;
+      _goHome();
+      return;
     }
 
-    // 取結算資料（失敗也會回傳全 0 的 LiveEndSummary）
-    final liveEnd =
-    await ref.read(videoRepositoryProvider).fetchLiveEnd(channelName: roomId);
-
     await _closeMiniIfAny();
+    if (!mounted) return;
 
-    // 用 replace，避免返回到通話頁
     Navigator.of(rootNavigatorKey.currentContext ?? context, rootNavigator: true)
-        .pushReplacementNamed(AppRoutes.live_end, arguments: liveEnd);
+        .pushReplacementNamed(
+      AppRoutes.live_end,
+      arguments: {
+        'roomId': roomId,
+        'initial': const LiveEndSummary(), // 直接進頁，讓頁內自己輪詢
+      },
+    );
   }
+
 
   @override
   void dispose() {

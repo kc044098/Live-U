@@ -991,7 +991,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
         final d = message.data ?? const {};
         final title = (d['gift_title'] ?? message.text ?? '').toString();
         final icon  = (d['gift_icon'] ?? '').toString();
-        final cnt   = (d['gift_count'] ?? d['count'] ?? 1);
+        final cnt   = (d['gift_count'] ?? 1);
         final count = (cnt is num) ? cnt.toInt() : int.tryParse('$cnt') ?? 1;
         return GiftBubble(
           title: title,
@@ -1156,7 +1156,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
       String title = (gift['gift_title'] ?? gift['title'] ?? '').toString();
       String iconRel = (gift['gift_icon'] ?? gift['icon'] ?? '').toString();
       final gold  = _asInt(gift['gift_gold'] ?? gift['gold']) ?? 0;
-      final count = _asInt(gift['gift_count'] ?? gift['count']) ?? 1;
+      final count = _asInt(gift['gift_count']) ?? 1;
 
       // 若歷史訊息缺 icon/title，嘗試用目前禮物表補齊
       if ((iconRel.isEmpty || title.isEmpty) && id >= 0) {
@@ -1505,7 +1505,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
               'gift_title': gift.title,
               'gift_gold': gift.gold,
               'gift_icon': gift.icon, // 相對路徑
-              'count': 1,
+              'gift_count': 1,
               // 可選：也把 gift_url 帶給對端，方便它端解析
               'gift_url': gift.url,
             });
