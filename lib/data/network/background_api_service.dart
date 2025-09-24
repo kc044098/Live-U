@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/cupertino.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
@@ -153,6 +154,11 @@ class BackgroundApiService {
     void Function(double progress)? onProgress,
   }) {
     return _enqueue(() async {
+      // 1) log + 正規化成 3 格
+      final slots = List<String>.from(paths)..length = 3;
+      for (var i = 0; i < 3; i++) { slots[i] = (i < paths.length) ? (paths[i] ?? '') : ''; }
+      debugPrint('[AvatarSvc] INPUT slots=$slots');
+
       String _pathOnly(String u) {
         if (!u.isHttp) return u;
         try {
@@ -164,45 +170,63 @@ class BackgroundApiService {
         }
       }
 
-      final retained = <String>[]; // 伺服器相對路徑（或已經是 /avatar/.. 等）
-      final toUpload = <String>[]; // 本地檔（含 /storage… /data…、content://、file://、相對檔名）
+      // 2) 逐格處理，保留位置
+      final result = List<String>.from(slots);
+      final totalToUpload = <int>[];
 
-      for (final p in paths) {
-        if (p.isEmpty) continue;
-        if (p.isHttp) {
-          retained.add(_pathOnly(p));
-        } else if (p.isServerRelative) {
-          retained.add(p); // 僅 /avatar/... 這類
-        } else {
-          toUpload.add(p); // 本地絕對/相對/URI 皆列入上傳
+      for (int i = 0; i < 3; i++) {
+        final p = slots[i];
+        if (p.isEmpty) {
+          result[i] = '';
+          continue;
         }
+        if (p.isServerRelative) {
+          // 已是 /image/... 之類
+          result[i] = p;
+          continue;
+        }
+        if (p.isHttp) {
+          // http 全路徑 → 僅取 path
+          result[i] = _pathOnly(p);
+          continue;
+        }
+        // 其它一律視為本地檔（file:// / storage / content://）
+        totalToUpload.add(i);
       }
 
-      final uploaded = <String>[];
-      for (var i = 0; i < toUpload.length; i++) {
-        final f = await _toReadableFile(toUpload[i]);
+      debugPrint('[AvatarSvc] toUploadIndices=$totalToUpload');
+
+      // 3) 上傳本地檔，填回原位置
+      for (final idx in totalToUpload) {
+        final f = await _toReadableFile(slots[idx]);
         if (f != null) {
           final url = await _withRetry(() => _repo.uploadToS3Avatar(f));
-          uploaded.add(_pathOnly(url)); // 只存相對路徑
+          result[idx] = _pathOnly(url); // 只存 S3 相對路徑
+        } else {
+          // 讀不到檔 → 清空該格，避免髒資料
+          result[idx] = '';
         }
         onProgress?.call(
-            (retained.length + uploaded.length) /
-                ((retained.length + toUpload.length) == 0 ? 1 : (retained.length + toUpload.length))
+          (totalToUpload.indexOf(idx) + 1) / (totalToUpload.isEmpty ? 1 : totalToUpload.length),
         );
       }
 
-      final finalList = <String>[...retained, ...uploaded];
+      // 4) 送到後端（固定 3 格，允許空字串）
+      debugPrint('[AvatarSvc] UPDATE avatar=$result');
+      await _withRetry(() => _repo.updateMemberInfo({'avatar': result}));
 
-      await _withRetry(() => _repo.updateMemberInfo({'avatar': finalList}));
-
+      // 5) 更新 user（只會是相對路徑/空字串）
       final me = _ref.read(userProfileProvider);
       if (me != null) {
-        final updated = me.copyWith(photoURL: finalList); // 仍只存相對路徑
+        final updated = me.copyWith(photoURL: result);
         _ref.read(userProfileProvider.notifier).setUser(updated);
         await UserLocalStorage.saveUser(updated);
       }
+
+      debugPrint('[AvatarSvc] DONE avatar=${result}');
     });
   }
+
 
   Future<File?> _toReadableFile(String src) async {
     try {

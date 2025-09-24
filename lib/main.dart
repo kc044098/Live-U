@@ -21,9 +21,6 @@ import 'features/home/home_screen.dart';
 import 'features/live/video_recorder_page.dart';
 import 'routes/app_routes.dart';
 
-import 'package:firebase_core/firebase_core.dart';
-// 如果你有用 flutterfire cli 生成的 options：
-// import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

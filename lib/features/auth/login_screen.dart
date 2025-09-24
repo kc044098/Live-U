@@ -10,6 +10,7 @@ import '../../l10n/l10n.dart';
 import '../widgets/webview_flutter.dart';
 import 'account_login_screen.dart';
 import 'email_login_screen.dart';
+import 'facebook_auth_service.dart';
 import 'google_auth_service.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -21,6 +22,7 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final GoogleAuthService _googleAuthService = GoogleAuthService();
+  final FacebookAuthService _facebookAuthService = FacebookAuthService();
   bool _isLoading = false;
   String _appVersion = '';
 
@@ -71,6 +73,29 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       Navigator.pushReplacementNamed(context, '/home');
     } else {
       Fluttertoast.showToast(msg: 'Google 登入失敗');
+    }
+  }
+
+  Future<void> _handleFacebookLogin() async {
+    if (Firebase.apps.isEmpty) {
+      Fluttertoast.showToast(msg: '初始化中，請稍後再試');
+      return;
+    }
+    try {
+      setState(() => _isLoading = true);
+      final user = await _facebookAuthService.signInWithFacebook(ref);
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
+      if (user != null) {
+        Navigator.pushReplacementNamed(context, '/home');
+      } else {
+        Fluttertoast.showToast(msg: 'Facebook 登入失敗');
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+      debugPrint('Facebook 登入失敗 e: $e ');
+      Fluttertoast.showToast(msg: 'Facebook 登入失敗');
     }
   }
 
@@ -164,7 +189,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         _buildLoginButton(
                           label: '通过 Facebook 登录',
                           iconPath: 'assets/icon_facebook.svg',
-                          onPressed: _fakeLogin,
+                          onPressed: _handleFacebookLogin,
                         ),
                         _buildLoginButton(
                           label: '通过 Google 登录',

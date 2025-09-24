@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'music_select_page.dart';
@@ -20,7 +21,10 @@ class VideoRecorderPage extends StatefulWidget {
   State<VideoRecorderPage> createState() => _VideoRecorderPageState();
 }
 
+const _audioCh = MethodChannel('recorder.audio.session');
+
 class _VideoRecorderPageState extends State<VideoRecorderPage> {
+
   CameraController? _controller;
   List<CameraDescription>? _cameras;
   bool isVideoMode = true;
@@ -40,6 +44,7 @@ class _VideoRecorderPageState extends State<VideoRecorderPage> {
     if (_cameras!.isNotEmpty) {
       _controller = CameraController(_cameras![0], ResolutionPreset.high);
       await _controller!.initialize();
+      await _configureIOSAudioSession();
       if (mounted) setState(() {});
     }
   }
@@ -134,6 +139,9 @@ class _VideoRecorderPageState extends State<VideoRecorderPage> {
 
   @override
   void dispose() {
+    if (Platform.isIOS) {
+      _audioCh.invokeMethod('deactivate');
+    }
     _controller?.dispose();
     super.dispose();
   }
@@ -344,6 +352,7 @@ class _VideoRecorderPageState extends State<VideoRecorderPage> {
     await _controller?.dispose();
     _controller = CameraController(newDescription, ResolutionPreset.high);
     await _controller!.initialize();
+    await _configureIOSAudioSession();
     setState(() {});
   }
 
@@ -444,12 +453,6 @@ class _VideoRecorderPageState extends State<VideoRecorderPage> {
     }
   }
 
-  /// 判斷是否為影片（不要只看副檔名）
-  Future<bool> _isVideoFile(File f) async {
-    final m = await _detectMime(f);
-    return m != null && m.startsWith('video/');
-  }
-
   /// 若檔名沒有正確副檔名，移到 app cache 並補上副檔名（.mp4 / .jpg）
   Future<File> _normalizeCapturedFile(File src, {required bool isVideo}) async {
     final m = await _detectMime(src);
@@ -467,5 +470,15 @@ class _VideoRecorderPageState extends State<VideoRecorderPage> {
     // 可選：刪掉舊檔
     try { await src.delete(); } catch (_) {}
     return dst;
+  }
+
+  Future<void> _configureIOSAudioSession() async {
+    if (!Platform.isIOS) return;
+    final isFront = _controller?.description.lensDirection == CameraLensDirection.front;
+    try {
+      await _audioCh.invokeMethod('configure', {'front': isFront});
+    } catch (e) {
+      debugPrint('iOS audio session configure failed: $e');
+    }
   }
 }

@@ -1,7 +1,6 @@
 // # 主頁面含 BottomNavigationBar
 
 import 'package:flutter/material.dart';
-import '../../core/permission_service.dart';
 import '../../l10n/l10n.dart';
 import '../live/data_model/home_feed_state.dart';
 import '../live/gift_providers.dart';
@@ -10,7 +9,6 @@ import 'live_list_page.dart';
 import 'mine_page.dart';
 import 'message_page.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:geolocator/geolocator.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../profile/update_my_info.dart';
@@ -29,7 +27,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   DateTime? _lastHomeRefreshAt;
 
   bool get _isLiveHomeTab => _selectedIndex == 0 && _liveTabIndex == 0;
-
 
   void _refreshHomeIfStale([Duration maxAge = const Duration(seconds: 15)]) {
     final now = DateTime.now();
@@ -58,7 +55,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       try {
         // ① 取得錢包/分潤快照（已擴充含三個欄位）
         final repo = ref.read(walletRepositoryProvider);
-        final w = await repo.fetchMoneyCash(); // -> ({ gold, vipExpire, inviteNum, totalIncome, cashAmount })
+        final w = await repo.fetchMoneyCash();
 
         // ② 合併到當前使用者
         final user = ref.read(userProfileProvider);

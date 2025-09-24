@@ -57,6 +57,6 @@ class ApiEndpoints {
   static const String dndRead = '/api/member/mode'; // 用於查詢用戶勿擾模式配置
   static const String renewRtcToken = '/api/live/token/renew';
 
-  static const String live_end = '/api/live/report';
+  static const String liveEnd = '/api/live/report';
 
 }

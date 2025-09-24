@@ -122,6 +122,33 @@ class AuthRepository {
     );
   }
 
+  // Facebook 登錄
+  Future<UserModel> loginWithFacebook(UserModel fbUser) async {
+    final primary = fbUser.primaryLogin;
+    if (primary == null) { throw Exception("缺少主要登入方式"); }
+
+    final payload = {
+      "flag": primary.provider,            // "facebook"
+      "verify_code": primary.token,        // 預設送 FB access token；若改 Firebase，送 ID token
+      "o_auth_id": primary.identifier,     // Facebook userId
+      "nick_name": fbUser.displayName,
+      "email": fbUser.extra?['email'] ?? '',
+      "avatar": fbUser.avatarUrl,          // 可傳 http 圖，後端要存再處理
+    };
+
+    final resp = await _api.post(ApiEndpoints.login, data: payload);
+    final raw = resp.data is String ? jsonDecode(resp.data) : resp.data;
+    if (raw is! Map || raw['code'] != 200 || raw['data'] == null) {
+      throw Exception("後端回傳格式錯誤: $raw");
+    }
+    return _parseUser(
+      raw['data'],
+      loginProvider: 'facebook',
+      loginId: primary.identifier,
+      token: raw['data']['token'] ?? '',
+    );
+  }
+
   // 通用解析
   UserModel _parseUser(Map<String, dynamic> data, {required String loginProvider, required String loginId, required String token}) {
     // 添加 logins

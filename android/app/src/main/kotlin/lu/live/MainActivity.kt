@@ -8,6 +8,7 @@ import android.util.Rational
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugins.GeneratedPluginRegistrant
 import lu.live.player.CachedVideoPlugin
 
 class MainActivity : FlutterActivity() {
