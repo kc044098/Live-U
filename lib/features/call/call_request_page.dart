@@ -264,7 +264,8 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
 
     } catch (e) {
       if (_cancelled) return;
-      Fluttertoast.showToast(msg: "發起呼叫失敗：$e");
+      debugPrint('電話撥打失敗：$e');
+      Fluttertoast.showToast(msg: "電話撥打失敗, 請稍後再撥");
       await _audioPlayer.stop();
       if (mounted) Navigator.pop(context);
     }

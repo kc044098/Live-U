@@ -5,13 +5,11 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:crypto/crypto.dart' as crypto;
+import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:http/io_client.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:svgaplayer_flutter/svgaplayer_flutter.dart';
 
 class GiftEffectPlayer {
@@ -57,7 +55,7 @@ class GiftEffectPlayer {
     this.logEnabled = true,
     this.maxConcurrentDownloads = 2,
     this.connectionTimeout = const Duration(seconds: 6),
-    this.requestTimeout = const Duration(seconds: 20),
+    this.requestTimeout = const Duration(seconds: 30),
     this.softWait = const Duration(milliseconds: 220),
     this.minAnim = const Duration(milliseconds: 1800),
     this.maxAnim = const Duration(milliseconds: 3500),
@@ -88,17 +86,28 @@ class GiftEffectPlayer {
 
     _playToken++; // 讓所有舊回調失效
     _fallbackTimer?.cancel();
+    _fallbackTimer = null;
+
     if (_statusListener != null) {
       try { _ctrl.removeStatusListener(_statusListener!); } catch (_) {}
       _statusListener = null;
     }
+
     try { _ctrl.stop(); _ctrl.videoItem = null; } catch (_) {}
     _entry?.remove(); _entry = null;
 
     try { _ctrl.dispose(); } catch (_) {}
 
+    // 關閉網路連線（會讓 in-flight HTTP 丟出 closed；上面 guard 會吃掉）
     try { _http.close(); } catch (_) {}
     try { _raw?.close(force: true); } catch (_) {}
+    _raw = null;
+
+    // 讓任何在 _acquireDl() 等待的 future 立刻醒來並終止
+    while (_dlWaiters.isNotEmpty) {
+      try { _dlWaiters.removeFirst().completeError(StateError('GiftEffectPlayer disposed')); } catch (_) {}
+    }
+    _dlPermits = 0;
 
     _inflight.clear();
     _queue.clear();
@@ -106,44 +115,57 @@ class GiftEffectPlayer {
 
   // ---------- 主要流程 ----------
   void _tryPlayNext(BuildContext context) {
+    if (_disposed) return; // 🚫 已經關閉
     if (_playing || _queue.isEmpty) return;
+
     final job = _queue.removeFirst();
     _playing = true;
     _log('tryPlayNext → ${job.url} [key=${job.playKey}] (remain=${_queue.length})');
-    _playOnce(context, job);
+    _playOnce(_lastCtx ?? context, job); // 使用最後的 ctx；避免舊 ctx 已經被釋放
   }
 
   Future<void> _playOnce(BuildContext context, _GiftJob job) async {
+    if (_disposed) return;
     _removeOverlay();
-
     final url = job.url;
+
     try {
-      // 每次都重新抓 & 重新解碼（不讀任何本地快取）
+      if (_disposed) return;
+
+      // 先給 softWait（220ms）機會，miss 就先 rotate
       Uint8List bytes;
       final fut = _getBytesFresh(url);
       try {
         bytes = await fut.timeout(softWait);
       } catch (_) {
-        // 軟等待逾時：把這筆放到佇列末端，先讓後面可能較快的禮物跑
+        if (_disposed) return;
         _log('softWait miss → rotate: $url [key=${job.playKey}]');
         _onDone(context, requeue: true, job: job);
         return;
       }
 
+      if (_disposed) return;
+
       final item = await _decode(bytes, url);
+      if (_disposed) return;
       if (item == null) {
         _log('decode failed → drop: $url [key=${job.playKey}]');
-        _onDone(context); // 丟掉這筆，避免轉圈
+        _onDone(context); // 解碼失敗先不要無限重排，以免壞檔案打轉
         return;
       }
 
       await _startAnimation(context, job, item);
+
     } on TimeoutException {
-      _log('download timeout → drop: $url [key=${job.playKey}]');
-      _onDone(context);
+      if (_disposed) return;
+      _log('requestTimeout hit → requeue: $url [key=${job.playKey}]');
+      _onDone(context, requeue: true, job: job);
+      return;
+
     } catch (e, st) {
+      if (_disposed) return;
       _log('playOnce error: $e\n$st');
-      _onDone(context);
+      _onDone(context); // 其它錯誤維持 drop，避免壞網址/403 無窮重試
     }
   }
 
@@ -232,16 +254,24 @@ class GiftEffectPlayer {
 
   void _onDone(BuildContext context, {bool requeue = false, _GiftJob? job}) {
     _playing = false;
+
+    if (_disposed) return;
+
     if (requeue && job != null) {
       _queue.addLast(job);
     }
-    Future.microtask(() => _tryPlayNext(context));
+
+    final ctx = _lastCtx ?? context;
+    if (ctx == null) return; // 沒有可用 context 就不再跑
+    Future.microtask(() => _tryPlayNext(ctx));
   }
 
   // ---------- 純下載（每次都抓新資料；只有併發合流） ----------
   Future<Uint8List> _getBytesFresh(String url) {
+    if (_disposed) return Future.error(StateError('GiftEffectPlayer disposed')); // 🚫
+
     final inflight = _inflight[url];
-    if (inflight != null) return inflight; // 同一時間同一 URL 合流
+    if (inflight != null) return inflight;
 
     final completer = Completer<Uint8List>();
     _inflight[url] = completer.future;
@@ -250,7 +280,13 @@ class GiftEffectPlayer {
       try {
         await _acquireDl();
         try {
+          if (_disposed) {
+            throw StateError('GiftEffectPlayer disposed'); // 🚫
+          }
           final bytes = await _downloadWithRetry(url);
+          if (_disposed) {
+            throw StateError('GiftEffectPlayer disposed'); // 🚫
+          }
           if (!_looksLikeSvga(bytes)) {
             throw const FormatException('not a valid SVGA/ZIP stream');
           }
@@ -270,9 +306,13 @@ class GiftEffectPlayer {
   }
 
   Future<Uint8List> _downloadWithRetry(String url) async {
+    if (_disposed) throw StateError('GiftEffectPlayer disposed');
+
     const maxAttempts = 2;
     int attempt = 0;
     while (true) {
+      if (_disposed) throw StateError('GiftEffectPlayer disposed');
+
       attempt++;
       final sw = Stopwatch()..start();
       try {
@@ -280,7 +320,10 @@ class GiftEffectPlayer {
             .get(Uri.parse(url), headers: const {
           HttpHeaders.cacheControlHeader: 'no-transform'
         })
-            .timeout(requestTimeout);
+            .timeout(requestTimeout); // ← 這裡若超時會丟 TimeoutException
+
+        if (_disposed) throw StateError('GiftEffectPlayer disposed');
+
         if (rsp.statusCode == 200 && rsp.bodyBytes.isNotEmpty) {
           sw.stop();
           final kb = (rsp.bodyBytes.length / 1024).toStringAsFixed(1);
@@ -292,11 +335,27 @@ class GiftEffectPlayer {
         throw HttpException('http ${rsp.statusCode}, len=${rsp.bodyBytes.length}');
       } catch (e) {
         sw.stop();
+
+        final closed = e is http.ClientException &&
+            e.message.contains('Client is already closed');
+        if (_disposed || closed) rethrow;
+
+        final isTimeout = e is TimeoutException;
         _log('download error attempt=$attempt after ${sw.elapsedMilliseconds}ms: $e for $url');
-        if (attempt >= maxAttempts) rethrow;
-        final base = 300 * (1 << (attempt - 1));
-        final jitter = (DateTime.now().microsecond % (base ~/ 2));
-        await Future.delayed(Duration(milliseconds: base + jitter));
+
+        // 沒超過最大重試 → 退避後再試
+        if (attempt < maxAttempts) {
+          final base = 300 * (1 << (attempt - 1));
+          final jitter = (DateTime.now().microsecond % (base ~/ 2));
+          await Future.delayed(Duration(milliseconds: base + jitter));
+          continue;
+        }
+
+        // 已達最大重試：若是逾時，用 TimeoutException 明確拋出，交給上層決定是否 requeue
+        if (isTimeout) {
+          throw TimeoutException('request timeout for $url');
+        }
+        rethrow; // 其它錯誤照舊往外拋（不上 requeue）
       }
     }
   }
@@ -334,7 +393,7 @@ class GiftEffectPlayer {
 
   // ---------- Overlay ----------
   void _insertOverlay(BuildContext context, String playKey) {
-    if (_entry != null) return;
+    if (_disposed || _entry != null) return; // 🚫
     _entry = OverlayEntry(
       builder: (_) => Positioned.fill(
         child: IgnorePointer(
@@ -342,10 +401,7 @@ class GiftEffectPlayer {
           child: SizedBox.expand(
             child: KeyedSubtree(
               key: ValueKey<String>(playKey),
-              child: SVGAImage(
-                _ctrl,
-                fit: BoxFit.contain,
-              ),
+              child: SVGAImage(_ctrl, fit: BoxFit.contain),
             ),
           ),
         ),

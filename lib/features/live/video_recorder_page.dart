@@ -3,8 +3,11 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:video_player/video_player.dart';
+import '../profile/profile_controller.dart';
 import 'music_select_page.dart';
 import 'video_preview_page.dart';
 import 'package:video_thumbnail/video_thumbnail.dart' as vt;
@@ -14,16 +17,15 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mime/mime.dart' as mime;
 import 'package:path/path.dart' as p;
 
-class VideoRecorderPage extends StatefulWidget {
-  const VideoRecorderPage({super.key});
-
-  @override
-  State<VideoRecorderPage> createState() => _VideoRecorderPageState();
-}
-
 const _audioCh = MethodChannel('recorder.audio.session');
 
-class _VideoRecorderPageState extends State<VideoRecorderPage> {
+class VideoRecorderPage extends ConsumerStatefulWidget {
+  const VideoRecorderPage({super.key});
+  @override
+  ConsumerState<VideoRecorderPage> createState() => _VideoRecorderPageState();
+}
+
+class _VideoRecorderPageState extends ConsumerState<VideoRecorderPage> {
 
   CameraController? _controller;
   List<CameraDescription>? _cameras;
@@ -61,9 +63,23 @@ class _VideoRecorderPageState extends State<VideoRecorderPage> {
       final xfile = await _controller!.stopVideoRecording();
       setState(() => _isRecording = false);
 
+      // 先規整副檔名/路徑
       final fixed = await _normalizeCapturedFile(File(xfile.path), isVideo: true);
       final fixedPath = fixed.path;
 
+      // 非主播就檢查錄影長度 > 60s 直接擋下
+      final isBroadcaster = ref.read(userProfileProvider)?.isBroadcaster == true;
+      if (!isBroadcaster) {
+        final secs = await _probeVideoSeconds(fixedPath);
+        if (secs != null && secs > 60) {
+          Fluttertoast.showToast(msg: '錄製視頻需在一分鐘以內');
+          // 丟棄本次錄影檔，避免占空間
+          try { await File(fixedPath).delete(); } catch (_) {}
+          return; // ← 不進入預覽頁，維持未選取狀態
+        }
+      }
+
+      // （通過檢查後）再產縮圖並前往預覽
       final thumbPath = await _generateThumbnail(fixedPath);
 
       if (!mounted) return;
@@ -105,18 +121,41 @@ class _VideoRecorderPageState extends State<VideoRecorderPage> {
     }
   }
 
+  Future<int?> _probeVideoSeconds(String path) async {
+    VideoPlayerController? c;
+    try {
+      c = VideoPlayerController.file(File(path));
+      await c.initialize();
+      final d = c.value.duration;
+      return d.inSeconds;
+    } catch (_) {
+      return null; // 讀不到就不擋，避免誤殺
+    } finally {
+      try { await c?.dispose(); } catch (_) {}
+    }
+  }
+
   /// === 新增相冊選擇邏輯 ===
   Future<void> _pickFromGallery() async {
     XFile? pickedFile;
     if (isVideoMode) {
-      // 只允許影片
       pickedFile = await _picker.pickVideo(source: ImageSource.gallery);
     } else {
-      // 只允許圖片
       pickedFile = await _picker.pickImage(source: ImageSource.gallery);
     }
-
     if (pickedFile == null) return;
+
+    // 只有「選取影片」時才需限制
+    if (isVideoMode) {
+      final isBroadcaster = ref.read(userProfileProvider)?.isBroadcaster == true;
+      if (!isBroadcaster) {
+        final secs = await _probeVideoSeconds(pickedFile.path);
+        if (secs != null && secs > 60) {
+          Fluttertoast.showToast(msg: '選取視頻需要在一分鐘以內');
+          return; // ← 保持未選取狀態：不產縮圖、不進預覽
+        }
+      }
+    }
 
     String? thumbPath;
     if (isVideoMode) {

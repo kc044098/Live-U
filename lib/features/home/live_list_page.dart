@@ -179,6 +179,9 @@ class _LiveListPageState extends ConsumerState<LiveListPage>
                     final image = (avatarUrl.isNotEmpty)
                         ? CachedNetworkImage(
                       imageUrl: avatarUrl,
+                      memCacheWidth: (MediaQuery.of(context).size.width / 2 * MediaQuery.of(context).devicePixelRatio).round(), // 單格寬
+                      fadeInDuration: Duration.zero,
+                      fadeOutDuration: Duration.zero,
                       fit: BoxFit.cover,
                       errorWidget: (_, __, ___) =>
                           Image.asset('assets/my_icon_defult.jpeg', fit: BoxFit.cover),
@@ -574,6 +577,13 @@ class _VideoCardState extends ConsumerState<_VideoCard> with WidgetsBindingObser
     });
   }
 
+  String joinUrl(String base, String p) {
+    if (p.isEmpty) return '';
+    if (p.startsWith('http')) return p;
+    if (base.isEmpty) return p;
+    return p.startsWith('/') ? '$base$p' : '$base/$p';
+  }
+
   Future<void> _attachAndPlay() async {
     if (!mounted || _attached) return;
     try {
@@ -667,8 +677,13 @@ class _VideoCardState extends ConsumerState<_VideoCard> with WidgetsBindingObser
 
     final displayName  = (widget.item.nickName?.isNotEmpty == true)
         ? widget.item.nickName! : (widget.item.title.isEmpty ? ' ' : widget.item.title);
-    final displayAvatar = widget.item.firstAvatar ?? (cover ?? '');
+    final displayAvatarRaw = widget.item.firstAvatar ?? (cover ?? '');
     final displayTags   = widget.item.tags.isNotEmpty ? widget.item.tags : const ['推薦', '新上傳'];
+    final cdn = ref.watch(userProfileProvider)?.cdnUrl ?? '';
+    final avatarUrl = joinUrl(cdn, displayAvatarRaw);
+    if (avatarUrl.isNotEmpty) {
+      precacheImage(CachedNetworkImageProvider(avatarUrl), context); // 可選：滑到時更穩
+    }
 
     return Stack(
       children: [
@@ -704,7 +719,7 @@ class _VideoCardState extends ConsumerState<_VideoCard> with WidgetsBindingObser
           LiveUserInfoCard(
             uid: widget.item.uid,
             name: displayName,
-            avatarPath: displayAvatar,
+            avatarPath: avatarUrl,
             rateText: '${widget.item.pricePerMinute}金幣/分鐘',
             tags: displayTags,
             isLike: widget.item.isLike,
