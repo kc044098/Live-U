@@ -16,6 +16,7 @@ import '../call/call_repository.dart';
 import '../call/rtc_engine_manager.dart';
 import '../message/chat_message.dart';
 import '../message/chat_providers.dart';
+import '../message/chat_repository.dart';
 import '../message/chat_utils.dart' as cu;
 import '../message/gift/gift_bottom_sheet.dart';
 import '../message/gift/show_insufficient_gold_sheet.dart';
@@ -524,7 +525,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
           ref.read(callSessionProvider(roomId).notifier)
               .updateSendState(uuid, sendResult.ok ? SendState.sent : SendState.failed);
-
+          _toastInsufficientIfAny(sendResult);
           return sendResult.ok;
         },
       ),
@@ -1359,8 +1360,18 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     ref.read(callSessionProvider(roomId).notifier)
         .updateSendState(uuid, sendResult.ok ? SendState.sent : SendState.failed);
 
-    if (!sendResult.ok) {
+    if (sendResult.code == 102) {
+      Fluttertoast.showToast(msg: '餘額不足, 請前往充值～');
+    } else if (!sendResult.ok) {
       Fluttertoast.showToast(msg: '送禮失敗，請稍後重試');
+    }
+  }
+
+  void _toastInsufficientIfAny(SendResult res) {
+    if (res.code == 102) {
+      Fluttertoast.showToast(msg: '餘額不足, 請前往充值～');
+      // 可選：直接打開充值面板
+      // _openRechargeSheetFromFreeBadge();
     }
   }
 

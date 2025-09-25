@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:pull_to_refresh_flutter3/pull_to_refresh_flutter3.dart';
 import 'package:djs_live_stream/features/message/voice_bubble.dart';
@@ -798,6 +799,9 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
   }
 
   AppBar _buildAppBar() {
+    final base = ref.read(userProfileProvider)?.cdnUrl ?? '';
+    final partnerUrl = _joinUrl(base, widget.partnerAvatar);
+
     return AppBar(
       backgroundColor: Colors.white,
       elevation: 0,
@@ -812,7 +816,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
             onTap: _openPartnerProfile,
             child: Stack(
               children: [
-                CircleAvatar(radius: 24, backgroundImage: _avatar()),
+                buildAvatarCircle(url: partnerUrl, radius: 24),
                 Positioned(
                   bottom: 0, right: 0,
                   child: Container(
@@ -869,6 +873,8 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
     }
 
     final bool isSelf = message.type == MessageType.self;
+    final base = ref.read(userProfileProvider)?.cdnUrl ?? '';
+    final partnerUrl = _joinUrl(base, widget.partnerAvatar);
 
     return Row(
       mainAxisAlignment: isSelf ? MainAxisAlignment.end : MainAxisAlignment.start,
@@ -879,10 +885,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
           InkWell(
             borderRadius: BorderRadius.circular(16),
             onTap: _openPartnerProfile,
-            child: CircleAvatar(
-              radius: 16,
-              backgroundImage: _avatar(),
-            ),
+            child: buildAvatarCircle(url: partnerUrl, radius: 16),
           ),
 
         if (!isSelf) const SizedBox(width: 8),
@@ -1571,11 +1574,32 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
     return true; // 沒有面板 → 允許返回
   }
 
-  ImageProvider _avatar() {
-    if (widget.partnerAvatar.startsWith('http')) {
-      return NetworkImage(widget.partnerAvatar);
+  String _joinUrl(String base, String p) {
+    if (p.isEmpty) return '';
+    if (p.startsWith('http')) return p;
+    if (base.isEmpty) return p;
+    return p.startsWith('/') ? '$base$p' : '$base/$p';
+  }
+
+  // 產生圓形頭像：失敗時顯示預設，成功時覆蓋在前景
+  Widget buildAvatarCircle({
+    required String url,   // 完整 URL 或空字串
+    double radius = 24,
+  }) {
+    final target = (radius * 2 * 2).round(); // 以 2x 裝置估算，降低 cache 壓力
+    ImageProvider? fg;
+    if (url.isNotEmpty) {
+      fg = ResizeImage(
+        CachedNetworkImageProvider(url),
+        width: target,
+        height: target,
+      );
     }
-    return NetworkImage('${ref.read(userProfileProvider)?.cdnUrl}${widget.partnerAvatar}');
+    return CircleAvatar(
+      radius: radius,
+      backgroundImage: const AssetImage('assets/my_icon_defult.jpeg'),
+      foregroundImage: fg, // 成功載入時覆蓋；失敗自動退回 backgroundImage
+    );
   }
 
   String get _presenceLabel {

@@ -13,7 +13,6 @@ import '../../data/models/user_model.dart';
 import '../call/call_request_page.dart';
 import '../live/gift_providers.dart';
 import '../message/chat_providers.dart';
-import '../message/chat_repository.dart';
 import '../message/chat_thread_item.dart';
 import '../message/chat_ws_service.dart';
 import '../message/data_model/call_record_item.dart';
@@ -25,6 +24,7 @@ import '../mine/show_like_alert_dialog.dart';
 import '../mine/who_likes_me_page.dart';
 import '../profile/profile_controller.dart';
 import '../wallet/payment_method_page.dart';
+import '../widgets/cached_network_image.dart';
 
 class MessagePage extends ConsumerStatefulWidget {
   const MessagePage({super.key});
@@ -298,12 +298,15 @@ class _MessagePageState extends ConsumerState<MessagePage>
               final tIndex = hasLikeCard ? index - 1 : index;
               final it = _threads[tIndex];
 
+              final avatarRel = it.avatars.isNotEmpty ? it.avatars.first : '';
+              final avatarUrl = _fullUrl(me.cdnUrl ?? '', avatarRel);
+
               return Column(
                 children: [
                   ListTile(
                     leading: Stack(
                       children: [
-                        CircleAvatar(radius: 24, backgroundImage: _avatarOf(me.cdnUrl!, it)),
+                        buildAvatarCircle(url: avatarUrl, radius: 24),
                         Positioned(
                           bottom: 2, right: 2,
                           child: Container(
@@ -418,9 +421,7 @@ class _MessagePageState extends ConsumerState<MessagePage>
           final isMissed = statusText.contains('未接') || statusText.contains('取消');
 
           return ListTile(
-            leading: CircleAvatar(radius: 24, backgroundImage: url.isNotEmpty
-                ? NetworkImage(url)
-                : const AssetImage('assets/my_icon_defult.jpeg') as ImageProvider),
+            leading: buildAvatarCircle(url: url, radius: 24),
             title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
             subtitle: Text(
               statusText,
