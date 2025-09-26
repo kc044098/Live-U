@@ -19,6 +19,9 @@ class PipSystemUi {
     _navKey = navigatorKey;
     // 監聽原生回傳的 PiP 狀態
     _ch.setMethodCallHandler((call) async {
+      if (call.method == 'prePiP') {
+        _show();
+      }
       if (call.method == 'pipState') {
         final inPip = call.arguments == true;
         if (inPip) {

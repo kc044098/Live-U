@@ -30,6 +30,9 @@ class GiftEffectPlayer {
   BuildContext? _lastCtx;
   AnimationStatusListener? _statusListener;
 
+  // ===== 快取 =====
+  final Map<String, Uint8List> _cacheBytes = {};   // URL -> 原始位元組
+
   // 播放輪次 token（讓舊回調失效）
   int _playToken = 0;
 
@@ -48,7 +51,7 @@ class GiftEffectPlayer {
   final Queue<_GiftJob> _queue = Queue<_GiftJob>();
   int _seq = 0;
 
-  static const _tag = '[GiftFX-NO-CACHE]';
+  static const _tag = '[GiftFX]';
 
   GiftEffectPlayer({
     required TickerProvider vsync,
@@ -77,33 +80,68 @@ class GiftEffectPlayer {
     _tryPlayNext(context);
   }
 
-  // 無快取模式：warmUp 不做任何事（保留 API 以防外部呼叫）
-  Future<void> warmUp(List<String> urls) async {}
+  // ===== 修改：warmUp 真的去預載 & 解碼，填快取 =====
+  Future<void> warmUp(List<String> urls) async {
+    if (_disposed) return;
+    final targets = urls
+        .where((u) => u.isNotEmpty && u.toLowerCase().endsWith('.svga'))
+        .toSet();
+
+    for (final url in targets) {
+      if (_disposed) return;
+      if (_cacheBytes.containsKey(url)) continue;
+
+      () async {
+        try {
+          final bytes = await _getBytesFresh(url);
+          if (_disposed) return;
+          _cacheBytes[url] = bytes;
+          // 可選：預解碼驗證一次（不存物件）
+          try { await _decode(bytes, url); } catch (_) {}
+          _log('warmUp ok (bytes cached) for $url');
+        } catch (e) {
+          _log('warmUp fail for $url: $e');
+        }
+      }();
+    }
+  }
+
+  // ===== 新增：取位元組時優先用快取，其次才抓網路 =====
+  Future<Uint8List> _getBytesPreferCache(String url) {
+    if (_disposed) return Future.error(StateError('GiftEffectPlayer disposed'));
+    final cached = _cacheBytes[url];
+    if (cached != null) {
+      _log('bytes cache HIT for $url (${cached.length} B)');
+      // 立即完成（microtask），幾乎不會被 softWait 踢掉
+      return Future.value(cached);
+    }
+    _log('bytes cache MISS for $url');
+    return _getBytesFresh(url).then((b) {
+      if (!_disposed) _cacheBytes[url] = b;
+      return b;
+    });
+  }
 
   void dispose() {
     if (_disposed) return;
     _disposed = true;
 
-    _playToken++; // 讓所有舊回調失效
+    _playToken++;
     _fallbackTimer?.cancel();
     _fallbackTimer = null;
-
     if (_statusListener != null) {
       try { _ctrl.removeStatusListener(_statusListener!); } catch (_) {}
       _statusListener = null;
     }
-
     try { _ctrl.stop(); _ctrl.videoItem = null; } catch (_) {}
     _entry?.remove(); _entry = null;
 
     try { _ctrl.dispose(); } catch (_) {}
 
-    // 關閉網路連線（會讓 in-flight HTTP 丟出 closed；上面 guard 會吃掉）
     try { _http.close(); } catch (_) {}
     try { _raw?.close(force: true); } catch (_) {}
     _raw = null;
 
-    // 讓任何在 _acquireDl() 等待的 future 立刻醒來並終止
     while (_dlWaiters.isNotEmpty) {
       try { _dlWaiters.removeFirst().completeError(StateError('GiftEffectPlayer disposed')); } catch (_) {}
     }
@@ -111,6 +149,8 @@ class GiftEffectPlayer {
 
     _inflight.clear();
     _queue.clear();
+
+    _cacheBytes.clear();
   }
 
   // ---------- 主要流程 ----------
@@ -124,6 +164,7 @@ class GiftEffectPlayer {
     _playOnce(_lastCtx ?? context, job); // 使用最後的 ctx；避免舊 ctx 已經被釋放
   }
 
+  // ===== 修改：播放流程用「快取優先」 =====
   Future<void> _playOnce(BuildContext context, _GiftJob job) async {
     if (_disposed) return;
     _removeOverlay();
@@ -132,9 +173,8 @@ class GiftEffectPlayer {
     try {
       if (_disposed) return;
 
-      // 先給 softWait（220ms）機會，miss 就先 rotate
       Uint8List bytes;
-      final fut = _getBytesFresh(url);
+      final fut = _getBytesPreferCache(url);
       try {
         bytes = await fut.timeout(softWait);
       } catch (_) {
@@ -146,11 +186,12 @@ class GiftEffectPlayer {
 
       if (_disposed) return;
 
+      // 🔑 每次都由 bytes 重新 decode，確保拿到新的可播放實例
       final item = await _decode(bytes, url);
       if (_disposed) return;
       if (item == null) {
         _log('decode failed → drop: $url [key=${job.playKey}]');
-        _onDone(context); // 解碼失敗先不要無限重排，以免壞檔案打轉
+        _onDone(context);
         return;
       }
 
@@ -160,12 +201,11 @@ class GiftEffectPlayer {
       if (_disposed) return;
       _log('requestTimeout hit → requeue: $url [key=${job.playKey}]');
       _onDone(context, requeue: true, job: job);
-      return;
 
     } catch (e, st) {
       if (_disposed) return;
       _log('playOnce error: $e\n$st');
-      _onDone(context); // 其它錯誤維持 drop，避免壞網址/403 無窮重試
+      _onDone(context);
     }
   }
 
@@ -462,7 +502,7 @@ class GiftEffectPlayer {
   void _log(String s) { if (logEnabled) debugPrint('$_tag $s'); }
 
   /// 立即停止禮物播放；（無快取，清佇列即可）
-  void stop({bool clearQueue = false, bool clearDecodedCache = false}) {
+  void stop({bool clearQueue = false}) {
     if (_disposed) return;
     _playToken++; // 讓所有計時器/回調失效
     _fallbackTimer?.cancel();

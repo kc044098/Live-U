@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import '../../l10n/l10n.dart';
+import '../call/home_visible_provider.dart';
 import '../live/data_model/home_feed_state.dart';
 import '../live/gift_providers.dart';
 import '../wallet/wallet_repository.dart';
@@ -36,6 +37,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
+  void _updateLiveListVisibleFlag() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(isLiveListVisibleProvider.notifier).state = _isLiveHomeTab;
+    });
+  }
+
   void _onItemTapped(int index) {
     final wasHome = _selectedIndex == 0;
     setState(() => _selectedIndex = index);
@@ -45,6 +53,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     // 如果使用者已在首頁又再點一次首頁，也允許刷新
     if (index == 0 && wasHome) _refreshHomeIfStale();
+
+    _updateLiveListVisibleFlag();
   }
 
   @override
@@ -71,6 +81,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
         // 獲取禮物列表
         await ref.read(giftListProvider.notifier).loadIfStale(const Duration(seconds: 10));
+
+        _updateLiveListVisibleFlag();
       } catch (e) {
       }
 
@@ -119,6 +131,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           // 只有當前底部是首頁，且主播 tab 切回「首页」時刷新
           if (_selectedIndex == 0 && index == 0) {
             _refreshHomeIfStale();
+            _updateLiveListVisibleFlag();
           }
         },
         isBroadcaster: user?.isBroadcaster ?? false,

@@ -22,6 +22,8 @@ class _LiveEndPageState extends ConsumerState<LiveEndPage> {
 
   static const _interval = Duration(seconds: 1);
   static const _maxTries = 20; // 最多等 20 秒（可自行調整）
+  static const _maxConsecMisses = 5;    // ★ 連續撈不到的上限
+  int _consecMisses = 0;                // ★ 連續撈不到的次數
 
   @override
   void initState() {
@@ -53,11 +55,12 @@ class _LiveEndPageState extends ConsumerState<LiveEndPage> {
   void _startPolling() {
     _stopPolling();
     _tries = 0;
+    _consecMisses = 0;      // ★ 重置
     _inFlight = false;
 
     _pollTimer = Timer.periodic(_interval, (t) async {
       if (!mounted) return;
-      if (_inFlight) return;       // ← 正在請求，直接跳過這輪
+      if (_inFlight) return;
       if (_tries++ >= _maxTries) { t.cancel(); return; }
 
       _inFlight = true;
@@ -65,13 +68,38 @@ class _LiveEndPageState extends ConsumerState<LiveEndPage> {
         final fresh = await ref
             .read(videoRepositoryProvider)
             .fetchLiveEnd(channelName: _roomId);
+
         if (!mounted) return;
+
         if ((fresh.liveUnix ?? 0) > 0) {
+          // 拿到結果 → 更新並停止輪詢
           setState(() => _s = fresh);
-          t.cancel();              // 成功 → 停止輪詢
+          _consecMisses = 0;
+          t.cancel();
+        } else {
+          // ★ 沒拿到 → 累計「連續沒拿到」次數
+          _consecMisses++;
+          if (_consecMisses >= _maxConsecMisses) {
+            t.cancel();
+            _pollTimer = null;
+            // 可選：給個提示
+            // Fluttertoast.showToast(msg: '结算结果尚未生成，返回首页');
+            if (mounted) {
+              Navigator.pushReplacementNamed(context, AppRoutes.home);
+            }
+          }
         }
       } catch (e, st) {
-        debugPrint('[live_end] poll error: $e\n$st'); // 忽略錯誤，下一輪再來
+        // ★ 發生錯誤也當成「沒拿到」來計數
+        debugPrint('[live_end] poll error: $e\n$st');
+        _consecMisses++;
+        if (_consecMisses >= _maxConsecMisses) {
+          t.cancel();
+          _pollTimer = null;
+          if (mounted) {
+            Navigator.pushReplacementNamed(context, AppRoutes.home);
+          }
+        }
       } finally {
         _inFlight = false;
       }
