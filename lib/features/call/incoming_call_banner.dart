@@ -36,7 +36,7 @@ class IncomingCallBanner extends StatelessWidget {
                 padding: EdgeInsets.only(top: top > 0 ? 6 : 12, left: 12, right: 12),
                 child: Material(
                   elevation: 8,
-                  color: Colors.black.withOpacity(0.85),
+                  color: Colors.black.withOpacity(0.6),
                   borderRadius: BorderRadius.circular(12),
                   child: Container(
                     height: 76,

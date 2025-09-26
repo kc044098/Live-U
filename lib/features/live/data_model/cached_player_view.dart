@@ -13,6 +13,7 @@ class CachedPlayerView extends StatefulWidget {
   final bool autoPlayOnAttach;
   final String? coverUrl;
   final VoidCallback? onFirstFrame;
+  final bool muted;
 
   const CachedPlayerView({
     super.key,
@@ -21,6 +22,7 @@ class CachedPlayerView extends StatefulWidget {
     this.autoPlayOnAttach = true,
     this.coverUrl,
     this.onFirstFrame,
+    this.muted = false,
   });
 
   @override
@@ -83,6 +85,7 @@ class CachedPlayerViewState extends State<CachedPlayerView> with WidgetsBindingO
           );
           await _iosVc!.setLooping(true);
           await _iosVc!.initialize();
+          await _iosVc!.setVolume(widget.muted ? 0 : 1);
           _iosInited = true;
           if (widget.autoPlayOnAttach) await _iosVc!.play();
           widget.onFirstFrame?.call();
@@ -125,6 +128,7 @@ class CachedPlayerViewState extends State<CachedPlayerView> with WidgetsBindingO
       "coverUrl": widget.coverUrl,
     });
     await attach();
+    await setMuted(widget.muted); // ✅ 初始就套音量
     if (widget.autoPlayOnAttach) await play();
   }
 
@@ -153,6 +157,15 @@ class CachedPlayerViewState extends State<CachedPlayerView> with WidgetsBindingO
       await _ch?.invokeMethod("play");
     } else if (Platform.isIOS) {
       if (_iosVc != null && _iosVc!.value.isInitialized) await _iosVc!.play();
+    }
+  }
+
+  // ⭐ 封裝設置音量
+  Future<void> setMuted(bool m) async {
+    if (Platform.isAndroid) {
+      try { await _ch?.invokeMethod("setVolume", {"volume": m ? 0.0 : 1.0}); } catch (_) {}
+    } else if (Platform.isIOS) {
+      try { await _iosVc?.setVolume(m ? 0.0 : 1.0); } catch (_) {}
     }
   }
 
@@ -199,6 +212,10 @@ class CachedPlayerViewState extends State<CachedPlayerView> with WidgetsBindingO
     super.didUpdateWidget(oldWidget);
     if (widget.url == oldWidget.url) return;
 
+    if (widget.muted != oldWidget.muted) {
+      setMuted(widget.muted);
+    }
+
     if (Platform.isAndroid && _ch != null) {
       _ch!.invokeMethod("setDataSource", {
         "url": widget.url,
@@ -209,6 +226,7 @@ class CachedPlayerViewState extends State<CachedPlayerView> with WidgetsBindingO
         "coverUrl": widget.coverUrl,
       });
       attach();
+      setMuted(widget.muted);
       if (widget.autoPlayOnAttach) play();
     } else if (Platform.isIOS) {
       _iosInited = false; // 讓 build 重新初始化 controller

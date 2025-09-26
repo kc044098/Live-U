@@ -26,6 +26,7 @@ class CachedPlayer(private val context: Context) {
     private var attachedView: PlayerView? = null
     private var textureView: TextureView? = null
     private var firstFrameCallback: (() -> Unit)? = null
+    private var desiredVolume: Float = 1f
 
     fun setFirstFrameListener(cb: (() -> Unit)?) {
         firstFrameCallback = cb
@@ -51,6 +52,7 @@ class CachedPlayer(private val context: Context) {
                         firstFrameCallback?.invoke()
                     }
                 })
+                volume = desiredVolume
             }
     }
 
@@ -146,7 +148,13 @@ class CachedPlayer(private val context: Context) {
         p.setMediaSource(mediaSource, /* startPositionMs = */ 0)
         p.repeatMode = if (looping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
         p.prepare()
+        p.volume = desiredVolume
         p.playWhenReady = autoPlay
+    }
+
+    fun setVolume(vol: Float) {
+        desiredVolume = vol.coerceIn(0f, 1f)
+        player?.volume = desiredVolume
     }
 
     private fun stableKeyFrom(url: String): String {

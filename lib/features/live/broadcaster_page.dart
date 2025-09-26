@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:djs_live_stream/features/live/video_repository_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -944,7 +945,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
             // ====== 透明聊天紀錄框（左下，顯示最近訊息）======
             Positioned(
               left: 10,
-              bottom: 110, // 留給輸入框高度
+              bottom: 110,
               child: LiveChatPanel(
                 messages: ref.watch(callSessionProvider(roomId).select((s) => s.messages)),
                 controller: _liveScroll,
@@ -956,7 +957,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
             // 快捷禮物列（輸入框正上方）
             Positioned(
               left: 12,
-              bottom: 55, // 略高於輸入列（預留 SafeArea + 間距）
+              bottom: 55,
               child: SizedBox(
                 width: 170,
                 height: 50,
@@ -1002,7 +1003,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
                                     child: ClipRRect(
                                       borderRadius: BorderRadius.circular(10),
                                       child: (icon.isNotEmpty)
-                                          ? Image.network(icon, fit: BoxFit.cover)
+                                          ? CachedNetworkImage(imageUrl: icon, fit: BoxFit.cover)
                                           : const SizedBox.shrink(),
                                     ),
                                   ),
