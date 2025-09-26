@@ -1,3 +1,4 @@
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -27,12 +28,35 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
   final List<VoidCallback> _unsubs = [];
   bool _showingIncoming = false;
 
+  final AudioPlayer _ring = AudioPlayer();
+  bool _ringing = false;
 
   OverlayEntry? _incomingBanner;   // ★ 來電 Banner
   void _hideIncomingBanner() {
     _incomingBanner?.remove();
     _incomingBanner = null;
     _showingIncoming = false;
+    _stopRingtoneAndUnduck();
+  }
+
+  Future<void> _startRingtoneAndDuck() async {
+    if (_ringing) return;
+    _ringing = true;
+    try {
+      await _ring.setReleaseMode(ReleaseMode.loop);
+      await _ring.play(AssetSource('ringtone.wav'));
+    } catch (_) {}
+    // 靜音首頁影片（但仍播放）
+    ref.read(homeMuteAudioProvider.notifier).state = true;
+  }
+
+  Future<void> _stopRingtoneAndUnduck() async {
+    if (_ringing) {
+      _ringing = false;
+      try { await _ring.stop(); } catch (_) {}
+    }
+    // 恢復首頁影片聲音
+    ref.read(homeMuteAudioProvider.notifier).state = false;
   }
 
   @override
@@ -70,6 +94,8 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
     if (CallOverlay.isShowing) CallOverlay.hide();
 
     if (toast.isNotEmpty) Fluttertoast.showToast(msg: toast);
+
+    _stopRingtoneAndUnduck();
 
     if (_incomingBanner != null) return;
 
@@ -166,12 +192,15 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
         ),
       );
 
+      _startRingtoneAndDuck();
+
       // ★ 重要：等到首幀再插入；若 overlay 暫不可用，回退到整頁接聽頁，避免 UI 靜默
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final overlay = rootNavigatorKey.currentState?.overlay;
         if (overlay == null) {
           // 回退：用原本整頁接聽頁，確保有 UI
           _showingIncoming = false;
+          _stopRingtoneAndUnduck();
           _pushIncomingFullPage(
             channel: ch,
             fromUid: peerUid,
@@ -317,6 +346,7 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     for (final u in _unsubs) { try { u(); } catch (_) {} }
+    _stopRingtoneAndUnduck();
     super.dispose();
   }
 

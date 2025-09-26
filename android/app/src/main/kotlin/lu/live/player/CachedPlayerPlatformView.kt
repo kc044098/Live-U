@@ -48,6 +48,8 @@ class CachedPlayerPlatformView(
 
     private val channel = MethodChannel(messenger, "cached_video_player/view_$viewId")
 
+    private var lastVolume: Float = 1f
+
     // 把 listener 設一次就好（事件名統一 "onFirstFrame"）
     init {
         channel.setMethodCallHandler(this)
@@ -119,6 +121,19 @@ class CachedPlayerPlatformView(
                 player.seekTo(ms); result.success(null)
             }
             "release" -> { player.release(); result.success(null) }
+
+            "setVolume" -> {
+                val v = (call.argument<Double>("volume") ?: 1.0).toFloat().coerceIn(0f, 1f)
+                lastVolume = v
+                player.setVolume(v)
+                result.success(null)
+            }
+
+            // ✅ 可選：Dart 有呼叫 isPlaying，就一起補上
+            "isPlaying" -> {
+                result.success(player.getPlayer()?.isPlaying == true)
+            }
+
             else -> result.notImplemented()
         }
     }

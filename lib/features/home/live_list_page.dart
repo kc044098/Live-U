@@ -9,6 +9,7 @@ import 'package:flutter_svg/svg.dart';
 
 import '../../platform/cached_prefetch.dart';
 import '../../routes/app_routes.dart';
+import '../call/call_repository.dart';
 import '../call/call_request_page.dart';
 import '../call/home_visible_provider.dart';
 import '../live/data_model/cached_player_view.dart';
@@ -97,12 +98,6 @@ class _LiveListPageState extends ConsumerState<LiveListPage>
   @override
   void dispose() {
     routeObserver.unsubscribe(this);
-
-    // 保險：離開時把標記與 banner 清空
-    Future.microtask(() {
-      ref.read(isLiveListVisibleProvider.notifier).state = false;
-      ref.read(incomingBannerProvider.notifier).state = null;
-    });
 
     if (widget.isBroadcaster) {
       _tabController.dispose();
@@ -400,11 +395,12 @@ class _HomeVideoTabState extends ConsumerState<HomeVideoTab>
   Widget build(BuildContext context) {
     super.build(context);
 
-    final allow = ref.watch(homePlayGateProvider);
-    if (_playGate.value != allow) {
-      _playGate.value = allow;
+    final globalAllow = ref.watch(homePlayGateProvider);
+    if (!globalAllow && _playGate.value) {
+      _playGate.value = false;
     }
 
+    final mute = ref.watch(homeMuteAudioProvider);
     final feed = ref.watch(homeFeedProvider);
     final ctl  = ref.read(homeFeedProvider.notifier);
     final items = feed.items;
@@ -456,6 +452,7 @@ class _HomeVideoTabState extends ConsumerState<HomeVideoTab>
                 item: item,
                 isActive: isActive,
                 playGate: _playGate,
+                mute: mute,
               );
             case FeedKind.image:
               return _ImageCard(
@@ -560,7 +557,8 @@ class _VideoCard extends ConsumerStatefulWidget {
   final FeedItem item;
   final bool isActive;
   final ValueListenable<bool> playGate;
-  const _VideoCard({required Key? key, required this.item, required this.isActive, required this.playGate});
+  final bool mute;
+  const _VideoCard({required Key? key, required this.item, required this.isActive, required this.playGate, required this.mute,});
 
   @override
   ConsumerState<_VideoCard> createState() => _VideoCardState();
@@ -607,10 +605,12 @@ class _VideoCardState extends ConsumerState<_VideoCard> with WidgetsBindingObser
     return p.startsWith('/') ? '$base$p' : '$base/$p';
   }
 
+
   Future<void> _attachAndPlay() async {
     if (!mounted || _attached) return;
     try {
       await _viewKey.currentState?.attach();
+      await _viewKey.currentState?.setMuted(widget.mute);
       await _viewKey.currentState?.play();
 
       _watchdog?.cancel();
@@ -622,6 +622,7 @@ class _VideoCardState extends ConsumerState<_VideoCard> with WidgetsBindingObser
           try {
             await _viewKey.currentState?.detach();
             await _viewKey.currentState?.attach();
+            await _viewKey.currentState?.setMuted(widget.mute);
             await _viewKey.currentState?.play();
           } catch (_) {}
         }
@@ -658,6 +659,10 @@ class _VideoCardState extends ConsumerState<_VideoCard> with WidgetsBindingObser
       _attachAndPlay();        // 不隱藏封面
     } else if (oldWidget.isActive && !widget.isActive) {
       _detachAndPause();       // 顯示封面
+    }
+
+    if (oldWidget.mute != widget.mute) {
+      _viewKey.currentState?.setMuted(widget.mute);
     }
   }
 
@@ -722,6 +727,7 @@ class _VideoCardState extends ConsumerState<_VideoCard> with WidgetsBindingObser
               _watchdog?.cancel();
               setState(() => _coverVisible = false);
             },
+            muted: widget.mute,
           ),
         ),
         if (cover != null && _coverVisible)

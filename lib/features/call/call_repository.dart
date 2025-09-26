@@ -79,3 +79,5 @@ final callRepositoryProvider = Provider<CallRepository>((ref) {
   final api = ref.watch(apiClientProvider);
   return CallRepository(api);
 });
+
+final homeMuteAudioProvider = StateProvider<bool>((_) => false);

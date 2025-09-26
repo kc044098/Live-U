@@ -17,6 +17,7 @@ import 'package:flutter/services.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 
+import '../../data/models/member_video_model.dart';
 import '../../data/models/user_model.dart';
 import '../call/call_request_page.dart';
 import '../live/data_model/feed_item.dart';
@@ -122,6 +123,7 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _buildFeaturedStripIfNeeded(user),
           const SizedBox(height: 12),
           const Text('關於我',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
@@ -339,7 +341,7 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
   }
 
   Widget _buildTopMedia(List<String> avatars) {
-    const aspect = 16 / 9;
+    final photos = avatars.where((e) => e.trim().isNotEmpty).toList(); // 再保險
 
     Widget _img(String url) {
       if (url.startsWith('assets/')) {
@@ -348,64 +350,61 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
       return CachedNetworkImage(imageUrl: url, fit: BoxFit.cover);
     }
 
-    if (avatars.isEmpty) {
-      return AspectRatio(
-        aspectRatio: aspect,
-        child: _img('assets/my_photo_defult.jpeg'),
+    // 沒有圖片 → 顯示預設圖
+    if (photos.isEmpty) {
+      return SizedBox(
+        width: double.infinity,
+        height: 288,
+        child: Image.asset(
+          'assets/my_photo_defult.jpeg',
+          fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
+        ),
       );
     }
 
-    if (avatars.length == 1) {
-      return AspectRatio(
-        aspectRatio: aspect,
-        child: _img(avatars.first),
+    // 只有一張 → 單圖
+    if (photos.length == 1) {
+      return SizedBox(
+        width: double.infinity,
+        height: 288,
+        child: _img(photos.first),
       );
     }
 
-    return AspectRatio(
-      aspectRatio: aspect,
-      child: Stack(
-        alignment: Alignment.bottomCenter,
-        children: [
-          // 輪播本體
-          CarouselSlider.builder(
-            carouselController: _carouselController,
-            itemCount: avatars.length,
-            options: CarouselOptions(
-              viewportFraction: 1,
-              autoPlay: true,
-              onPageChanged: (index, reason) {
-                _currentIndexNotifier.value = index; // ✅ 讓白點會動
-              },
-            ),
-            itemBuilder: (_, i, __) => _img(avatars[i]),
+    return Stack(
+      alignment: Alignment.bottomCenter,
+      children: [
+        CarouselSlider.builder(
+          key: ValueKey(photos.join('|')), // 用過濾後的清單做 key
+          itemCount: photos.length,
+          carouselController: _carouselController,
+          options: CarouselOptions(
+            height: 288,
+            viewportFraction: 1.0,
+            autoPlay: true,
+            onPageChanged: (index, reason) => _currentIndexNotifier.value = index,
           ),
-
-          // 小白點（2 張以上才顯示）+ 半透明底
-          if (avatars.length > 1)
-            Positioned(
-              bottom: 12,
-              child: ValueListenableBuilder<int>(
-                valueListenable: _currentIndexNotifier,
-                builder: (context, currentIndex, _) {
-                  return AnimatedSmoothIndicator(
-                    activeIndex: currentIndex,
-                    count: avatars.length,
-                    effect: const ExpandingDotsEffect(
-                      activeDotColor: Colors.white,
-                      dotColor: Colors.white54,
-                      dotHeight: 8,
-                      dotWidth: 8,
-                      spacing: 6,
-                    ),
-                    onDotClicked: (index) =>
-                        _carouselController.animateToPage(index),
-                  );
-                },
+          itemBuilder: (_, i, __) => _img(photos[i]),
+        ),
+        if (photos.length > 1)
+          Positioned(
+            bottom: 12,
+            child: ValueListenableBuilder<int>(
+              valueListenable: _currentIndexNotifier,
+              builder: (context, currentIndex, _) => AnimatedSmoothIndicator(
+                activeIndex: currentIndex,
+                count: photos.length,
+                effect: const ExpandingDotsEffect(
+                  activeDotColor: Colors.white,
+                  dotColor: Colors.white54,
+                  dotHeight: 8, dotWidth: 8, spacing: 6,
+                ),
+                onDotClicked: (index) => _carouselController.animateToPage(index),
               ),
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 
@@ -621,6 +620,132 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
     );
   }
 
+  Widget _buildFeaturedStripIfNeeded(UserModel? u) {
+    if (u?.isBroadcaster != true) return const SizedBox.shrink();
+
+    // 撈這位用戶的動態列表，挑 isTop == 1
+    final feed = ref.watch(memberFeedByUserProvider(widget.userId));
+    final featured = feed.items.where((e) => e.isTop == 1).toList();
+    if (featured.isEmpty) return const SizedBox.shrink();
+
+    final cdnBase = ref.watch(userProfileProvider)?.cdnUrl ?? '';
+
+    Widget _thumbOf(MemberVideoModel it) {
+      // 120×140 的卡片內容（有影片就取縮圖、否則顯示封面）
+      final rounded = BorderRadius.circular(8);
+
+      if (it.isVideo) {
+        final videoUrl = _cdnJoin(cdnBase, it.videoUrl);
+        return ClipRRect(
+          borderRadius: rounded,
+          child: FutureBuilder<Uint8List?>(
+            future: _getNetworkVideoThumbnail(videoUrl),
+            builder: (context, snap) {
+              final child = (snap.connectionState == ConnectionState.done && snap.data != null)
+                  ? Image.memory(snap.data!, fit: BoxFit.cover)
+                  : _loadingBox();
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  child,
+                  const Center(child: Icon(Icons.play_circle_fill, size: 32, color: Colors.white)),
+                ],
+              );
+            },
+          ),
+        );
+      } else {
+        final cover = (it.coverUrl ?? '').trim();
+        final coverAbs = _cdnJoin(cdnBase, cover);
+        return ClipRRect(
+          borderRadius: rounded,
+          child: (coverAbs.isEmpty)
+              ? _fallbackBox()
+              : CachedNetworkImage(
+            imageUrl: coverAbs,
+            fit: BoxFit.cover,
+            placeholder: (_, __) => _loadingBox(),
+            errorWidget: (_, __, ___) => _fallbackBox(),
+          ),
+        );
+      }
+    }
+
+    void _open(MemberVideoModel it) {
+      final avatarUrl = u!.avatarUrl.startsWith('http')
+          ? u.avatarUrl
+          : _cdnJoin(cdnBase, u.avatarUrl);
+
+      if (it.isVideo) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ViewOtherVideoPage(
+              videoPath: _cdnJoin(cdnBase, it.videoUrl),
+              displayName: u.displayName,
+              avatarPath: avatarUrl,
+              isVip: u.isVip,
+              isLike: u.isLike == 1,
+              message: it.title,
+              uid: u.uid,
+              isBroadcaster: u.isBroadcaster,
+              isTop: it.isTop,
+            ),
+          ),
+        );
+      } else {
+        final imgPath = _cdnJoin(cdnBase, it.coverUrl ?? '');
+        if (imgPath.isEmpty) return;
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ViewOtherImagePage(
+              imagePath: imgPath,
+              displayName: u.displayName,
+              avatarPath: avatarUrl,
+              isVip: u.isVip,
+              isLike: u.isLike == 1,
+              message: it.title,
+              uid: u.uid,
+              isBroadcaster: u.isBroadcaster,
+              isTop: it.isTop,
+            ),
+          ),
+        );
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(bottom: 8),
+          child: Text('精選', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        ),
+        SizedBox(
+          height: 140,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: featured.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10), // 卡片間距 10
+            itemBuilder: (_, i) {
+              final it = featured[i];
+              return GestureDetector(
+                onTap: () => _open(it),
+                child: SizedBox(
+                  width: 120,   // 指定寬度 120
+                  height: 140,  // 指定高度 140
+                  child: _thumbOf(it),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
 // 小工具：loading / fallback
   Widget _loadingBox() => Container(
         color: Colors.grey[300],
@@ -663,9 +788,19 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
         final displayName = (current.displayName?.isNotEmpty == true)
             ? current.displayName!
             : '用戶';
-        final headerPhotos = current.photoURL.isEmpty
-            ? ['assets/pic_girl1.png']
-            : current.photoURL.map((p) => p.startsWith('http') ? p : _cdnJoin(myCdnBase, p)).toList();
+        final rawPhotos = current.photoURL;
+        final headerPhotos = rawPhotos
+            .map((p) => p.trim())
+            .where((p) => p.isNotEmpty)                                     // 先丟掉 ""、"   "
+            .map((p) => p.startsWith('http') || p.startsWith('assets/')
+            ? p
+            : _cdnJoin(myCdnBase, p))                                    // 相對路徑補上 cdn
+            .where((p) => p.trim().isNotEmpty)                               // _cdnJoin 遇到空的再丟一次
+            .toList();
+
+        if (headerPhotos.isEmpty) {
+          headerPhotos.add('assets/pic_girl1.png');                          // 全空時給預設圖
+        }
         final likesDisplay = current.fans ?? 0;
         final effectiveIsLike = likeFromHome ?? (u.isLike == 1);
 
@@ -816,8 +951,14 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
     return '用戶 ${user.uid}';
   }
 
+  // ✅ 安全版：已是絕對網址就直接回傳，避免「重複加前綴」造成 403
   String _cdnJoin(String? base, String path) {
     if (path.isEmpty) return '';
+    if (path.startsWith('http://') ||
+        path.startsWith('https://') ||
+        path.startsWith('assets/')) {
+      return path; // ← 關鍵
+    }
     final b = (base ?? '').replaceAll(RegExp(r'/+$'), '');
     final p = path.replaceAll(RegExp(r'^/+'), '');
     return '$b/$p';
