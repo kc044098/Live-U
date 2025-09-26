@@ -16,6 +16,8 @@ import '../call/call_repository.dart';
 import '../live/data_model/call_overlay.dart';
 import '../live/mini_call_view.dart';
 import '../profile/profile_controller.dart';
+import '../widgets/cached_network_image.dart';
+import 'call_abort_provider.dart';
 
 class IncomingCallPage extends ConsumerStatefulWidget {
   final String channelName;
@@ -61,6 +63,13 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
     _listenWs();
     _startTimeout();
     WakelockPlus.enable();
+
+    // ★ 啟動時立即檢查是否已被中止
+    if (ref.read(callAbortProvider).contains(widget.channelName)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _endWithToast('對方已結束通話請求...');
+      });
+    }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _requestPermsOnEnter();   // ⬅️ 頁面開啟就彈系統權限
@@ -213,6 +222,12 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
     if (_busy) return;
     _busy = true;
 
+    // ★ 起手式：先看是否已被中止
+    if (ref.read(callAbortProvider).contains(widget.channelName)) {
+      _endWithToast('對方已結束通話請求...');
+      return;
+    }
+
     _timeoutTimer?.cancel();
     unawaited(_audioPlayer.stop());
 
@@ -253,6 +268,12 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
       }
     } else {
       unawaited(acceptFuture);
+    }
+
+    // ★ 取得 token 之後、導航前再檢一次通話是否被終止
+    if (!mounted || ref.read(callAbortProvider).contains(widget.channelName)) {
+      _endWithToast('對方已結束通話請求...');
+      return;
     }
 
     if (!mounted) return;
@@ -302,9 +323,13 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
   @override
   Widget build(BuildContext context) {
     final top = MediaQuery.of(context).padding.top;
-    final avatar = (widget.callerAvatar.isEmpty)
-        ? const AssetImage('assets/my_icon_defult.jpeg') as ImageProvider
-        : NetworkImage(widget.callerAvatar);
+
+    // ★ 持續監聽通話是否被中止
+    ref.listen<Set<String>>(callAbortProvider, (prev, next) {
+      if (next.contains(widget.channelName)) {
+        _endWithToast('對方已結束通話請求...');
+      }
+    });
 
     return WillPopScope(
       onWillPop: () async {
@@ -323,7 +348,7 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
                 child: Column(
                   children: [
                     const SizedBox(height: 110),
-                    CircleAvatar(radius: 54, backgroundImage: avatar),
+                    buildAvatarCircle(url: widget.callerAvatar, radius: 54),
                     const SizedBox(height: 16),
                     Text(
                       widget.callerName,

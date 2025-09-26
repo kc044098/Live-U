@@ -223,6 +223,16 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
       final int code = (resp['code'] is num) ? (resp['code'] as num).toInt()
           : int.tryParse('${resp['code'] ?? ''}') ?? 0;
 
+      if (code == 100) {
+        final String msg = (resp['message']?.toString() ?? '撥打失敗');
+        if (msg.contains('Request Failed')) {
+          Fluttertoast.showToast(msg: '電話撥打失敗 ～');
+          await _audioPlayer.stop();
+          if (mounted) Navigator.pop(context);
+          return;
+        }
+      }
+
       if (code == 102) {
         // 餘額不足 → 提示並關閉頁面
         Fluttertoast.showToast(msg: '餘額不足, 請前往充值～');

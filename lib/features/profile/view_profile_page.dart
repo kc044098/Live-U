@@ -666,7 +666,7 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
         final headerPhotos = current.photoURL.isEmpty
             ? ['assets/pic_girl1.png']
             : current.photoURL.map((p) => p.startsWith('http') ? p : _cdnJoin(myCdnBase, p)).toList();
-        final likesDisplay = (current.fans ?? 0) + 11; // ← fans + 11
+        final likesDisplay = current.fans ?? 0;
         final effectiveIsLike = likeFromHome ?? (u.isLike == 1);
 
         return DefaultTabController(

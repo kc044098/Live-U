@@ -12,6 +12,7 @@ import '../../core/ws/ws_provider.dart';
 import '../../data/models/gift_item.dart';
 import '../../globals.dart';
 import '../../routes/app_routes.dart';
+import '../call/call_abort_provider.dart';
 import '../call/call_repository.dart';
 import '../call/rtc_engine_manager.dart';
 import '../message/chat_message.dart';
@@ -88,6 +89,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
   final _liveSeenUuid = <String>{};
 
   late final GiftEffectPlayer _giftFx;
+  final Set<String> _warmed = {};
 
   Timer? _remoteGoneTimer;
   static const int _remoteGoneGraceSec = 5;
@@ -122,21 +124,26 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
       final j = _rtc.joined.value;
       if (j && mounted) {
         _cancelJoinTimeout();
-        ref.read(callTimerProvider).start();      // ← 啟動共享 timer
+        ref.read(callTimerProvider).start();
         setState(() => _joined = true);
         await _ensureAwake();
 
+        // ★ 剛進房如果仍然沒對方 → 先啟動 5 秒保底離房
+        if (_rtc.remoteUids.value.isEmpty) {
+          _armRemoteGoneTimer();    // 5 秒後仍無人 → _endBecauseRemoteLeft()
+        } else {
+          _cancelRemoteGoneTimer(); // 已有人 → 保險取消
+        }
 
         if (_freeAtSec > 0) {
-          // 有免費時長 → 主計時先不要跑
           ref.read(callTimerProvider).reset();
-          _startFreeCountdown();        // 結束時會自動 start()
+          _startFreeCountdown();
         } else {
-          // 沒有免費時長 → 直接開始主計時
           ref.read(callTimerProvider).start();
         }
       }
     };
+
 
     // ② 改你的 _remoteListener：偵測遠端在/不在 & 啟停計時器
     _remoteListener = () {
@@ -165,6 +172,9 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
     if (CallOverlay.isShowing) CallOverlay.hide();
     _giftFx = GiftEffectPlayer(vsync: this);
+    // 立即用現有值暖啟動一次（如果 provider 已經有資料）
+    final quick0 = ref.read(quickGiftListProvider);
+    quick0.whenData(_maybeWarmQuickGifts);
   }
 
   Future<void> _endBecauseRemoteLeft() async {
@@ -228,6 +238,11 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
       _argsReady = true;
       _enterRoom();
       _listenCallSignals();
+
+      // ★ 進房流程一開始就檢查通話是否被中止
+      if (ref.read(callAbortProvider).contains(roomId)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _endBecauseRemoteLeft());
+      }
 
       // 監聽遠端視訊開關
       _pageRtcHandler = RtcEngineEventHandler(
@@ -341,6 +356,12 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
     debugPrint(
         '➡️[RTC] join channel=$roomId uid=${mUser!.uid} tokenLen=${rtcToken?.length} voice=$_isVoice');
+
+    // ★ 入房前再檢查一次通話是否被終止
+    if (ref.read(callAbortProvider).contains(roomId)) {
+      _goHome();
+      return;
+    }
 
     await _rtc.join(
       channelId: roomId,
@@ -551,6 +572,21 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     });
   }
 
+  void _maybeWarmQuickGifts(List<GiftItemModel> list) {
+    if (!mounted) return;
+    final base = ref.read(userProfileProvider)?.cdnUrl ?? '';
+
+    final urls = list
+        .take(3) // 只暖三個快捷禮物
+        .map((g) => cu.joinCdn(base, g.url))
+        .where((u) => u.isNotEmpty && !_warmed.contains(u))
+        .toList();
+
+    if (urls.isEmpty) return;
+    _warmed.addAll(urls);
+    _giftFx.warmUp(urls); // 下載 + 解碼並放到記憶體快取
+  }
+
   Future<void> _close() async {
     if (_closing) return;
     _closing = true;
@@ -702,6 +738,19 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
         body: const Center(child: CircularProgressIndicator()),
       );
     }
+
+    // 之後資料更新也暖啟動（只會對未暖過的 URL 動作）
+    ref.listen<AsyncValue<List<GiftItemModel>>>(
+      quickGiftListProvider,
+          (prev, next) => next.whenData(_maybeWarmQuickGifts),
+    );
+
+    // ★ 持續監聽通話被中止
+    ref.listen<Set<String>>(callAbortProvider, (prev, next) {
+      if (next.contains(roomId)) {
+        _endBecauseRemoteLeft();
+      }
+    });
 
     return WillPopScope(
       onWillPop: () async {

@@ -10,6 +10,7 @@ import 'package:flutter_svg/svg.dart';
 import '../../platform/cached_prefetch.dart';
 import '../../routes/app_routes.dart';
 import '../call/call_request_page.dart';
+import '../call/home_visible_provider.dart';
 import '../live/data_model/cached_player_view.dart';
 import '../live/data_model/feed_item.dart';
 import '../live/data_model/home_feed_state.dart';
@@ -35,7 +36,7 @@ class LiveListPage extends ConsumerStatefulWidget {
 }
 
 class _LiveListPageState extends ConsumerState<LiveListPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin , RouteAware {
   late TabController _tabController;
   final ScrollController _scrollController = ScrollController();
 
@@ -69,6 +70,21 @@ class _LiveListPageState extends ConsumerState<LiveListPage>
     });
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) {
+      routeObserver.subscribe(this, route);
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final isTop = route?.isCurrent == true; // 只有當前 route 在最上層才算可見
+      ref.read(isLiveListVisibleProvider.notifier).state = isTop;
+    });
+  }
+
   void _onScroll() {
     final notifier = ref.read(friendListProvider.notifier);
     final scroll = _scrollController;
@@ -80,6 +96,14 @@ class _LiveListPageState extends ConsumerState<LiveListPage>
 
   @override
   void dispose() {
+    routeObserver.unsubscribe(this);
+
+    // 保險：離開時把標記與 banner 清空
+    Future.microtask(() {
+      ref.read(isLiveListVisibleProvider.notifier).state = false;
+      ref.read(incomingBannerProvider.notifier).state = null;
+    });
+
     if (widget.isBroadcaster) {
       _tabController.dispose();
     }
@@ -317,7 +341,7 @@ class _HomeVideoTabState extends ConsumerState<HomeVideoTab>
   // 當「上層頁面 pop 回來」：
   @override
   void didPopNext() {
-    _playGate.value = true;  // 恢復播放
+    _playGate.value = true; // 恢復播放
   }
 
   @override
@@ -325,7 +349,6 @@ class _HomeVideoTabState extends ConsumerState<HomeVideoTab>
     routeObserver.unsubscribe(this);
     _playGate.dispose();
     _pageController.dispose();
-    // 不再持有多支 controller，這裡不用逐一 dispose
     for (final cancel in _prefetchCancels.values) { cancel(); }
     super.dispose();
   }
