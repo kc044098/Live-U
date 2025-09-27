@@ -83,6 +83,8 @@ class _LiveListPageState extends ConsumerState<LiveListPage>
       if (!mounted) return;
       final isTop = route?.isCurrent == true; // 只有當前 route 在最上層才算可見
       ref.read(isLiveListVisibleProvider.notifier).state = isTop;
+      debugPrint('🧭[LiveListPage] route.isCurrent=$isTop → '
+          'isLiveListVisibleProvider=$isTop');
     });
   }
 
