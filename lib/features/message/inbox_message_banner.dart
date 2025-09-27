@@ -5,6 +5,7 @@ import 'package:flutter_svg/svg.dart';
 
 import '../../data/models/gift_item.dart';
 import '../widgets/cached_network_image.dart';
+
 class InboxMessageBanner extends StatelessWidget {
   final String title;
   final String avatarUrl;
@@ -93,19 +94,35 @@ class InboxMessageBanner extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   // ✅ 回覆按鈕保留且必顯示
-                  GestureDetector(
-                    onTap: onReply,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8),
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFFFA770), Color(0xFFD247FE)],
+                  SizedBox(
+                    height: 38, // 放大熱區
+                    child: Material(
+                      color: Colors.transparent,
+                      child: Ink(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFFFFA770), Color(0xFFD247FE)],
+                          ),
                         ),
-                      ),
-                      child: const Text(
-                        '回覆',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () {
+                            debugPrint('📬[Banner] reply tapped');
+                            onReply();
+                          },
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            child: Text(
+                              '回覆',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),

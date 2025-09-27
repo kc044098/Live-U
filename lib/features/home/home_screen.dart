@@ -40,7 +40,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void _updateLiveListVisibleFlag() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      ref.read(isLiveListVisibleProvider.notifier).state = _isLiveHomeTab;
+      final v = _isLiveHomeTab;
+      ref.read(isLiveListVisibleProvider.notifier).state = v;
+      debugPrint('🏠[Home] isLiveListVisibleProvider=$v  '
+          '(selected=$_selectedIndex, liveTab=$_liveTabIndex)');
     });
   }
 

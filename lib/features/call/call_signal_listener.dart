@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import '../../core/ws/ws_provider.dart';
 import '../../data/models/gift_item.dart';
 import '../../globals.dart';
@@ -45,7 +46,10 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
   OverlayEntry? _msgBanner;
   Timer? _msgTimer;
 
+  void _log(String msg) => debugPrint('📬[Banner] $msg');
+
   void _hideIncomingBanner() {
+    if (_incomingBanner != null) _log('hide incoming-call banner');
     _incomingBanner?.remove();
     _incomingBanner = null;
     _showingIncoming = false;
@@ -55,9 +59,76 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
   void _hideMsgBanner() {
     _msgTimer?.cancel();
     _msgTimer = null;
-    _msgBanner?.remove();
+
+    final e = _msgBanner;
     _msgBanner = null;
+
+    if (e == null) return;
+    try {
+      if (e.mounted) {
+        e.remove();
+        debugPrint('📬[Banner] hide message banner (removed)');
+      } else {
+        debugPrint('📬[Banner] skip remove: entry not mounted yet');
+      }
+    } catch (err) {
+      debugPrint('📬[Banner] remove threw (ignored): $err');
+    }
   }
+
+  OverlayState? _findOverlay() {
+    final nav = rootNavigatorKey.currentState;
+    if (nav?.overlay != null) return nav!.overlay!;
+    final ctx = rootNavigatorKey.currentContext;
+    if (ctx != null) {
+      try { return Overlay.of(ctx, rootOverlay: true); } catch (_) {}
+    }
+    try { return Overlay.of(context, rootOverlay: true); } catch (_) {}
+    return null;
+  }
+
+  void _insertMsgBannerWithRetry(OverlayEntry entry, {int retry = 0}) {
+    if (_msgBanner != null && identical(_msgBanner, entry) && entry.mounted) {
+      debugPrint('📬[Banner] entry already mounted, skip insert');
+      return;
+    }
+
+    final ov = _findOverlay();
+    debugPrint('📬[Banner] insert attempt #$retry -> overlay=${ov != null}');
+    if (ov != null) {
+      try {
+        ov.insert(entry);
+        _msgBanner = entry;
+        debugPrint('📬[Banner] inserted banner 👍');
+        _msgTimer = Timer(const Duration(seconds: 5), () {
+          debugPrint('📬[Banner] auto hide banner (timeout)');
+          _hideMsgBanner();
+        });
+        return;
+      } catch (e) {
+        debugPrint('📬[Banner] insert threw: $e');
+      }
+    }
+
+    // 備援：下一幀再試
+    if (retry == 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        debugPrint('📬[Banner] postFrame fallback insert');
+        _insertMsgBannerWithRetry(entry, retry: 1);
+      });
+      // 確保真的會有一幀
+      try { SchedulerBinding.instance.scheduleFrame(); } catch (_) {}
+    } else if (retry == 1) {
+      // 再給一次機會，用短延遲
+      Timer(const Duration(milliseconds: 32), () {
+        debugPrint('📬[Banner] timer fallback insert');
+        _insertMsgBannerWithRetry(entry, retry: 2);
+      });
+    } else {
+      debugPrint('📬[Banner] give up inserting banner after retries');
+    }
+  }
+
 
   Future<void> _startRingtoneAndDuck() async {
     if (_ringing) return;
@@ -109,6 +180,7 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
 
   void _onIncomingChatForBanner(Map<String, dynamic> payload) {
     final inHome = ref.read(isLiveListVisibleProvider);
+    debugPrint('📬[Banner] room_chat arrived. inHome=$inHome, bannerAlive=${_msgBanner != null}');
     if (!inHome) return;
 
     final me   = ref.read(userProfileProvider);
@@ -118,9 +190,8 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
     final data = _pickData(payload);
 
     final fromUid = _toInt(payload['uid']) ?? _toInt(data['uid']) ?? -1;
-
-    final toUid = _toInt(payload['to_uid']) ?? _toInt(data['to_uid']) ?? -1;
-
+    final toUid   = _toInt(payload['to_uid']) ?? _toInt(data['to_uid']) ?? -1;
+    debugPrint('📬[Banner] uids: from=$fromUid -> to=$toUid, myId=$myId');
     if (fromUid <= 0 || toUid != myId) return;
 
     final nick = _s(data['nick_name'] ?? '用戶 $fromUid');
@@ -132,29 +203,29 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
     final avatarUrl = _joinCdn2(cdn, avatarRaw);
 
     final content = _s(data['content']);
+    debugPrint('📬[Banner] parsed nick="$nick", avatarRaw="$avatarRaw", content="$content"');
 
-    // ✅ 讀禮物清單（若尚未載入，給空陣列）
+    // 禮物列表（可能還沒載入就給空）
     final gifts = ref.read(giftListProvider).maybeWhen(
       data: (v) => v,
       orElse: () => const <GiftItemModel>[],
     );
 
-    _hideMsgBanner();
-    _msgBanner = OverlayEntry(
+    _hideMsgBanner(); // 先清舊的（安全版）
+    debugPrint('📬[Banner] will build overlay entry');
+
+    final entry = OverlayEntry(
       builder: (_) => InboxMessageBanner(
         title: nick,
         avatarUrl: avatarUrl,
-        previewContent: content, // ✅ 直接給原始 content
-        cdnBase: cdn,            // ✅ 給 CDN 拼圖
-        gifts: gifts,            // ✅ 給禮物清單
+        previewContent: content,
+        cdnBase: cdn,
+        gifts: gifts,
         onReply: () => _openChatAndHide(fromUid, nick, avatarUrl),
       ),
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final overlay = rootNavigatorKey.currentState?.overlay ?? Overlay.of(rootNavigatorKey.currentContext!);
-      overlay.insert(_msgBanner!);
-    });
-    _msgTimer = Timer(const Duration(seconds: 5), _hideMsgBanner);
+
+    _insertMsgBannerWithRetry(entry);
   }
 
   void _abortAndGoHome(Map p, {String toast = '對方已結束通話'}) {
@@ -215,25 +286,43 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
   }
 
   Future<void> _openChatAndHide(int partnerUid, String name, String avatarUrl) async {
+    debugPrint('📬[Banner] onReply tapped -> hide and navigate');
     _hideMsgBanner();
 
     // 進入聊天時暫停首頁視頻（返回時恢復）
     ref.read(homePlayGateProvider.notifier).state = false;
 
-    try {
-      await Navigator.of(rootNavigatorKey.currentContext!, rootNavigator: true).push(
-        MaterialPageRoute(
-          builder: (_) => MessageChatPage(
-            partnerName: name,
-            partnerAvatar: avatarUrl,
-            vipLevel: 0,         // 取不到就先 0，進頁後可自行刷新
-            statusText: 1,
-            partnerUid: partnerUid,
-          ),
-        ),
-      );
-    } finally {
-      ref.read(homePlayGateProvider.notifier).state = true;
+    final route = MaterialPageRoute(
+      builder: (_) => MessageChatPage(
+        partnerName: name,
+        partnerAvatar: avatarUrl,
+        vipLevel: 0,
+        statusText: 1,
+        partnerUid: partnerUid,
+      ),
+    );
+
+    // 封裝：真正的 push 放到下一幀，避免和 Overlay remove 同步動作在 iOS 上打架
+    Future<void> _push(NavigatorState nav) async {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        debugPrint('📬[Banner] perform navigation on next frame');
+        try {
+          await nav.push(route);
+        } finally {
+          ref.read(homePlayGateProvider.notifier).state = true;
+        }
+      });
+    }
+
+    // 先用 rootNavigatorKey，沒有就回退用 context
+    final nav1 = rootNavigatorKey.currentState;
+    if (nav1 != null) {
+      debugPrint('📬[Banner] use rootNavigatorKey for navigation');
+      unawaited(_push(nav1));
+    } else {
+      debugPrint('📬[Banner] rootNavigatorKey null, fallback to context navigator');
+      final nav2 = Navigator.of(context, rootNavigator: true);
+      unawaited(_push(nav2));
     }
   }
 
@@ -259,6 +348,7 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
       final uuid = _extractUuid(m);
       if (uuid == null || uuid.isEmpty) return;
 
+      _log('ACK uuid=$uuid sent');
       // 3) 去重後打 ACK
       if (_ackedUuids.add(uuid)) {
         unawaited(ref.read(chatRepositoryProvider).sendAck(uuid));
@@ -309,6 +399,8 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
 
   void _onInvite(Map<String, dynamic> p) {
     final st = _status(p) ?? 0;
+    _log('call.invite status=$st, inHome=${ref.read(isLiveListVisibleProvider)}');
+
     if (st != 0) return;
 
     final ch = _channel(p);
@@ -365,7 +457,10 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
       // ★ 重要：等到首幀再插入；若 overlay 暫不可用，回退到整頁接聽頁，避免 UI 靜默
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final overlay = rootNavigatorKey.currentState?.overlay;
+        _log('try insert incoming-call banner, overlayIsNull=${overlay==null}');
+
         if (overlay == null) {
+          _log('fallback to full page');
           // 回退：用原本整頁接聽頁，確保有 UI
           _showingIncoming = false;
           _stopRingtoneAndUnduck();
@@ -381,6 +476,7 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
           return;
         }
         overlay.insert(_incomingBanner!);
+        _log('inserted incoming-call banner 👍');
       });
 
     } else {
