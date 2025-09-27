@@ -1,12 +1,20 @@
+import 'dart:convert';
+
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../core/ws/ws_provider.dart';
+import '../../data/models/gift_item.dart';
 import '../../globals.dart';
 import '../../routes/app_routes.dart';
 import '../live/data_model/call_overlay.dart';
+import '../live/gift_providers.dart';
+import '../message/chat_providers.dart';
+import '../message/chat_repository.dart';
+import '../message/inbox_message_banner.dart';
+import '../message/message_chat_page.dart';
 import '../profile/profile_controller.dart';
 import 'call_abort_provider.dart';
 import 'call_repository.dart';
@@ -27,16 +35,28 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
     with WidgetsBindingObserver {
   final List<VoidCallback> _unsubs = [];
   bool _showingIncoming = false;
+  final _ackedUuids = <String>{};
 
   final AudioPlayer _ring = AudioPlayer();
   bool _ringing = false;
 
   OverlayEntry? _incomingBanner;   // ★ 來電 Banner
+
+  OverlayEntry? _msgBanner;
+  Timer? _msgTimer;
+
   void _hideIncomingBanner() {
     _incomingBanner?.remove();
     _incomingBanner = null;
     _showingIncoming = false;
     _stopRingtoneAndUnduck();
+  }
+
+  void _hideMsgBanner() {
+    _msgTimer?.cancel();
+    _msgTimer = null;
+    _msgBanner?.remove();
+    _msgBanner = null;
   }
 
   Future<void> _startRingtoneAndDuck() async {
@@ -67,6 +87,10 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
     final ws = ref.read(wsProvider);
     ws.ensureConnected();
 
+    // ========= 全域攔截：任何 WS 都先嘗試 ACK =========
+    _unsubs.add(ws.tapRaw(_ackRawIfNeeded));  // ★ 新增這行
+    // ===============================================
+
     // 只看新版：來電響鈴 -> call.invite（status=0 或缺省）
     _unsubs.add(ws.on('call.invite', _onInvite));
 
@@ -80,6 +104,57 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
     _unsubs.add(ws.on('call.end', _abortAndGoHome));
     _unsubs.add(ws.on('call.cancel', _abortAndGoHome));
     _unsubs.add(ws.on('call.timeout', _abortAndGoHome));
+    _unsubs.add(ws.on('room_chat', _onIncomingChatForBanner));
+  }
+
+  void _onIncomingChatForBanner(Map<String, dynamic> payload) {
+    final inHome = ref.read(isLiveListVisibleProvider);
+    if (!inHome) return;
+
+    final me   = ref.read(userProfileProvider);
+    final cdn  = me?.cdnUrl ?? '';
+    final myId = int.tryParse(me?.uid ?? '') ?? -1;
+
+    final data = _pickData(payload);
+
+    final fromUid = _toInt(payload['uid']) ?? _toInt(data['uid']) ?? -1;
+
+    final toUid = _toInt(payload['to_uid']) ?? _toInt(data['to_uid']) ?? -1;
+
+    if (fromUid <= 0 || toUid != myId) return;
+
+    final nick = _s(data['nick_name'] ?? '用戶 $fromUid');
+    final avatarRaw = (() {
+      final v = data['avatar'];
+      if (v is List && v.isNotEmpty) return _s(v.first);
+      return _s(v);
+    })();
+    final avatarUrl = _joinCdn2(cdn, avatarRaw);
+
+    final content = _s(data['content']);
+
+    // ✅ 讀禮物清單（若尚未載入，給空陣列）
+    final gifts = ref.read(giftListProvider).maybeWhen(
+      data: (v) => v,
+      orElse: () => const <GiftItemModel>[],
+    );
+
+    _hideMsgBanner();
+    _msgBanner = OverlayEntry(
+      builder: (_) => InboxMessageBanner(
+        title: nick,
+        avatarUrl: avatarUrl,
+        previewContent: content, // ✅ 直接給原始 content
+        cdnBase: cdn,            // ✅ 給 CDN 拼圖
+        gifts: gifts,            // ✅ 給禮物清單
+        onReply: () => _openChatAndHide(fromUid, nick, avatarUrl),
+      ),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final overlay = rootNavigatorKey.currentState?.overlay ?? Overlay.of(rootNavigatorKey.currentContext!);
+      overlay.insert(_msgBanner!);
+    });
+    _msgTimer = Timer(const Duration(seconds: 5), _hideMsgBanner);
   }
 
   void _abortAndGoHome(Map p, {String toast = '對方已結束通話'}) {
@@ -137,6 +212,99 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
     final a = cdn.endsWith('/') ? cdn.substring(0, cdn.length - 1) : cdn;
     final b = path.startsWith('/') ? path.substring(1) : path;
     return '$a/$b';
+  }
+
+  Future<void> _openChatAndHide(int partnerUid, String name, String avatarUrl) async {
+    _hideMsgBanner();
+
+    // 進入聊天時暫停首頁視頻（返回時恢復）
+    ref.read(homePlayGateProvider.notifier).state = false;
+
+    try {
+      await Navigator.of(rootNavigatorKey.currentContext!, rootNavigator: true).push(
+        MaterialPageRoute(
+          builder: (_) => MessageChatPage(
+            partnerName: name,
+            partnerAvatar: avatarUrl,
+            vipLevel: 0,         // 取不到就先 0，進頁後可自行刷新
+            statusText: 1,
+            partnerUid: partnerUid,
+          ),
+        ),
+      );
+    } finally {
+      ref.read(homePlayGateProvider.notifier).state = true;
+    }
+  }
+
+  // ========= ACK：核心攔截邏輯 =========
+  void _ackRawIfNeeded(dynamic raw) {
+    try {
+      Map<String, dynamic>? m;
+
+      if (raw is String) {
+        m = jsonDecode(raw) as Map<String, dynamic>?;
+      } else if (raw is List<int>) {
+        final txt = utf8.decode(raw, allowMalformed: true);
+        m = jsonDecode(txt) as Map<String, dynamic>?;
+      } else if (raw is Map) {
+        m = Map<String, dynamic>.from(raw as Map);
+      }
+      if (m == null) return;
+
+      // 1) 跳過心跳
+      if (_looksLikeHeartbeat(m)) return;
+
+      // 2) 取 uuid（先頂層，再 data/Data 裡的 uuid/id）
+      final uuid = _extractUuid(m);
+      if (uuid == null || uuid.isEmpty) return;
+
+      // 3) 去重後打 ACK
+      if (_ackedUuids.add(uuid)) {
+        unawaited(ref.read(chatRepositoryProvider).sendAck(uuid));
+      }
+    } catch (_) {
+      // 忽略解析錯誤
+    }
+  }
+
+  bool _looksLikeHeartbeat(Map<String, dynamic> m) {
+    String _s(dynamic v) => v?.toString() ?? '';
+    int? _i(dynamic v) => (v is num) ? v.toInt() : int.tryParse(_s(v));
+
+    final t = _s(m['type'] ?? m['Type'] ?? m['event']).toLowerCase();
+    if (t.contains('heart') || t == 'ping' || t == 'pong') return true;
+
+    final flag = _i(m['flag'] ?? m['Flag']);
+    // 如果你後端有特定的心跳 flag，補進來（例：0/1/99 之類）
+    if (flag == 0 /*|| flag == 1 || flag == 99*/) return true;
+
+    return false;
+    // 若不確定，寧可少過濾（只檔明確心跳），避免漏 ACK
+  }
+
+  String? _extractUuid(Map<String, dynamic> m) {
+    String? _pickStr(Map mm, List<String> ks) {
+      for (final k in ks) {
+        final v = mm[k];
+        if (v == null) continue;
+        final s = v.toString();
+        if (s.isNotEmpty) return s;
+      }
+      return null;
+    }
+
+    // 頂層
+    final top = _pickStr(m, ['uuid', 'UUID']);
+    if (top != null && top.isNotEmpty) return top;
+
+    // data/Data 裡的 uuid / id
+    Map<String, dynamic> _asMap(dynamic v) =>
+        (v is Map) ? v.map((k, v) => MapEntry(k.toString(), v)) : <String, dynamic>{};
+
+    final data = _asMap(m['data']).isNotEmpty ? _asMap(m['data']) : _asMap(m['Data']);
+    final inner = _pickStr(data, ['uuid', 'UUID', 'id', 'Id']);
+    return inner;
   }
 
   void _onInvite(Map<String, dynamic> p) {
@@ -354,4 +522,26 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
   Widget build(BuildContext context) {
     return widget.child;
   }
+
+  // 取字串
+  String _s(dynamic v) => v?.toString() ?? '';
+
+  int? _toInt(dynamic v) {
+    if (v is num) return v.toInt();
+    return int.tryParse('${v ?? ''}');
+  }
+
+  Map<String, dynamic> _asMap(dynamic v) =>
+      (v is Map) ? v.map((k, v) => MapEntry(k.toString(), v)) : <String, dynamic>{};
+
+  Map<String, dynamic> _pickData(Map p) =>
+      _asMap(p['data']).isNotEmpty ? _asMap(p['data']) : _asMap(p['Data']);
+
+  String _joinCdn2(String cdn, String path) {
+    if (path.isEmpty || path.startsWith('http')) return path;
+    final a = cdn.endsWith('/') ? cdn.substring(0, cdn.length - 1) : cdn;
+    final b = path.startsWith('/') ? path.substring(1) : path;
+    return '$a/$b';
+  }
+
 }

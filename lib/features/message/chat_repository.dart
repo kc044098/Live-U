@@ -169,6 +169,18 @@ class ChatRepository {
     return ChatThreadPage(items: list, totalCount: count);
   }
 
+  Future<void> sendAck(String uuid) async {
+    try {
+      await _api.post(ApiEndpoints.messageSend, data: {
+        'flag': 'reply',
+        'uuid': uuid,
+      });
+    } catch (_) {
+      // ACK 失敗可忽略或做輕量重試；不要阻塞主流程
+    }
+  }
+
+
   (int?, String?) _parseCodeMsg(dynamic raw) {
     final data = raw is String ? jsonDecode(raw) : raw;
     if (data is Map) {
