@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/error_handler.dart';
 import '../../data/models/gift_item.dart';
 import '../../data/network/api_client_provider.dart';
 import '../../data/repository/gift_repository.dart';
@@ -30,11 +31,12 @@ class GiftListNotifier extends StateNotifier<AsyncValue<List<GiftItemModel>>> {
   }
 
   Future<void> refresh() async {
+    state = const AsyncValue.loading();
     try {
-      state = const AsyncValue.loading();
       final list = await _repo.fetchGiftList(force: true);
       state = AsyncValue.data(list);
     } catch (e, st) {
+      AppErrorToast.show(e); // ⬅️ 統一 Toast
       state = AsyncValue.error(e, st);
     }
   }

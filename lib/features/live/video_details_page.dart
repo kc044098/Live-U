@@ -9,6 +9,7 @@ import 'package:flutter_svg/svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../core/error_handler.dart';
 import '../../data/network/api_client_provider.dart';
 import '../../data/network/api_endpoints.dart';
 import '../../routes/app_routes.dart';
@@ -46,6 +47,9 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
 
   static const int _kMaxTitleLen = 300;
 
+  // ===== 新增：追蹤當前階段（只用於錯誤訊息更精準） =====
+  _Stage _stage = _Stage.none;
+
   @override
   void dispose() {
     _descController.dispose();
@@ -80,6 +84,7 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
       _isUploading = true;
       _progress = 0;
       _cancelToken = CancelToken();
+      _stage = _Stage.none;
     });
 
     try {
@@ -89,6 +94,7 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
 
       if (isVideo) {
         // 1) 先上傳影片（0% ~ 85%）
+        _stage = _Stage.uploadVideo;
         videoUrl = await repo.uploadToS3(
           file: file,
           cancelToken: _cancelToken,
@@ -104,6 +110,7 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
         if (coverPath != null &&
             coverPath.isNotEmpty &&
             await File(coverPath).exists()) {
+          _stage = _Stage.uploadCover;
           coverUrl = await repo.uploadToS3(
             file: File(coverPath),
             cancelToken: _cancelToken,
@@ -117,6 +124,7 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
         }
       } else {
         // 照片：單檔上傳（0% ~ 100%）
+        _stage = _Stage.uploadImage;
         imageUrl = await repo.uploadToS3(
           file: file,
           cancelToken: _cancelToken,
@@ -131,7 +139,8 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
       // 3) 組 payload
       final String relativeAudio =
       (isVideo && widget.musicAdded && (widget.musicPath?.isNotEmpty ?? false))
-          ? widget.musicPath!.trim() : '';
+          ? widget.musicPath!.trim()
+          : '';
 
       final payload = <String, dynamic>{
         'title': _descController.text.trim(),
@@ -142,33 +151,33 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
         if (!isVideo && imageUrl != null) 'img': [imageUrl], // 單張也用陣列
       };
 
-      print("上傳動態 payload ：$payload");
-      // 4) 通知後端建立動態
-      final resp = await api.post(ApiEndpoints.momentCreate, data: payload);
-      final raw = resp.data is String ? jsonDecode(resp.data) : resp.data;
-      if (raw is! Map || raw['code'] != 200) {
-        throw Exception('建立動態失敗: $raw');
-      }
+      // 4) 通知後端建立動態（改用 postOk：非 200 直接拋 ApiException）
+      _stage = _Stage.createMoment;
+      await api.postOk(ApiEndpoints.momentCreate, data: payload);
 
       if (!mounted) return;
       Fluttertoast.showToast(msg: "上傳成功～");
       Navigator.of(context, rootNavigator: true)
           .pushNamedAndRemoveUntil(AppRoutes.home, (route) => false);
+    } on ApiException catch (e) {
+      // 由 ApiClient._unwrapOrThrow 拋出：有業務 code 與友好訊息
+      Fluttertoast.showToast(msg: _messageForApiException(e, _stage));
     } on DioException catch (e) {
       if (CancelToken.isCancel(e)) {
         Fluttertoast.showToast(msg: '已取消上傳');
       } else {
-        debugPrint('上傳失敗: ${e.message}');
-        Fluttertoast.showToast(msg: '資料上傳失敗');
+        Fluttertoast.showToast(msg: _messageForDio(e, _stage));
       }
     } catch (e) {
-      debugPrint('上傳失敗: ${e.toString()}');
-      Fluttertoast.showToast(msg: '資料上傳失敗');
+      // 其他不可辨識錯誤
+      debugPrint('上傳失敗(${_stage.name}): $e');
+      Fluttertoast.showToast(msg: _fallbackMsgForStage(_stage));
     } finally {
       if (mounted) {
         setState(() {
           _isUploading = false;
           _progress = 0;
+          _stage = _Stage.none;
         });
       }
     }
@@ -223,7 +232,7 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
                 // 描述
                 Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
                     color: const Color(0xFFF8F8F8),
                     borderRadius: BorderRadius.circular(8),
@@ -239,7 +248,7 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
                       border: InputBorder.none,
                       hintText: '記錄這一刻',
                       hintStyle:
-                          TextStyle(color: Color(0xFF999999), fontSize: 14),
+                      TextStyle(color: Color(0xFF999999), fontSize: 14),
                       counterText: '',
                     ),
                   ),
@@ -253,9 +262,9 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
                     children: [
                       displayPath != null
                           ? Image.file(File(displayPath),
-                              width: 100, height: 100, fit: BoxFit.cover)
+                          width: 100, height: 100, fit: BoxFit.cover)
                           : const Icon(Icons.image,
-                              size: 100, color: Colors.grey),
+                          size: 100, color: Colors.grey),
                       Positioned(
                         bottom: 4,
                         left: 4,
@@ -266,7 +275,7 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
                           alignment: Alignment.center,
                           child: const Text('編輯封面',
                               style:
-                                  TextStyle(color: Colors.white, fontSize: 12)),
+                              TextStyle(color: Colors.white, fontSize: 12)),
                         ),
                       )
                     ],
@@ -362,7 +371,6 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
       ),
     );
   }
-
 
   void _showCategoryBottomSheet(BuildContext context) {
     showModalBottomSheet(
@@ -466,7 +474,98 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
       },
     );
   }
+
+  // ===== 新增：錯誤分類 & 對應訊息 =====
+
+  String _messageForApiException(ApiException e, _Stage stage) {
+    final code = e.code;
+    final server = (e.message ?? '').trim();
+    if (server.isNotEmpty) return server; // 優先用後端 message
+
+    // 常見 code 的備用文案
+    switch (code) {
+      case 401:
+        return '登入已失效，請重新登入';
+      case 413:
+        return _stageIsUpload(stage) ? '檔案過大，請壓縮後再試' : '請求資料過大';
+      case 429:
+        return '操作太頻繁，稍後再試';
+      case 422:
+        return '參數不完整或不合法';
+      default:
+        return _fallbackMsgForStage(stage);
+    }
+  }
+
+  String _messageForDio(DioException e, _Stage stage) {
+    // 網路形態
+    if (_isNetworkIssue(e)) {
+      return '網路連線異常，請稍後再試';
+    }
+
+    // HTTP 狀態碼
+    final sc = e.response?.statusCode ?? 0;
+    if (sc == 401) return '登入已失效，請重新登入';
+    if (sc == 413) return _stageIsUpload(stage) ? '檔案過大，請壓縮後再試' : '請求資料過大';
+    if (sc == 502 || sc == 503 || sc == 504) return '伺服器忙碌，請稍後再試';
+
+    // 其他
+    switch (stage) {
+      case _Stage.uploadVideo:
+        return '影片上傳失敗';
+      case _Stage.uploadCover:
+        return '封面上傳失敗';
+      case _Stage.uploadImage:
+        return '圖片上傳失敗';
+      case _Stage.createMoment:
+        return '建立動態失敗';
+      case _Stage.none:
+        return '發生錯誤';
+    }
+  }
+
+  String _fallbackMsgForStage(_Stage stage) {
+    switch (stage) {
+      case _Stage.uploadVideo:
+        return '影片上傳失敗';
+      case _Stage.uploadCover:
+        return '封面上傳失敗';
+      case _Stage.uploadImage:
+        return '圖片上傳失敗';
+      case _Stage.createMoment:
+        return '資料上傳失敗';
+      case _Stage.none:
+        return '資料上傳失敗';
+    }
+  }
+
+  bool _stageIsUpload(_Stage s) =>
+      s == _Stage.uploadVideo || s == _Stage.uploadCover || s == _Stage.uploadImage;
+
+  bool _isNetworkIssue(DioException e) {
+    switch (e.type) {
+      case DioExceptionType.connectionError:
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.receiveTimeout:
+      case DioExceptionType.sendTimeout:
+        return true;
+      default:
+        break;
+    }
+    final sc = e.response?.statusCode ?? 0;
+    if (sc == 502 || sc == 503 || sc == 504) return true;
+    if (e.error is SocketException) return true;
+    final s = e.message?.toLowerCase() ?? '';
+    return s.contains('timed out') ||
+        s.contains('failed host lookup') ||
+        s.contains('network is unreachable') ||
+        s.contains('sslhandshake') ||
+        s.contains('connection closed');
+  }
 }
+
+// 只在本檔使用的小 enum（用於錯誤訊息更精準）
+enum _Stage { none, uploadVideo, uploadCover, uploadImage, createMoment }
 
 class _GradientCapsuleProgress extends StatelessWidget {
   final double value; // 0.0 ~ 1.0
@@ -487,7 +586,7 @@ class _GradientCapsuleProgress extends StatelessWidget {
           ),
           child: Stack(
             children: [
-              Align( // 🔑 保證從左邊開始
+              Align(
                 alignment: Alignment.centerLeft,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 180),

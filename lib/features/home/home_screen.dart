@@ -1,6 +1,7 @@
 // # 主頁面含 BottomNavigationBar
 
 import 'package:flutter/material.dart';
+import '../../core/error_handler.dart';
 import '../../l10n/l10n.dart';
 import '../call/home_visible_provider.dart';
 import '../live/data_model/home_feed_state.dart';
@@ -87,6 +88,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
         _updateLiveListVisibleFlag();
       } catch (e) {
+        AppErrorToast.show(e);
       }
 
       _checkUserGender();

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import '../../core/error_handler.dart';
 import '../models/gift_item.dart';
 import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
@@ -21,6 +22,8 @@ class GiftRepository {
   List<GiftItemModel> get cachedNormal => _cacheNormal ?? const [];
   GiftItemModel? getById(int id) => _byId?[id];
 
+  Set<int> kNoDataCodes = {100, 404};
+
   bool isStale(Duration ttl) {
     if (_fetchedAt == null) return true;
     return DateTime.now().difference(_fetchedAt!) > ttl;
@@ -29,19 +32,29 @@ class GiftRepository {
   Future<List<GiftItemModel>> fetchGiftList({bool force = false}) async {
     if (!force && hasCache) return _cacheAll!;
 
-    final resp = await _api.post(ApiEndpoints.giftList, data: {"page": 1});
-    final raw = resp.data is String ? jsonDecode(resp.data) : resp.data;
+    try {
+      final map = await _api.postOk(
+        ApiEndpoints.giftList,
+        data: {"page": 1},
+        alsoOkCodes: kNoDataCodes, // ⬅️ 100/404 視為可接受
+      );
 
-    if (raw is Map && raw['code'] == 200) {
-      final data = (raw['data'] ?? {}) as Map;
-      final list = (data['list'] as List? ?? [])
-          .map((e) => GiftItemModel.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
+      List<GiftItemModel> list = const [];
 
-      // 後端 sort 由小到大
-      list.sort((a, b) => a.sort.compareTo(b.sort));
+      if (!kNoDataCodes.contains(map['code'])) {
+        final data = map['data'] as Map?;
+        final rawList = (data?['list'] as List?) ?? const [];
+        list = rawList
+            .map((e) => GiftItemModel.fromJson(
+          (e as Map).cast<String, dynamic>(),
+        ))
+            .toList();
 
-      // ➜ 同步建立多個視圖/索引
+        // 後端 sort 由小到大
+        list.sort((a, b) => a.sort.compareTo(b.sort));
+      }
+
+      // 同步建立多個視圖/索引（即使是空，也要更新快取與時間戳）
       _cacheAll    = list;
       _cacheQuick  = list.where((g) => g.isQuick == 1).toList(growable: false);
       _cacheNormal = list.where((g) => g.isQuick != 1).toList(growable: false);
@@ -49,9 +62,10 @@ class GiftRepository {
       _fetchedAt   = DateTime.now();
 
       return _cacheAll!;
+    } catch (e) {
+      AppErrorToast.show(e);
+      rethrow;
     }
-
-    throw Exception('fetchGiftList failed: $resp');
   }
 }
 

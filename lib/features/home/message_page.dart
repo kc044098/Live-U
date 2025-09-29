@@ -79,7 +79,7 @@ class _MessagePageState extends ConsumerState<MessagePage>
 
   Future<void> _loadThreads({int page = 1}) async {
     setState(() {
-      _loading = page == 1 ? true : _loading; // 首載時顯示進度；分頁時維持現狀
+      _loading = page == 1 ? true : _loading;
       _error = null;
     });
     try {
@@ -91,22 +91,32 @@ class _MessagePageState extends ConsumerState<MessagePage>
         if (page == 1) {
           _threads = res.items;
         } else {
-          // 追加時去重（依 fromUid/toUid 或 threadId 做 key）
-          final seen = <String>{
-            for (final t in _threads) '${t.fromUid}-${t.toUid}'
-          };
+          final seen = <String>{ for (final t in _threads) '${t.fromUid}-${t.toUid}' };
           for (final t in res.items) {
-            if (seen.add('${t.fromUid}-${t.toUid}')) {
-              _threads.add(t);
-            }
+            if (seen.add('${t.fromUid}-${t.toUid}')) _threads.add(t);
           }
         }
         _page = page;
         _loading = false;
-        _inboxHasMore = res.items.isNotEmpty; // 簡單判斷是否還有下一頁
+        _inboxHasMore = res.items.isNotEmpty;
       });
     } catch (e) {
       if (!mounted) return;
+
+      // ✅ 後端以錯誤表示「沒有資料」→ 視為空清單；不顯示錯頁
+      if (_isNoDataError(e)) {
+        setState(() {
+          if (page == 1) {
+            _threads = [];
+            _page = 1;
+            _loading = false;
+            _error = null;
+          }
+          _inboxHasMore = false;
+        });
+        return;
+      }
+
       if (_isNetworkIssue(e)) {
         _toastNetworkError();
         setState(() {
@@ -114,7 +124,7 @@ class _MessagePageState extends ConsumerState<MessagePage>
         });
       } else {
         setState(() {
-          _error = '$e';
+          _error = '$e';    // 保持原本行為
           _loading = false;
         });
       }
@@ -706,7 +716,6 @@ class _MessagePageState extends ConsumerState<MessagePage>
       );
 
       if (reset) _callItems = [];
-      // 去重（依 createAt/uid/flag）
       final exists = <String>{ for (final x in _callItems) '${x.createAt}-${x.uid}-${x.flag}' };
       final fresh = items.where((e) => exists.add('${e.createAt}-${e.uid}-${e.flag}')).toList();
 
@@ -720,13 +729,25 @@ class _MessagePageState extends ConsumerState<MessagePage>
       }
       _callHasMore ? _callRc.loadComplete() : _callRc.loadNoData();
     } catch (e) {
-      if (_isNetworkIssue(e)) {
+      // ✅ 沒有資料 → 視為空清單且結束分頁，不顯示失敗
+      if (_isNoDataError(e)) {
+        if (reset) {
+          _callItems = [];
+          _callPage = 1;
+          _callHasMore = false;
+          _callRc.refreshCompleted();
+          _callRc.loadNoData();
+        } else {
+          _callHasMore = false;
+          _callRc.loadNoData();
+        }
+      } else if (_isNetworkIssue(e)) {
         _toastNetworkError();
         if (reset) {
-          _callRc.refreshCompleted(); // 結束動畫即可，不顯示失敗
+          _callRc.refreshCompleted();
           _callRc.resetNoData();
         } else {
-          _callRc.loadComplete();     // 不標成失敗，避免紅字
+          _callRc.loadComplete();
         }
       } else {
         if (reset) {
@@ -739,7 +760,6 @@ class _MessagePageState extends ConsumerState<MessagePage>
       _callLoading = false;
       if (mounted) setState(() {});
     }
-
   }
 
   Color _getStatusColor(int index) {
@@ -819,6 +839,63 @@ class _MessagePageState extends ConsumerState<MessagePage>
     WidgetsBinding.instance.addPostFrameCallback((_) => _reloadThreadsSilently());
   }
 
+  bool _isNoDataError(Object e) {
+    // 後端可能用 404/100 或文字「暫無資料」
+    bool _msgNoData(String? s) {
+      if (s == null) return false;
+      final t = s.toLowerCase();
+      return t.contains('暫無資料') || t.contains('no data');
+    }
+
+    int? _codeFrom(dynamic data) {
+      if (data is Map) {
+        final c = data['code'];
+        if (c is num) return c.toInt();
+        return int.tryParse('${c ?? ''}');
+      }
+      if (data is String) {
+        try {
+          final m = jsonDecode(data);
+          if (m is Map) {
+            final c = m['code'];
+            if (c is num) return c.toInt();
+            return int.tryParse('${c ?? ''}');
+          }
+        } catch (_) {}
+      }
+      return null;
+    }
+
+    String? _msgFrom(dynamic data) {
+      if (data is Map) return data['message']?.toString();
+      if (data is String) {
+        try {
+          final m = jsonDecode(data);
+          if (m is Map) return m['message']?.toString();
+        } catch (_) {}
+        return data;
+      }
+      return null;
+    }
+
+    if (e is DioException) {
+      // HTTP 404 也視為沒有資料
+      final sc = e.response?.statusCode ?? 0;
+      if (sc == 404) return true;
+
+      final data = e.response?.data;
+      final code = _codeFrom(data);
+      final msg  = _msgFrom(data);
+      if (code == 404 || code == 100) return true;
+      if (_msgNoData(msg)) return true;
+    } else {
+      // 字串錯誤訊息也兜底判斷
+      final s = e.toString();
+      if (_msgNoData(s)) return true;
+      if (s.contains(' 404 ')) return true;
+    }
+    return false;
+  }
 
   bool _looksLikeTransportError(String s) {
     final t = s.toLowerCase();

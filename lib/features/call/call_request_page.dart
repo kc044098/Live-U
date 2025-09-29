@@ -11,6 +11,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../../core/error_handler.dart';
 import '../../core/ws/ws_provider.dart';
 import '../../globals.dart';
 import '../../routes/app_routes.dart' hide routeObserver;
@@ -214,66 +215,50 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
       await WakelockPlus.enable();
 
       final flag = widget.isVideoCall ? 1 : 2;
-      final resp = await ref.read(callRepositoryProvider).liveCall(
+
+      // ★ 成功時回傳的是「data」map，錯誤會直接丟 ApiException
+      final data = await ref.read(callRepositoryProvider).liveCall(
         flag: flag,
         toUid: int.parse(widget.broadcasterId),
       );
 
-      // ★ 先看 code
-      final int code = (resp['code'] is num) ? (resp['code'] as num).toInt()
-          : int.tryParse('${resp['code'] ?? ''}') ?? 0;
+      // 解析 data
+      final Map<String, dynamic> m =
+      (data is Map) ? Map<String, dynamic>.from(data) : <String, dynamic>{};
 
-      if (code == 100) {
-        final String msg = (resp['message']?.toString() ?? '撥打失敗');
-        if (msg.contains('Request Failed')) {
-          Fluttertoast.showToast(msg: '電話撥打失敗 ～');
-          await _audioPlayer.stop();
-          if (mounted) Navigator.pop(context);
-          return;
-        }
-      }
+      _channelId   = (m['channel_id'] ?? m['channel_name'] ?? m['channle_name'])?.toString();
+      _callerToken = (m['string'] ?? m['token'])?.toString();
+      _callerUid   = (m['from_uid'] as num?)?.toInt() ?? (m['uid'] as num?)?.toInt();
+      _calleeUid   = (m['to_uid'] as num?)?.toInt();
 
-      if (code == 102) {
-        // 餘額不足 → 提示並關閉頁面
-        Fluttertoast.showToast(msg: '餘額不足, 請前往充值～');
-        await _audioPlayer.stop();
-        if (mounted) Navigator.pop(context);
-        return;
-      }
-      if (code != 200) {
-        // 其他非 200 錯誤
-        final String msg = (resp['message']?.toString() ?? '撥打失敗');
-        Fluttertoast.showToast(msg: msg);
-        await _audioPlayer.stop();
-        if (mounted) Navigator.pop(context);
-        return;
-      }
-
-      // ★ 到這裡才是成功狀態，開始解析 data
-      final Map<String, dynamic> data =
-      (resp['data'] is Map) ? Map<String, dynamic>.from(resp['data'])
-          : <String, dynamic>{};
-
-      _channelId   = (data['channel_id'] ?? data['channel_name'] ?? data['channle_name'])?.toString();
-      _callerToken = (data['string'] ?? data['token'])?.toString();
-      _callerUid   = (data['from_uid'] as num?)?.toInt() ?? (data['uid'] as num?)?.toInt();
-      _calleeUid   = (data['to_uid'] as num?)?.toInt();
-
-      final fa = data['free_at'];
+      final fa = m['free_at'];
       _freeAtSec = (fa is num) ? fa.toInt() : int.tryParse(fa?.toString() ?? '') ?? 0;
 
       if (_channelId == null || _channelId!.isEmpty) {
-        throw '電話撥打失敗 _channelId 空';
+        throw ApiException(-1, '電話撥打失敗：channelId 空');
       }
       if (_callerToken == null || _callerToken!.isEmpty) {
-        throw '電話撥打失敗 _callerToken 空';
+        throw ApiException(-1, '電話撥打失敗：token 空');
       }
 
-      // ★ 成功後才啟動超時計時
+      // 成功後才啟動超時計時
       _startTimeout();
-
+    } on ApiException catch (e) {
+      // 常見錯誤碼給更友善的文案；其餘交給字典
+      if (e.code == 102) {
+        Fluttertoast.showToast(msg: '餘額不足, 請前往充值～');
+      } else if (e.code == 121) {
+        Fluttertoast.showToast(msg: '對方忙線中');
+      } else if (e.code == 123) {
+        Fluttertoast.showToast(msg: '對方不在線');
+      } else if (e.code == 125) {
+        Fluttertoast.showToast(msg: '對方開啟免擾');
+      } else {
+        AppErrorToast.show(e); // 字典：例如 114「系統繁忙，請稍候再試」…
+      }
+      await _audioPlayer.stop();
+      if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (_cancelled) return;
       debugPrint('電話撥打失敗：$e');
       Fluttertoast.showToast(msg: "電話撥打失敗, 請稍後再撥");
       await _audioPlayer.stop();

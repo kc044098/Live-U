@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 
+import '../../core/error_handler.dart';
 import '../../platform/cached_prefetch.dart';
 import '../../routes/app_routes.dart';
 import '../call/call_repository.dart';
@@ -67,7 +68,11 @@ class _LiveListPageState extends ConsumerState<LiveListPage>
 
     _scrollController.addListener(_onScroll);
     Future.microtask(() {
-      ref.read(friendListProvider.notifier).loadFirstPage();
+      try {
+        ref.read(friendListProvider.notifier).loadFirstPage();
+      } catch (e) {
+        AppErrorToast.show(e); // 統一錯誤字典→中文 Toast
+      }
     });
   }
 
@@ -93,7 +98,9 @@ class _LiveListPageState extends ConsumerState<LiveListPage>
     final scroll = _scrollController;
     if (!scroll.hasClients) return;
     if (scroll.position.pixels >= scroll.position.maxScrollExtent - 300) {
-      notifier.loadNextPage();
+      unawaited(
+        notifier.loadNextPage().catchError((e) => AppErrorToast.show(e)),
+      );
     }
   }
 

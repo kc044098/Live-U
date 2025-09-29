@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:pull_to_refresh_flutter3/pull_to_refresh_flutter3.dart';
 import 'package:djs_live_stream/features/message/voice_bubble.dart';
@@ -13,6 +14,7 @@ import 'package:flutter_svg/svg.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+import '../../core/error_handler.dart';
 import '../../data/models/gift_item.dart';
 import '../../data/models/user_model.dart';
 import '../call/call_request_page.dart';
@@ -139,26 +141,21 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
       final list = await repo.fetchMessageHistory(page: 1, toUid: widget.partnerUid!);
       final cdnBase = me?.cdnUrl ?? '';
 
-      // 讀目前禮物列表（若還在載入就給空陣列）
       final gifts = ref.read(giftListProvider).maybeWhen(
         data: (v) => v,
         orElse: () => const <GiftItemModel>[],
       );
 
-      final msgs = list
-          .map((m) => _fromApiMsg(
+      final msgs = list.map((m) => _fromApiMsg(
         Map<String, dynamic>.from(m),
         myUid: myUid,
         cdnBase: cdnBase,
         gifts: gifts,
-      ))
-          .toList()
+      )).toList()
         ..sort((a, b) => (a.createAt ?? 0).compareTo(b.createAt ?? 0));
 
       setState(() {
-        _messages
-          ..clear()
-          ..addAll(msgs);
+        _messages..clear()..addAll(msgs);
         final latest = _messages.isNotEmpty ? _messages.last : null;
         if (latest != null && latest.type == MessageType.other) {
           _markThreadReadOptimistic();
@@ -170,8 +167,12 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
       _refreshCtrl.resetNoData();
       _refreshCtrl.loadComplete();
       _scrollToBottom();
-    } catch (e) {
-      setState(() { _error = '$e'; _loading = false; });
+    } on ApiException catch (e) {
+      setState(() { _error = _msgForApi(e); _loading = false; });
+    } on DioException catch (e) {
+      setState(() { _error = _isNetworkIssue(e) ? '資料獲取失敗，網路連接異常' : (e.message ?? '載入失敗'); _loading = false; });
+    } catch (_) {
+      setState(() { _error = '載入失敗'; _loading = false; });
     }
   }
 
@@ -237,8 +238,14 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
       if (list.isEmpty) {
         setState(() => _hasMore = false);
       }
+    } on ApiException catch (e) {
+      debugPrint('load older api error: ${e.code} ${e.message}');
+      rethrow;
+    } on DioException catch (e) {
+      debugPrint('load older dio error: ${e.message}');
+      rethrow;
     } catch (e) {
-      debugPrint('load older fail: $e');
+      debugPrint('load older unknown error: $e');
       rethrow;
     } finally {
       if (mounted) setState(() => _isLoadingMore = false);
@@ -404,16 +411,23 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
           );
         }
       });
+    } on ApiException catch (e) {
+      if (e.code == 101) {
+        if (!mounted) return;
+        _removeOptimisticByUuid(uuid);
+        _showLimitDialog();
+        return;
+      }
+      if (!mounted) return;
+      setState(() {
+        final i = _messages.indexWhere((m) => m.uuid == uuid);
+        if (i >= 0) _messages[i] = _messages[i].copyWith(sendState: SendState.failed, audioPath: path);
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         final i = _messages.indexWhere((m) => m.uuid == uuid);
-        if (i >= 0) {
-          _messages[i] = _messages[i].copyWith(
-            sendState: SendState.failed,
-            audioPath: path,
-          );
-        }
+        if (i >= 0) _messages[i] = _messages[i].copyWith(sendState: SendState.failed, audioPath: path);
       });
     }
   }
@@ -481,7 +495,6 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
     final myUid = int.tryParse(user?.uid ?? '');
     final toUid = widget.partnerUid;
 
-    // 取不到 id：照舊（顯示失敗的本地訊息），這段可以保留
     if (myUid == null || toUid == null) {
       setState(() {
         _messages.add(ChatMessage(
@@ -499,7 +512,6 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
 
     final uuid = cu.genUuid(myUid);
 
-    // 樂觀加入
     final sending = ChatMessage(
       type: MessageType.self,
       contentType: ChatContentType.text,
@@ -511,31 +523,49 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
       sendState: SendState.sending,
       createAt: cu.nowSec(),
     );
-    setState(() {
-      _messages.add(sending);
-      _showEmoji = false;
-    });
+    setState(() { _messages.add(sending); _showEmoji = false; });
     _textController.clear();
     _scrollToBottom();
 
-    // ★ 這裡開始使用 SendResult，而不是 bool
     final repo = ref.read(chatRepositoryProvider);
-    final SendResult res = await repo.sendText(uuid: uuid, toUid: toUid, text: text);
+    try {
+      final SendResult res = await repo.sendText(uuid: uuid, toUid: toUid, text: text);
+      if (!mounted) return;
 
-    if (!mounted) return;
+      if (_handleQuotaAndMaybeRollback(res, uuid: uuid)) return;
 
-    // 命中「超出上限」：撤回訊息 + 彈窗，直接 return
-    if (_handleQuotaAndMaybeRollback(res, uuid: uuid)) return;
-
-    // 其它錯誤 → 樂觀訊息標記失敗；成功 → 樂觀訊息標記 sent
-    setState(() {
-      final i = _messages.indexWhere((m) => m.uuid == uuid);
-      if (i >= 0) {
-        _messages[i] = _messages[i].copyWith(
-          sendState: res.ok ? SendState.sent : SendState.failed,
-        );
+      setState(() {
+        final i = _messages.indexWhere((m) => m.uuid == uuid);
+        if (i >= 0) {
+          _messages[i] = _messages[i].copyWith(
+            sendState: res.ok ? SendState.sent : SendState.failed,
+          );
+        }
+      });
+    } on ApiException catch (e) {
+      if (e.code == 101) { // 當天私信上限
+        _removeOptimisticByUuid(uuid);
+        _showLimitDialog();
+        return;
       }
-    });
+      if (!mounted) return;
+      setState(() {
+        final i = _messages.indexWhere((m) => m.uuid == uuid);
+        if (i >= 0) _messages[i] = _messages[i].copyWith(sendState: SendState.failed);
+      });
+    } on DioException catch (_) {
+      if (!mounted) return;
+      setState(() {
+        final i = _messages.indexWhere((m) => m.uuid == uuid);
+        if (i >= 0) _messages[i] = _messages[i].copyWith(sendState: SendState.failed);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        final i = _messages.indexWhere((m) => m.uuid == uuid);
+        if (i >= 0) _messages[i] = _messages[i].copyWith(sendState: SendState.failed);
+      });
+    }
   }
 
   void _showLimitDialog() async {
@@ -1429,16 +1459,23 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
           );
         }
       });
-    } catch (e) {
+    }  on ApiException catch (e) {
+      if (e.code == 101) {
+        if (!mounted) return;
+        _removeOptimisticByUuid(uuid);
+        _showLimitDialog();
+        return;
+      }
       if (!mounted) return;
       setState(() {
         final i = _messages.indexWhere((m) => m.uuid == uuid);
-        if (i >= 0) {
-          _messages[i] = _messages[i].copyWith(
-            sendState: SendState.failed,
-            imagePath: file.path,
-          );
-        }
+        if (i >= 0) _messages[i] = _messages[i].copyWith(sendState: SendState.failed, imagePath: file.path);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        final i = _messages.indexWhere((m) => m.uuid == uuid);
+        if (i >= 0) _messages[i] = _messages[i].copyWith(sendState: SendState.failed, imagePath: file.path);
       });
     }
   }
@@ -1541,18 +1578,46 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
               toUid: toUid,
               text: payload,
               flag: 'chat_gift',
-            );
+            ).catchError((e) {
+              // 讓下方統一處理
+              throw e;
+            });
 
-            if (!mounted) return sendResult.ok;
-            final i = _messages.indexWhere((m) => m.uuid == uuid);
-            if (i >= 0) {
-              setState(() {
-                _messages[i] = _messages[i].copyWith(
-                  sendState: sendResult.ok ? SendState.sent : SendState.failed,
-                );
-              });
+            try {
+              if (!mounted) return sendResult.ok;
+              if (sendResult.code == 101) {
+                // 撤回樂觀訊息 + 彈窗
+                _removeOptimisticByUuid(uuid);
+                _showLimitDialog();
+                return false;
+              }
+              final i = _messages.indexWhere((m) => m.uuid == uuid);
+              if (i >= 0) {
+                setState(() {
+                  _messages[i] = _messages[i].copyWith(
+                    sendState: sendResult.ok ? SendState.sent : SendState.failed,
+                  );
+                });
+              }
+              return sendResult.ok;
+            } on ApiException catch (e) {
+              if (e.code == 101) {
+                _removeOptimisticByUuid(uuid);
+                _showLimitDialog();
+                return false;
+              }
+              final i = _messages.indexWhere((m) => m.uuid == uuid);
+              if (i >= 0) {
+                setState(() { _messages[i] = _messages[i].copyWith(sendState: SendState.failed); });
+              }
+              return false;
+            } on DioException catch (_) {
+              final i = _messages.indexWhere((m) => m.uuid == uuid);
+              if (i >= 0) {
+                setState(() { _messages[i] = _messages[i].copyWith(sendState: SendState.failed); });
+              }
+              return false;
             }
-            return sendResult.ok;
           },
         );
       },
@@ -1686,6 +1751,45 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
         ),
       ),
     );
+  }
+
+  String _msgForApi(ApiException e) {
+    final m = (e.message ?? '').trim();
+    if (m.isNotEmpty) return m;
+    switch (e.code) {
+      case 401: return '登入已失效，請重新登入';
+      case 413: return '請求資料過大';
+      case 429: return '操作太頻繁，稍後再試';
+      case 422: return '參數不完整或不合法';
+      default:  return '服務異常，請稍後再試';
+    }
+  }
+
+  /// 判斷是否屬於「網路/連線」型錯誤（離線、逾時、502/503/504 等）
+  bool _isNetworkIssue(Object e) {
+    if (e is DioException) {
+      switch (e.type) {
+        case DioExceptionType.connectionError:
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.receiveTimeout:
+        case DioExceptionType.sendTimeout:
+          return true;
+        default:
+          break;
+      }
+      final sc = e.response?.statusCode ?? 0;
+      if (sc == 502 || sc == 503 || sc == 504) return true; // 反向代理/伺服器忙
+      if (e.error is SocketException) return true;           // DNS/無網路
+      final s = e.message?.toLowerCase() ?? '';
+      if (s.contains('timed out') ||
+          s.contains('failed host lookup') ||
+          s.contains('network is unreachable') ||
+          s.contains('sslhandshake') ||
+          s.contains('connection closed')) return true;
+    } else if (e is SocketException) {
+      return true;
+    }
+    return false;
   }
 
 }

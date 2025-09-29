@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
+import '../../core/error_handler.dart';
 import '../../core/user_local_storage.dart';
 import '../mine/user_repository_provider.dart';
 import '../profile/profile_controller.dart';
@@ -66,12 +67,11 @@ class _AccountLoginScreenState extends ConsumerState<AccountLoginScreen> {
 
       Fluttertoast.showToast(msg: '登錄成功');
       Navigator.pushReplacementNamed(context, '/home');
+    } on BadCredentialsException {
+      // 明確帳密錯誤，固定友善訊息
+      Fluttertoast.showToast(msg: '登錄失敗: 帳號或密碼錯誤');
     } catch (e) {
-      if (e is BadCredentialsException) {
-        Fluttertoast.showToast(msg: '登錄失敗: 帳號或密碼錯誤');
-      } else {
-        Fluttertoast.showToast(msg: '登錄失敗: $e');
-      }
+      AppErrorToast.show(e);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
