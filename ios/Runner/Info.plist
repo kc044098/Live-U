@@ -87,5 +87,19 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>CFBundleURLName</key>
+            <string>google-signin</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <!-- 這裡填「反轉後的 iOS client id」= 錯誤訊息裡那串 -->
+                <string>com.googleusercontent.apps.1028511300374-i1ml51f8oorm3o1fgfs9t6fos2vudmt2</string>
+            </array>
+        </dict>
+    </array>
 </dict>
 </plist>

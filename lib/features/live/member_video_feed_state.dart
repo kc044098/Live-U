@@ -1,7 +1,12 @@
+import 'dart:io';
+
+import 'package:dio/dio.dart';
 import 'package:djs_live_stream/features/live/video_repository.dart';
 import 'package:djs_live_stream/features/live/video_repository_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 
+import '../../core/error_handler.dart';
 import '../../data/models/member_video_model.dart';
 
 class MemberFeedState {
@@ -54,7 +59,6 @@ class MemberFeedNotifier extends AutoDisposeNotifier<MemberFeedState> {
 
   Future<void> loadFirstPage({int? uid}) async {
     if (state.isLoading) return;
-    // 樂觀：進入載入中
     state = state.copyWith(isLoading: true);
     try {
       final page1 = await _repo.fetchMemberVideos(page: 1, uid: uid);
@@ -65,10 +69,25 @@ class MemberFeedNotifier extends AutoDisposeNotifier<MemberFeedState> {
         isLoading: false,
       );
     } catch (e, st) {
-      // 失敗也必須把 isLoading 還原
       state = state.copyWith(isLoading: false);
+
+      // ↓↓↓ 新增錯誤分類 ↓↓↓
+      if (_isNetworkIssue(e)) {
+        Fluttertoast.showToast(msg: '資料獲取失敗，網路連接異常');
+        return; // 吞掉，不往上拋
+      }
+      if (_isNoData(e)) {
+        state = MemberFeedState(
+          items: const [],
+          page: 1,
+          totalCount: 0,
+          isLoading: false,
+        );
+        return; // 吞掉，不往上拋
+      }
+
       print('loadFirstPage error: $e\n$st');
-      rethrow; // 看你需不需要往上拋
+      rethrow;
     }
   }
 
@@ -86,10 +105,60 @@ class MemberFeedNotifier extends AutoDisposeNotifier<MemberFeedState> {
       );
     } catch (e, st) {
       state = state.copyWith(isLoading: false);
+
+      if (_isNetworkIssue(e)) {
+        Fluttertoast.showToast(msg: '資料獲取失敗，網路連接異常');
+        return; // 吞掉，不往上拋
+      }
+      if (_isNoData(e)) {
+        // 視為「無更多」
+        state = state.copyWith(totalCount: state.items.length);
+        return; // 吞掉，不往上拋
+      }
+
       print('loadNextPage error: $e\n$st');
       rethrow;
     }
+  }
+  bool _isNetworkIssue(Object e) {
+    if (e is DioException) {
+      switch (e.type) {
+        case DioExceptionType.connectionError:
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.receiveTimeout:
+        case DioExceptionType.sendTimeout:
+          return true;
+        default:
+          break;
+      }
+      final sc = e.response?.statusCode ?? 0;
+      if (sc == 502 || sc == 503 || sc == 504) return true;
+      if (e.error is SocketException) return true;
+    } else if (e is SocketException) {
+      return true;
+    }
+    final s = e.toString().toLowerCase();
+    return s.contains('timed out') ||
+        s.contains('failed host lookup') ||
+        s.contains('network is unreachable') ||
+        s.contains('sslhandshake') ||
+        s.contains('connection closed');
+  }
 
+  bool _isNoData(Object e) {
+    if (e is ApiException) {
+      if (e.code == 100 || e.code == 404) return true;
+      final m = e.message.toLowerCase();
+      return m.contains('暫無資料') || m.contains('no data') || m.contains('empty');
+    }
+    if (e is DioException) {
+      final sc = e.response?.statusCode ?? 0;
+      if (sc == 404) return true;
+      final body = e.response?.data?.toString().toLowerCase() ?? '';
+      return body.contains('暫無資料') || body.contains('no data');
+    }
+    final s = e.toString().toLowerCase();
+    return s.contains('暫無資料') || s.contains('no data');
   }
 
   Future<void> updateItem({
@@ -171,7 +240,7 @@ class MemberFeedByUserNotifier extends AutoDisposeFamilyNotifier<MemberFeedState
     if (state.isLoading) return;
     state = state.copyWith(isLoading: true);
     try {
-      final page1 = await _repo.fetchMemberVideos(page: 1, uid: _uid);
+      final page1 = await _repo.fetchMemberVideos(page: 1, uid: uid);
       state = MemberFeedState(
         items: page1.list,
         page: 1,
@@ -180,7 +249,21 @@ class MemberFeedByUserNotifier extends AutoDisposeFamilyNotifier<MemberFeedState
       );
     } catch (e, st) {
       state = state.copyWith(isLoading: false);
-      print('loadFirstPage(byUser) error: $e\n$st');
+
+      if (_isNetworkIssue(e)) {
+        Fluttertoast.showToast(msg: '資料獲取失敗，網路連接異常');
+        return;
+      }
+      if (_isNoData(e)) {
+        state = MemberFeedState(
+          items: const [],
+          page: 1,
+          totalCount: 0,
+          isLoading: false,
+        );
+        return;
+      }
+      print('loadFirstPage error: $e\n$st');
       rethrow;
     }
   }
@@ -190,7 +273,7 @@ class MemberFeedByUserNotifier extends AutoDisposeFamilyNotifier<MemberFeedState
     state = state.copyWith(isLoading: true);
     try {
       final next = state.page + 1;
-      final p = await _repo.fetchMemberVideos(page: next, uid: _uid);
+      final p = await _repo.fetchMemberVideos(page: next, uid: uid);
       state = state.copyWith(
         items: [...state.items, ...p.list],
         page: next,
@@ -199,11 +282,64 @@ class MemberFeedByUserNotifier extends AutoDisposeFamilyNotifier<MemberFeedState
       );
     } catch (e, st) {
       state = state.copyWith(isLoading: false);
-      print('loadNextPage(byUser) error: $e\n$st');
+
+      // ↓↓↓ 新增錯誤分類 ↓↓↓
+      if (_isNetworkIssue(e)) {
+        Fluttertoast.showToast(msg: '資料獲取失敗，網路連接異常');
+        return; // 吞掉，不往上拋
+      }
+      if (_isNoData(e)) {
+        // 視為「無更多」
+        state = state.copyWith(totalCount: state.items.length);
+        return; // 吞掉，不往上拋
+      }
+      // ↑↑↑ 新增錯誤分類 ↑↑↑
+
+      print('loadNextPage error: $e\n$st');
       rethrow;
     }
   }
 
+  bool _isNetworkIssue(Object e) {
+    if (e is DioException) {
+      switch (e.type) {
+        case DioExceptionType.connectionError:
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.receiveTimeout:
+        case DioExceptionType.sendTimeout:
+          return true;
+        default:
+          break;
+      }
+      final sc = e.response?.statusCode ?? 0;
+      if (sc == 502 || sc == 503 || sc == 504) return true;
+      if (e.error is SocketException) return true;
+    } else if (e is SocketException) {
+      return true;
+    }
+    final s = e.toString().toLowerCase();
+    return s.contains('timed out') ||
+        s.contains('failed host lookup') ||
+        s.contains('network is unreachable') ||
+        s.contains('sslhandshake') ||
+        s.contains('connection closed');
+  }
+
+  bool _isNoData(Object e) {
+    if (e is ApiException) {
+      if (e.code == 100 || e.code == 404) return true;
+      final m = e.message.toLowerCase();
+      return m.contains('暫無資料') || m.contains('no data') || m.contains('empty');
+    }
+    if (e is DioException) {
+      final sc = e.response?.statusCode ?? 0;
+      if (sc == 404) return true;
+      final body = e.response?.data?.toString().toLowerCase() ?? '';
+      return body.contains('暫無資料') || body.contains('no data');
+    }
+    final s = e.toString().toLowerCase();
+    return s.contains('暫無資料') || s.contains('no data');
+  }
 }
 
 final memberFeedByUserProvider =

@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import '../../core/error_handler.dart';
 import '../mine/user_repository_provider.dart';
 import './providers/auth_repository_provider.dart';
 import '../../core/user_local_storage.dart';
@@ -65,8 +66,8 @@ class GoogleAuthService {
 
       return user;
     } catch (e) {
-      print('Silent sign-in failed: $e');
-      return null;
+      AppErrorToast.show(e);   // 統一轉中文訊息
+      return null;             // 後端失敗 → 視為登入失敗
     }
   }
 
@@ -127,7 +128,7 @@ class GoogleAuthService {
       }
       return user;
     } catch (e) {
-      print('Google Sign-In failed: $e');
+      AppErrorToast.show(e);   // 會員資訊補拉失敗，只做提示，不中斷
       return null;
     }
   }

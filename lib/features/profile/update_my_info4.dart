@@ -1,11 +1,13 @@
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:djs_live_stream/features/profile/profile_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../core/error_handler.dart';
 import '../../core/user_local_storage.dart';
 import '../home/home_screen.dart';
 import '../mine/user_repository_provider.dart';
@@ -19,10 +21,75 @@ class UpdateMyInfoPage4 extends ConsumerStatefulWidget {
 
 class _UpdateMyInfoPage4State extends ConsumerState<UpdateMyInfoPage4> {
   File? _selectedImage;
+  static const int _kMaxBytes1GiB = 1024 * 1024 * 1024; // 1 GiB
+
+
+  bool _isProbablyImage(String path, [String? mimeType]) {
+    if (mimeType != null && mimeType.toLowerCase().startsWith('image/')) {
+      return true;
+    }
+    final p = path.toLowerCase();
+    const exts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.heic', '.heif'];
+    return exts.any((e) => p.endsWith(e));
+  }
+
+  String _msgForApi(ApiException e) {
+    final m = (e.message ?? '').trim();
+    if (m.isNotEmpty) return m;
+    switch (e.code) {
+      case 401: return '登入已失效，請重新登入';
+      case 413: return '請求資料過大';
+      case 422: return '參數不完整或不合法';
+      case 429: return '操作太頻繁，稍後再試';
+      default:  return '服務異常，請稍後再試';
+    }
+  }
+
+  bool _isNetworkIssue(Object e) {
+    if (e is DioException) {
+      switch (e.type) {
+        case DioExceptionType.connectionError:
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.receiveTimeout:
+        case DioExceptionType.sendTimeout:
+          return true;
+        default:
+          break;
+      }
+      final sc = e.response?.statusCode ?? 0;
+      if (sc == 502 || sc == 503 || sc == 504) return true;
+      if (e.error is SocketException) return true;
+      final s = e.message?.toLowerCase() ?? '';
+      if (s.contains('timed out') ||
+          s.contains('failed host lookup') ||
+          s.contains('network is unreachable') ||
+          s.contains('sslhandshake') ||
+          s.contains('connection closed')) return true;
+    } else if (e is SocketException) {
+      return true;
+    }
+    return false;
+  }
 
   void _onFinish() async {
     if (_selectedImage == null) {
       Fluttertoast.showToast(msg: "請先選擇照片");
+      return;
+    }
+
+    // ✅ 送出前再做一次防呆校驗（型別/大小/存在）
+    final file = _selectedImage!;
+    if (!await file.exists()) {
+      Fluttertoast.showToast(msg: "請先選擇照片");
+      return;
+    }
+    if (!_isProbablyImage(file.path)) {
+      Fluttertoast.showToast(msg: "只能上傳圖片檔案");
+      return;
+    }
+    final size = await file.length();
+    if (size > _kMaxBytes1GiB) {
+      Fluttertoast.showToast(msg: "只能上傳1G以下的檔案");
       return;
     }
 
@@ -35,11 +102,10 @@ class _UpdateMyInfoPage4State extends ConsumerState<UpdateMyInfoPage4> {
     try {
       final repo = ref.read(userRepositoryProvider);
       final user = ref.read(userProfileProvider);
-
       if (user == null) throw Exception("使用者未登入");
 
       // 1. 上傳圖片到 S3
-      final s3Url = await repo.uploadToS3Avatar(_selectedImage!);
+      final s3Url = await repo.uploadToS3Avatar(file);
 
       // 2. 拼接 CDN URL + file_url
       final fullUrl = "${user.cdnUrl}$s3Url";
@@ -54,7 +120,7 @@ class _UpdateMyInfoPage4State extends ConsumerState<UpdateMyInfoPage4> {
       // 5. API 上傳
       final updateData = {
         'avatar': [fullUrl],
-        'nick_name': user.displayName ?? '',
+        'nick_name': user.displayName ?? 'user',
         'sex': user.sex,
         'detail': {
           'age': (user.extra?['age'] ?? '').toString().replaceAll('岁', ''),
@@ -67,9 +133,18 @@ class _UpdateMyInfoPage4State extends ConsumerState<UpdateMyInfoPage4> {
         MaterialPageRoute(builder: (_) => const HomeScreen()),
             (route) => false,
       );
+    } on ApiException catch (e) {
+      // 後端業務碼錯誤（如 4xx/業務邏輯失敗）
+      Fluttertoast.showToast(msg: _msgForApi(e));
+      Navigator.of(context).pop(); // 關掉 loading
+    } on DioException catch (e) {
+      // 連線/逾時/502-504 等
+      final msg = _isNetworkIssue(e) ? '網路連線異常，請稍後重試' : (e.message ?? '上傳失敗');
+      Fluttertoast.showToast(msg: msg);
+      Navigator.of(context).pop();
     } catch (e) {
       debugPrint("上傳失敗: $e");
-      Fluttertoast.showToast(msg: "上傳失敗");
+      Fluttertoast.showToast(msg: e.toString().contains('未登入') ? '使用者未登入' : '上傳失敗');
       Navigator.of(context).pop();
     }
   }
@@ -205,15 +280,37 @@ class _UpdateMyInfoPage4State extends ConsumerState<UpdateMyInfoPage4> {
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
-    final pickedFile =
-    await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+    final pickedFile = await picker.pickImage(
+      source: ImageSource.gallery, // 只允許相簿
+      imageQuality: 85,
+    );
+    if (pickedFile == null) return;
 
-    if (pickedFile != null) {
-      setState(() {
-        _selectedImage = File(pickedFile.path);
-      });
+    final file = File(pickedFile.path);
+    if (!await file.exists()) {
+      Fluttertoast.showToast(msg: '選取失敗，請重試');
+      return;
     }
+
+    // 型別檢查：不是圖片就阻擋
+    final okType = _isProbablyImage(pickedFile.path, pickedFile.mimeType);
+    if (!okType) {
+      Fluttertoast.showToast(msg: '只能上傳圖片檔案');
+      return;
+    }
+
+    // 大小檢查：> 1G 阻擋
+    final size = await file.length();
+    if (size > _kMaxBytes1GiB) {
+      Fluttertoast.showToast(msg: '只能上傳1G以下的檔案');
+      return;
+    }
+
+    setState(() {
+      _selectedImage = file;
+    });
   }
+
 }
 
 class _PhotoExample extends StatelessWidget {

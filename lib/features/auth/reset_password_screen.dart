@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
+import '../../core/error_handler.dart';
 import 'auth_repository.dart';
 
 class ResetPasswordScreen extends ConsumerStatefulWidget {
@@ -41,12 +42,10 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
       await authRepo.sendEmailCode(email);
       Fluttertoast.showToast(msg: '驗證碼已發送');
       _startCodeCountdown(60);     // ← 啟動 60 秒倒數
+    } on EmailFormatException {
+      Fluttertoast.showToast(msg: 'Email 格式錯誤');
     } catch (e) {
-      if (e is EmailFormatException) {
-        Fluttertoast.showToast(msg: 'Email 格式錯誤');
-      } else {
-        Fluttertoast.showToast(msg: '發送失敗: $e');
-      }
+      AppErrorToast.show(e); // 其它（ApiException/Dio/未知）→ 字典轉中文 Toast
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -100,7 +99,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
       Fluttertoast.showToast(msg: '密碼已重置');
       Navigator.pop(context);
     } catch (e) {
-      Fluttertoast.showToast(msg: '重置失敗: $e');
+      AppErrorToast.show(e);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

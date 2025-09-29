@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../config/app_config.dart';
+import '../../core/error_handler.dart';
 import 'auth_interceptor.dart';
 
 class ApiClient {
@@ -105,5 +106,99 @@ class ApiClient {
       }
     }
     return response;
+  }
+
+  Future<Map<String, dynamic>> getOk(
+      String path, {
+        Map<String, dynamic>? queryParameters,
+        Options? options,
+        CancelToken? cancelToken,
+        ProgressCallback? onReceiveProgress,
+        Set<int> alsoOkCodes = const {}, // e.g. {100} 有些 API 把 100 當「沒有更多資料」
+      }) async {
+    final res = await get(
+      path,
+      queryParameters: queryParameters,
+      options: options,
+      cancelToken: cancelToken,
+      onReceiveProgress: onReceiveProgress,
+    );
+    return _unwrapOrThrow(res, alsoOkCodes: alsoOkCodes);
+  }
+
+  Future<Map<String, dynamic>> postOk(
+      String path, {
+        dynamic data,
+        Options? options,
+        CancelToken? cancelToken,
+        ProgressCallback? onSendProgress,
+        ProgressCallback? onReceiveProgress,
+        Set<int> alsoOkCodes = const {},
+      }) async {
+    final res = await post(
+      path,
+      data: data,
+      options: options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+    return _unwrapOrThrow(res, alsoOkCodes: alsoOkCodes);
+  }
+
+  Future<Map<String, dynamic>> putOk(
+      String path, {
+        dynamic data,
+        Options? options,
+        CancelToken? cancelToken,
+        ProgressCallback? onSendProgress,
+        ProgressCallback? onReceiveProgress,
+        Set<int> alsoOkCodes = const {},
+      }) async {
+    final res = await put(
+      path,
+      data: data,
+      options: options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+    return _unwrapOrThrow(res, alsoOkCodes: alsoOkCodes);
+  }
+
+  Future<Map<String, dynamic>> deleteOk(
+      String path, {
+        dynamic data,
+        Options? options,
+        CancelToken? cancelToken,
+        Set<int> alsoOkCodes = const {},
+      }) async {
+    final res = await delete(
+      path,
+      data: data,
+      options: options,
+      cancelToken: cancelToken,
+    );
+    return _unwrapOrThrow(res, alsoOkCodes: alsoOkCodes);
+  }
+
+  /// 私有：檢查 {code, message, data} 慣例，非 200 → 丟 ApiException
+  Map<String, dynamic> _unwrapOrThrow(Response res, {Set<int> alsoOkCodes = const {}}) {
+    final raw = res.data;
+    if (raw is Map) {
+      final map = raw.cast<String, dynamic>();
+      final code = map['code'];
+
+      if (code is int) {
+        if (code == 200 || alsoOkCodes.contains(code)) {
+          return map; // 成功或特例成功
+        }
+        final serverMsg = map['message']?.toString();
+        final msg = AppErrorCatalog.messageFor(code, serverMessage: serverMsg);
+        throw ApiException(code, msg);
+      }
+    }
+    // 不符合慣例（例如空 body/純數字）→ 當作格式錯誤
+    throw ApiException(-1, '資料格式錯誤');
   }
 }

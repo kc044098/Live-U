@@ -9,6 +9,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../../core/error_handler.dart';
 import '../../core/ws/ws_provider.dart';
 import '../../globals.dart';
 import '../../routes/app_routes.dart';
@@ -209,7 +210,9 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
 
     unawaited(ref.read(callRepositoryProvider)
         .respondCall(channelName: widget.channelName, callId: widget.callId, accept: false)
-        .timeout(const Duration(seconds: 2)).catchError((_) {}));
+        .timeout(const Duration(seconds: 2)).catchError((e) {
+      AppErrorToast.show(e); // 非 alsoOk 的錯誤才會到這裡
+    }));
 
     unawaited(_audioPlayer.stop());
     unawaited(WakelockPlus.disable());
@@ -248,18 +251,49 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
 
     // 告知後端我接聽；若 invite 已帶 token 可直接用它
     String? token = (widget.rtcToken.isNotEmpty) ? widget.rtcToken : null;
-    final acceptFuture = ref.read(callRepositoryProvider)
+    final acceptFuture = ref
+        .read(callRepositoryProvider)
         .respondCall(
       channelName: widget.channelName,
       callId: widget.callId,
       accept: true,
     )
         .timeout(const Duration(seconds: 3))
-        .catchError((_) => null);
+        .catchError((e) {
+      // 統一錯誤處理（常見錯誤碼給特別文案，其他交給字典）
+      if (e is ApiException) {
+        switch (e.code) {
+          case 102: // Insufficient Quota
+            Fluttertoast.showToast(msg: '餘額不足, 請前往充值～');
+            break;
+          case 121: // The User Is On Calling
+            Fluttertoast.showToast(msg: '對方忙線中');
+            break;
+          case 123: // User Offline
+            Fluttertoast.showToast(msg: '對方不在線');
+            break;
+          case 125: // Do Not Disturb
+            Fluttertoast.showToast(msg: '對方開啟免擾');
+            break;
+          default:
+            AppErrorToast.show(e);
+        }
+      } else {
+        AppErrorToast.show(e);
+      }
+      return null; // 告訴後續：接聽失敗
+    });
 
     if (token == null) {
       final resp = await acceptFuture;
-      final data = (resp['data'] is Map) ? Map<String, dynamic>.from(resp['data']) : const {};
+      if (resp == null) {
+        // 已於上方 catchError 顯示過錯誤訊息，這裡只結束流程即可
+        _busy = false;
+        return;
+      }
+      final data = (resp['data'] is Map)
+          ? Map<String, dynamic>.from(resp['data'])
+          : const <String, dynamic>{};
       token = (data['string'] ?? data['token'])?.toString();
       if (token == null || token.isEmpty) {
         _busy = false;
@@ -267,6 +301,7 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
         return;
       }
     } else {
+      // 已有 token，仍把接聽請求送出去（失敗會在 catchError 吐司，但不阻斷導頁）
       unawaited(acceptFuture);
     }
 

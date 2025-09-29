@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
+import '../../core/error_handler.dart';
 import '../../core/user_local_storage.dart';
 import '../profile/profile_controller.dart';
 import 'auth_repository.dart';
@@ -43,12 +44,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       await authRepo.sendEmailCode(email);
       Fluttertoast.showToast(msg: '驗證碼已發送');
       _startCodeCountdown(60); // 開始倒數
+    } on EmailFormatException {
+      Fluttertoast.showToast(msg: 'Email 格式錯誤');
     } catch (e) {
-      if (e is EmailFormatException) {
-        Fluttertoast.showToast(msg: 'Email 格式錯誤');
-      } else {
-        Fluttertoast.showToast(msg: '發送失敗: $e');
-      }
+      AppErrorToast.show(e); // 其餘（ApiException/Dio/未知）→ 統一轉中文 Toast
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -89,7 +88,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       Fluttertoast.showToast(msg: '註冊成功');
       Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {
-      Fluttertoast.showToast(msg: '註冊失敗: $e');
+      // 若後端回 112/113 會變成 ApiException，這裡用集中字典顯示對應中文
+      AppErrorToast.show(e);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

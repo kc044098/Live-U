@@ -15,12 +15,13 @@ class CallRepository {
     required int flag, // 1=video, 2=audio
     required int toUid,
   }) async {
-    final raw = await _api.post(
+    // code != 200 會丟 ApiException（統一由上層 Toast）
+    final map = await _api.postOk(
       ApiEndpoints.liveCall,
       data: {'flag': flag, 'to_uid': toUid},
     );
-    final dyn = (raw is Response) ? raw.data : raw;
-    return _toMap(dyn);
+    // 盡量維持原回傳：回 data（若不是 map 也包成 map）
+    return _toMap(map['data']);
   }
 
   Future<Map<String, dynamic>> respondCall({
@@ -28,30 +29,38 @@ class CallRepository {
     String? callId,
     required bool accept, // true=1 接聽, false=2 拒絕/掛斷
   }) async {
-    final raw = await _api.post(
+    // 拒接/掛斷 → 容忍 124/126 視為成功（冪等）
+    final alsoOk = accept ? const <int>{} : const <int>{124, 126};
+
+    final map = await _api.postOk(
       ApiEndpoints.liveCallAccept,
       data: {
         'channel_name': channelName,
         'callId': callId,
         'flag': accept ? 1 : 2,
       },
+      alsoOkCodes: alsoOk,
     );
-    final dyn = (raw is Response) ? raw.data : raw;
-    return _toMap(dyn);
+    return _toMap(map['data']);
   }
 
   Future<String> renewRtcToken({
     required String channelName,
   }) async {
-    final raw = await _api.post(
-      ApiEndpoints.renewRtcToken, // 你自己後端的路由
-      data: {
-        'channel_name': channelName,
-      },
+    final map = await _api.postOk(
+      ApiEndpoints.renewRtcToken,
+      data: {'channel_name': channelName},
     );
-    final map = _toMap(raw);
-    // 後端回傳 key 你自己決定，這裡兼容幾種常見命名
-    return (map['token'] ?? map['rtcToken'] ?? map['rtc_token'] ?? '').toString();
+    final data = _toMap(map['data']);
+    // 兼容常見命名（data 裡沒有時，再看最外層）
+    return (data['token'] ??
+        data['rtcToken'] ??
+        data['rtc_token'] ??
+        map['token'] ??
+        map['rtcToken'] ??
+        map['rtc_token'] ??
+        '')
+        .toString();
   }
 
   /// 把任意回傳(normal/Dio/JSON字串/其它)安全轉成 Map<String,dynamic>
@@ -65,11 +74,9 @@ class CallRepository {
         if (j is Map) return Map<String, dynamic>.from(j);
         return {'data': j};
       } catch (_) {
-        // 不是 JSON 就包起來
         return {'data': v};
       }
     }
-    // 其他型別（list/bool/null...）一律包在 data 裡
     return {'data': v};
   }
 }

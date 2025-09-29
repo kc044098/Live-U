@@ -1,6 +1,7 @@
 import 'package:djs_live_stream/features/live/video_repository.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/error_handler.dart';
 import '../../../data/models/user_model.dart';
 
 class FriendListState {
@@ -63,7 +64,23 @@ class FriendListNotifier extends StateNotifier<FriendListState> {
         hasMore: newUsers.isNotEmpty,
         isLoading: false,
       );
+    } on ApiException catch (e) {
+      // ✅ 後台用錯誤表示「沒資料」→ 視為空資料，結束分頁、不彈錯
+      if (e.code == 404 || e.code == 100) {
+        state = FriendListState(
+          users: state.users,
+          currentPage: page,
+          hasMore: false,
+          isLoading: false,
+        );
+        return;
+      }
+      // 其它錯誤 → 用字典顯示中文 Toast
+      AppErrorToast.show(e);
+      state = state.copyWith(isLoading: false);
     } catch (e) {
+      // 非 ApiException（如 DioException/解析錯誤）→ 也走統一吐司
+      AppErrorToast.show(e);
       state = state.copyWith(isLoading: false);
     }
   }

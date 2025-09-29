@@ -9,6 +9,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../l10n/l10n.dart';
 import '../widgets/webview_flutter.dart';
 import 'account_login_screen.dart';
+import 'apple_auth_service.dart';
 import 'email_login_screen.dart';
 import 'facebook_auth_service.dart';
 import 'google_auth_service.dart';
@@ -22,6 +23,7 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final GoogleAuthService _googleAuthService = GoogleAuthService();
+  final AppleAuthService _appleAuthService = AppleAuthService();
   final FacebookAuthService _facebookAuthService = FacebookAuthService();
   bool _isLoading = false;
   String _appVersion = '';
@@ -73,6 +75,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       Navigator.pushReplacementNamed(context, '/home');
     } else {
       Fluttertoast.showToast(msg: 'Google 登入失敗');
+    }
+  }
+
+  Future<void> _handleAppleLogin() async {
+    if (Firebase.apps.isEmpty) {
+      Fluttertoast.showToast(msg: '初始化中，請稍後再試');
+      return;
+    }
+    setState(() => _isLoading = true);
+    final user = await AppleAuthService().signInWithAppleViaFirebase(ref);
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (user != null) {
+      Navigator.pushReplacementNamed(context, '/home');
+    } else {
+      Fluttertoast.showToast(msg: 'Apple 登入失敗');
     }
   }
 
@@ -199,7 +218,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         _buildLoginButton(
                           label: '通过 Apple 登录',
                           iconPath: 'assets/icon_apple.svg',
-                          onPressed: _fakeLogin,
+                          onPressed: _handleAppleLogin,
                         ),
                         _buildLoginButton(
                           label: '通过邮箱登录',

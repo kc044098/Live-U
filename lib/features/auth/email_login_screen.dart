@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
+import '../../core/error_handler.dart';
 import '../../core/user_local_storage.dart';
 import '../mine/user_repository_provider.dart';
 import '../profile/profile_controller.dart';
@@ -93,12 +94,18 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
 
       Fluttertoast.showToast(msg: '登入成功');
       Navigator.pushReplacementNamed(context, '/home');
+    } on BadCredentialsException {
+      // 帳密錯誤（後端 code=110）
+      Fluttertoast.showToast(msg: '登錄失敗: 帳號或密碼錯誤');
+    } on VerificationCodeException {
+      // 驗證碼錯誤（後端 code=112）
+      Fluttertoast.showToast(msg: '登錄失敗: 驗證碼錯誤');
+    } on EmailFormatException {
+      // 信箱格式錯誤（後端 code=113）
+      Fluttertoast.showToast(msg: '登錄失敗: 信箱格式錯誤');
     } catch (e) {
-      if (e is BadCredentialsException) {
-        Fluttertoast.showToast(msg: '登錄失敗: 帳號或密碼錯誤');
-      } else {
-        Fluttertoast.showToast(msg: '登錄失敗: $e');
-      }
+      // 其它錯誤（ApiException/DioException/未知）→ 統一字典轉中文 + Toast
+      AppErrorToast.show(e);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -119,12 +126,10 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
       await authRepo.sendEmailCode(email);
       Fluttertoast.showToast(msg: '驗證碼已發送');
       _startCodeCountdown(60);        // ← 啟動 60s 倒數
+    } on EmailFormatException {
+      Fluttertoast.showToast(msg: 'Email 格式錯誤');
     } catch (e) {
-      if (e is EmailFormatException) {
-        Fluttertoast.showToast(msg: 'Email 格式錯誤');
-      } else {
-        Fluttertoast.showToast(msg: '發送失敗: $e');
-      }
+      AppErrorToast.show(e); // 其它錯誤（含 ApiException 由字典顯示中文）
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
