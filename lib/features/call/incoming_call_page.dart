@@ -12,6 +12,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../core/error_handler.dart';
 import '../../core/ws/ws_provider.dart';
 import '../../globals.dart';
+import '../../l10n/l10n.dart';
 import '../../routes/app_routes.dart';
 import '../call/call_repository.dart';
 import '../live/data_model/call_overlay.dart';
@@ -68,7 +69,8 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
     // ★ 啟動時立即檢查是否已被中止
     if (ref.read(callAbortProvider).contains(widget.channelName)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _endWithToast('對方已結束通話請求...');
+        Fluttertoast.showToast(msg: S.of(context).callerEndedRequest);
+        _endWithToast('');
       });
     }
 
@@ -104,23 +106,16 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
 
     final granted = micOk && camOk;
     if (!granted && mounted) {
-      // 可選：若永久拒絕，可引導去系統設定
-      final perma = results.values.any((s) => s == PermissionStatus.permanentlyDenied);
-      if (perma) {
-        // 這兩行二選一：要不要直接帶去系統設定由你決定
-        // await openAppSettings();
-        // return;
-      }
+      final msg = needCam ? S.of(context).pleaseGrantMicCam : S.of(context).pleaseGrantMic;
 
-      // 停掉鈴聲 / 釋放喚醒，然後關頁 + toast
       try { await _audioPlayer.stop(); } catch (_) {}
       unawaited(WakelockPlus.disable());
-      Fluttertoast.showToast(msg: '請先授權相機與麥克風');
+      Fluttertoast.showToast(msg: msg);
 
       if (Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       } else {
-        _backToHome(); // 沒有上一頁就回首頁
+        _backToHome();
       }
     }
   }
@@ -134,10 +129,8 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
         isVoice: widget.callerFlag != 1,
         remoteUid: widget.fromUid,
         onExpand: () => CallOverlay.hide(),
-        // 如要在小窗能拒接：onHangup: () async => _reject(toast: '已拒絕來電'),
       ),
     );
-    // 可選：把首頁頂上來，讓本頁留在棧中持續聽 WS
     Navigator.of(rootNavigatorKey.currentContext!).pushNamed(AppRoutes.home);
   }
 
@@ -160,11 +153,11 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
     // 主叫取消/拒絕：call.accept(status=2) 或 invite(status=2)
     _wsUnsubs.add(ws.on('call.accept', (p) {
       if (!_sameChannel(p) || _busy) return;
-      if (_status(p) == 2) _endWithToast('對方已結束通話請求...');
+      if (_status(p) == 2) _endWithToast(S.of(context).callerEndedRequest);
     }));
     _wsUnsubs.add(ws.on('call.invite', (p) {
       if (!_sameChannel(p) || _busy) return;
-      if (_status(p) == 2) _endWithToast('對方已結束通話請求...');
+      if (_status(p) == 2) _endWithToast(S.of(context).callerEndedRequest);
     }));
   }
 
@@ -172,7 +165,7 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
     _timeoutTimer?.cancel();
     _timeoutTimer = Timer(const Duration(seconds: 30), () async {
       if (!mounted || _busy) return;
-      await _reject(toast: '來電超時未接');
+      await _reject(toast: S.of(context).incomingTimeout);
     });
   }
 
@@ -194,8 +187,8 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
     unawaited(_audioPlayer.stop());
     unawaited(WakelockPlus.disable());
 
-    await _closeMiniIfAny();   // ★ 關小窗
-    _backToHome();             // ★ 清棧回首頁
+    await _closeMiniIfAny();
+    _backToHome();
   }
 
   Future<void> _reject({String? toast}) async {
@@ -217,24 +210,22 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
     unawaited(_audioPlayer.stop());
     unawaited(WakelockPlus.disable());
 
-    await _closeMiniIfAny();   // ★ 關小窗
-    _backToHome();             // ★ 清棧回首頁
+    await _closeMiniIfAny();
+    _backToHome();
   }
 
   Future<void> _accept() async {
     if (_busy) return;
     _busy = true;
 
-    // ★ 起手式：先看是否已被中止
     if (ref.read(callAbortProvider).contains(widget.channelName)) {
-      _endWithToast('對方已結束通話請求...');
+      _endWithToast(S.of(context).callerEndedRequest);
       return;
     }
 
     _timeoutTimer?.cancel();
     unawaited(_audioPlayer.stop());
 
-    // 依雙方意願決定型態（只要一方不要就走語音）
     final mePrefVideo = ref.read(userProfileProvider)?.isVideoCall ?? true;
     final wantVideo   = mePrefVideo && (widget.callerFlag == 1);
     final needCam     = wantVideo;
@@ -245,11 +236,11 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
     final camOk = !needCam || statuses[Permission.camera] == PermissionStatus.granted;
     if (!micOk || !camOk) {
       _busy = false;
-      Fluttertoast.showToast(msg: '請先授權麥克風${needCam ? "與相機" : ""}');
+      final msg = needCam ? S.of(context).pleaseGrantMicCam : S.of(context).pleaseGrantMic;
+      Fluttertoast.showToast(msg: msg);
       return;
     }
 
-    // 告知後端我接聽；若 invite 已帶 token 可直接用它
     String? token = (widget.rtcToken.isNotEmpty) ? widget.rtcToken : null;
     final acceptFuture = ref
         .read(callRepositoryProvider)
@@ -260,34 +251,23 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
     )
         .timeout(const Duration(seconds: 3))
         .catchError((e) {
-      // 統一錯誤處理（常見錯誤碼給特別文案，其他交給字典）
       if (e is ApiException) {
         switch (e.code) {
-          case 102: // Insufficient Quota
-            Fluttertoast.showToast(msg: '餘額不足, 請前往充值～');
-            break;
-          case 121: // The User Is On Calling
-            Fluttertoast.showToast(msg: '對方忙線中');
-            break;
-          case 123: // User Offline
-            Fluttertoast.showToast(msg: '對方不在線');
-            break;
-          case 125: // Do Not Disturb
-            Fluttertoast.showToast(msg: '對方開啟免擾');
-            break;
-          default:
-            AppErrorToast.show(e);
+          case 102: Fluttertoast.showToast(msg: S.of(context).insufficientBalanceTopup); break;
+          case 121: Fluttertoast.showToast(msg: S.of(context).calleeBusy); break;
+          case 123: Fluttertoast.showToast(msg: S.of(context).calleeOffline); break;
+          case 125: Fluttertoast.showToast(msg: S.of(context).calleeDnd); break;
+          default:  AppErrorToast.show(e);
         }
       } else {
         AppErrorToast.show(e);
       }
-      return null; // 告訴後續：接聽失敗
+      return null;
     });
 
     if (token == null) {
       final resp = await acceptFuture;
       if (resp == null) {
-        // 已於上方 catchError 顯示過錯誤訊息，這裡只結束流程即可
         _busy = false;
         return;
       }
@@ -297,24 +277,21 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
       token = (data['string'] ?? data['token'])?.toString();
       if (token == null || token.isEmpty) {
         _busy = false;
-        Fluttertoast.showToast(msg: '接聽失敗：缺少通話憑證');
+        Fluttertoast.showToast(msg: S.of(context).acceptFailedMissingToken);
         return;
       }
     } else {
-      // 已有 token，仍把接聽請求送出去（失敗會在 catchError 吐司，但不阻斷導頁）
       unawaited(acceptFuture);
     }
 
-    // ★ 取得 token 之後、導航前再檢一次通話是否被終止
     if (!mounted || ref.read(callAbortProvider).contains(widget.channelName)) {
-      _endWithToast('對方已結束通話請求...');
+      _endWithToast(S.of(context).callerEndedRequest);
       return;
     }
 
     if (!mounted) return;
     final me = ref.read(userProfileProvider)!;
 
-    // 進房
     Navigator.of(context).pushReplacementNamed(
       AppRoutes.broadcaster,
       arguments: {
@@ -333,7 +310,6 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
 
     _hideMiniIfAny();
 
-    // 若此時在 Mini → 關掉
     if (CallOverlay.isShowing) CallOverlay.hide();
   }
 
@@ -358,17 +334,18 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
   @override
   Widget build(BuildContext context) {
     final top = MediaQuery.of(context).padding.top;
+    final t = S.of(context); // ← 多語言
 
     // ★ 持續監聽通話是否被中止
     ref.listen<Set<String>>(callAbortProvider, (prev, next) {
       if (next.contains(widget.channelName)) {
-        _endWithToast('對方已結束通話請求...');
+        _endWithToast(t.callerEndedRequest);
       }
     });
 
     return WillPopScope(
       onWillPop: () async {
-        _goMini();            // 返回鍵 → App 內 Mini
+        _goMini();
         return false;
       },
       child: Scaffold(
@@ -392,7 +369,7 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      widget.callerFlag == 1 ? '邀請您進行視頻通話' : '邀請您進行語音通話',
+                      widget.callerFlag == 1 ? t.inviteVideoCall : t.inviteVoiceCall,
                       style: const TextStyle(color: Colors.white70, fontSize: 14),
                     ),
                     const SizedBox(height: 140),
@@ -406,7 +383,10 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
                         const SizedBox(width: 64),
                         GestureDetector(
                           onTap: _accept,
-                          child: SvgPicture.asset(widget.callerFlag == 1 ?'assets/call_live_accept.svg': 'assets/call_voice_accept.svg', width: 64, height: 64),
+                          child: SvgPicture.asset(
+                            widget.callerFlag == 1 ? 'assets/call_live_accept.svg' : 'assets/call_voice_accept.svg',
+                            width: 64, height: 64,
+                          ),
                         ),
                       ],
                     ),
@@ -414,14 +394,13 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
                 ),
               ),
             ),
-            // 左上縮小 → 進 App 內 Mini（與直播/撥打頁一致）
             Positioned(
               top: top + 8,
               left: 8,
               child: IconButton(
                 icon: Image.asset('assets/zoom.png', width: 20, height: 20),
                 onPressed: _goMini,
-                tooltip: '縮小畫面',
+                tooltip: t.minimizeScreen,
                 splashRadius: 22,
               ),
             ),
@@ -431,4 +410,3 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
     );
   }
 }
-

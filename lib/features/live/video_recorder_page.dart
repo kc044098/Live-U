@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:video_player/video_player.dart';
+import '../../l10n/l10n.dart';
 import '../profile/profile_controller.dart';
 import 'music_select_page.dart';
 import 'video_preview_page.dart';
@@ -72,7 +73,7 @@ class _VideoRecorderPageState extends ConsumerState<VideoRecorderPage> {
       if (!isBroadcaster) {
         final secs = await _probeVideoSeconds(fixedPath);
         if (secs != null && secs > 60) {
-          Fluttertoast.showToast(msg: '錄製視頻需在一分鐘以內');
+          Fluttertoast.showToast(msg: S.of(context).recordTooLong1Min);
           // 丟棄本次錄影檔，避免占空間
           try { await File(fixedPath).delete(); } catch (_) {}
           return; // ← 不進入預覽頁，維持未選取狀態
@@ -151,7 +152,7 @@ class _VideoRecorderPageState extends ConsumerState<VideoRecorderPage> {
       if (!isBroadcaster) {
         final secs = await _probeVideoSeconds(pickedFile.path);
         if (secs != null && secs > 60) {
-          Fluttertoast.showToast(msg: '選取視頻需要在一分鐘以內');
+          Fluttertoast.showToast(msg: S.of(context).pickVideoTooLong1Min);
           return; // ← 保持未選取狀態：不產縮圖、不進預覽
         }
       }
@@ -193,7 +194,7 @@ class _VideoRecorderPageState extends ConsumerState<VideoRecorderPage> {
         body: Center(child: CircularProgressIndicator()),
       );
     }
-
+    final s = S.of(context);
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -252,10 +253,10 @@ class _VideoRecorderPageState extends ConsumerState<VideoRecorderPage> {
                                 _musicAdded = true;
                                 _selectedMusicPath = path;
                               });
-                              Fluttertoast.showToast(msg: "已添加音乐");
+                              Fluttertoast.showToast(msg: s.toastAddedMusic);
                             }
                           },
-                          child: const Text('添加音樂', style: TextStyle(color: Colors.white, fontSize: 14)),
+                          child: Text(s.musicAddTitle, style: TextStyle(color: Colors.white, fontSize: 14)),
                         ),
                         const SizedBox(width: 8),
                         GestureDetector(
@@ -264,7 +265,7 @@ class _VideoRecorderPageState extends ConsumerState<VideoRecorderPage> {
                               _musicAdded = false;
                               _selectedMusicPath = null;
                             });
-                            Fluttertoast.showToast(msg: "已清除音樂");
+                            Fluttertoast.showToast(msg: s.toastClearedMusic);
                           },
                           child: const Icon(Icons.close, color: Colors.white, size: 18),
                         ),
@@ -282,7 +283,7 @@ class _VideoRecorderPageState extends ConsumerState<VideoRecorderPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _buildSideButton('assets/icon_reverse.svg', '翻轉', _onReverseCamera),
+                _buildSideButton('assets/icon_reverse.svg', s.flipCamera, _onReverseCamera),
                 const SizedBox(height: 20),
                 /*
                 _buildSideButton('assets/icon_beauty.svg', '美顏', _onBeauty),
@@ -353,7 +354,7 @@ class _VideoRecorderPageState extends ConsumerState<VideoRecorderPage> {
                       children: [
                         SvgPicture.asset('assets/icon_upload.svg', width: 36, height: 36),
                         const SizedBox(height: 4),
-                        const Text('相冊', style: TextStyle(color: Colors.white, fontSize: 12)),
+                        Text(s.gallery, style: TextStyle(color: Colors.white, fontSize: 12)),
                       ],
                     ),
                   ),
@@ -381,7 +382,7 @@ class _VideoRecorderPageState extends ConsumerState<VideoRecorderPage> {
 
   void _onReverseCamera() async {
     if (_cameras == null || _cameras!.length < 2) {
-      Fluttertoast.showToast(msg: "沒有其他鏡頭可切換");
+      Fluttertoast.showToast(msg: S.of(context).noOtherCameraToSwitch);
       return;
     }
     final lensDirection = _controller?.description.lensDirection;
@@ -399,6 +400,7 @@ class _VideoRecorderPageState extends ConsumerState<VideoRecorderPage> {
   void _onFilter() => Fluttertoast.showToast(msg: "濾鏡功能尚未實現");
 
   Widget _buildBottomModeSwitch() {
+    final s = S.of(context);
     final screenWidth = MediaQuery.of(context).size.width;
     const buttonSpacing = 110.0;
 
@@ -417,7 +419,7 @@ class _VideoRecorderPageState extends ConsumerState<VideoRecorderPage> {
               curve: Curves.easeInOut,
               left: isVideoMode ? (screenWidth / 2 - 60) : (screenWidth / 2 + buttonSpacing - 60),
               child: _buildModeButton(
-                text: '視頻',
+                text: s.modeVideo,
                 icon: Icons.videocam,
                 isActive: isVideoMode,
                 onTap: () => setState(() => isVideoMode = true),
@@ -428,7 +430,7 @@ class _VideoRecorderPageState extends ConsumerState<VideoRecorderPage> {
               curve: Curves.easeInOut,
               left: isVideoMode ? (screenWidth / 2 + buttonSpacing - 60) : (screenWidth / 2 - 60),
               child: _buildModeButton(
-                text: '圖片',
+                text: s.modeImage,
                 icon: Icons.image,
                 isActive: !isVideoMode,
                 onTap: () => setState(() => isVideoMode = false),

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pull_to_refresh_flutter3/pull_to_refresh_flutter3.dart';
+import '../../l10n/l10n.dart';
 import '../profile/profile_controller.dart';
 import '../wallet/withdraw_page.dart';
 import 'model/invite_list_state.dart';
@@ -35,6 +36,7 @@ class _MyInvitePageState extends ConsumerState<MyInvitePage>
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     final user = ref.watch(userProfileProvider);
     final int totalIncome = user?.totalIncome ?? 0; // 累計佣金獎勵
     final int cashAmount  = user?.cashAmount  ?? 0; // 可提現金額
@@ -42,11 +44,7 @@ class _MyInvitePageState extends ConsumerState<MyInvitePage>
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('我的邀請',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.black,
-            )),
+        title: Text(s.myInvitesTitle, style: const TextStyle(fontSize: 16, color: Colors.black)),
         centerTitle: true,
         backgroundColor: Colors.white,
         elevation: 0,
@@ -123,8 +121,8 @@ class _MyInvitePageState extends ConsumerState<MyInvitePage>
                                 ),
                               ),
                               alignment: Alignment.center,
-                              child: const Text(
-                                '提現',
+                              child: Text(
+                                s.withdraw,
                                 style: TextStyle(
                                     fontSize: 16, color: Colors.white),
                               ),
@@ -151,8 +149,8 @@ class _MyInvitePageState extends ConsumerState<MyInvitePage>
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              const Text(
-                                '累計佣金獎勵',
+                              Text(
+                                s.totalCommissionReward,
                                 style: TextStyle(fontSize: 14, color: Colors.black54),
                               ),
                               const SizedBox(height: 8),
@@ -177,8 +175,8 @@ class _MyInvitePageState extends ConsumerState<MyInvitePage>
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              const Text(
-                                '可提現金額',
+                              Text(
+                                s.withdrawableAmount,
                                 style: TextStyle(fontSize: 14, color: Colors.black54),
                               ),
                               const SizedBox(height: 8),
@@ -221,9 +219,9 @@ class _MyInvitePageState extends ConsumerState<MyInvitePage>
                 indicatorWidth: 30,
                 radius: 6,
               ),
-              tabs: const [
-                Tab(text: '我的獎勵'),
-                Tab(text: '我邀請的人'),
+              tabs: [
+                Tab(text: s.tabMyRewards),
+                Tab(text: s.tabInvitees),
               ],
             ),
             Expanded(
@@ -300,7 +298,6 @@ class RewardTabView extends ConsumerStatefulWidget {
 
 class _RewardTabViewState extends ConsumerState<RewardTabView> {
   int selectedIndex = 0; // 0=今日, 1=昨日, 2=累計
-  final tabs = const ['今日', '昨日', '累計'];
 
   final RefreshController _rc = RefreshController(initialRefresh: false);
 
@@ -360,6 +357,9 @@ class _RewardTabViewState extends ConsumerState<RewardTabView> {
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
+    final tabs = [s.todayLabel, s.yesterdayLabel, s.totalLabel];
+
     final state = ref.watch(rewardListProvider);
     final cdn   = ref.watch(userProfileProvider)?.cdnUrl ?? '';
 
@@ -381,7 +381,7 @@ class _RewardTabViewState extends ConsumerState<RewardTabView> {
                 child: GestureDetector(
                   onTap: () => setState(() => selectedIndex = index),
                   child: Container(
-                    width: 70,
+                    width: 76,
                     height: 30,
                     decoration: BoxDecoration(
                       color: isSelected ? const Color(0xFFFFEFEF) : const Color(0xFFFAFAFA),
@@ -391,7 +391,7 @@ class _RewardTabViewState extends ConsumerState<RewardTabView> {
                     child: Text(
                       tabs[index],
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.bold,
                         color: isSelected ? const Color(0xFFFF4D67) : const Color(0xFF888888),
                       ),
@@ -416,7 +416,7 @@ class _RewardTabViewState extends ConsumerState<RewardTabView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    const Text('佣金獎勵', style: TextStyle(fontSize: 12, color: Color(0xFFB1A3A9))),
+                    Text(s.commissionRewards, style: TextStyle(fontSize: 12, color: Color(0xFFB1A3A9))),
                     const SizedBox(height: 8),
                     Text(
                       _fmtMoneyCents(totalCents),
@@ -429,7 +429,7 @@ class _RewardTabViewState extends ConsumerState<RewardTabView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    const Text('獎勵次數', style: TextStyle(fontSize: 12, color: Color(0xFFB1A3A9))),
+                    Text(s.rewardsCountLabel, style: TextStyle(fontSize: 12, color: Color(0xFFB1A3A9))),
                     const SizedBox(height: 8),
                     Text(
                       '$times',
@@ -456,18 +456,16 @@ class _RewardTabViewState extends ConsumerState<RewardTabView> {
                 // 標題列
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  child: const Row(
+                  child: Row(
                     children: [
                       Expanded(
-                        child: Text(
-                          '用戶',
+                        child: Text(s.userWord,
                           textAlign: TextAlign.start,
-                          style: TextStyle(fontSize: 14, color: Color(0xFF9E9E9E), fontWeight: FontWeight.bold),
+                          style: const TextStyle(fontSize: 14, color: Color(0xFF9E9E9E), fontWeight: FontWeight.bold),
                         ),
                       ),
                       Expanded(
-                        child: Text(
-                          '充值獎勵',
+                        child: Text(s.rechargeRewardLabel,
                           textAlign: TextAlign.center,
                           style: TextStyle(fontSize: 14, color: Color(0xFF9E9E9E), fontWeight: FontWeight.bold),
                         ),
@@ -522,11 +520,12 @@ class _RewardTabViewState extends ConsumerState<RewardTabView> {
   }
 
   Widget _buildList(List<RewardItem> filtered, RewardListState state, String cdnBase) {
+    final s = S.of(context);
     if (filtered.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
           padding: EdgeInsets.only(top: 40),
-          child: Text('暫無資料', style: TextStyle(color: Colors.grey)),
+          child: Text(s.noData, style: TextStyle(color: Colors.grey)),
         ),
       );
     }
@@ -539,7 +538,7 @@ class _RewardTabViewState extends ConsumerState<RewardTabView> {
         final it = filtered[index];
         final avatarRel = it.avatar.isNotEmpty ? it.avatar.first : '';
         final avatarUrl = _fullUrl(cdnBase, avatarRel);
-        final nick = it.nickName.isNotEmpty ? it.nickName : '用戶 ${it.uid}';
+        final nick = it.nickName.isNotEmpty ? it.nickName : s.userWithId(it.uid);
         final amount = _fmtMoneyCents(it.gold);
 
         return Container(
@@ -579,7 +578,6 @@ class InviteTabView extends ConsumerStatefulWidget {
 
 class _InviteTabViewState extends ConsumerState<InviteTabView> {
   int selectedIndex = 0; // 0=今日, 1=昨日, 2=累計
-  final tabs = ['今日', '昨日', '累計'];
 
   final RefreshController _rc = RefreshController(initialRefresh: false);
 
@@ -648,6 +646,9 @@ class _InviteTabViewState extends ConsumerState<InviteTabView> {
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
+    final tabs = [s.todayLabel, s.yesterdayLabel, s.totalLabel];
+
     final state = ref.watch(inviteListProvider);
     final cdn   = ref.watch(userProfileProvider)?.cdnUrl ?? '';
 
@@ -668,7 +669,7 @@ class _InviteTabViewState extends ConsumerState<InviteTabView> {
                 child: GestureDetector(
                   onTap: () => setState(() => selectedIndex = index),
                   child: Container(
-                    width: 70,
+                    width: 76,
                     height: 30,
                     decoration: BoxDecoration(
                       color: isSelected ? const Color(0xFFFFEFEF) : const Color(0xFFFAFAFA),
@@ -678,7 +679,7 @@ class _InviteTabViewState extends ConsumerState<InviteTabView> {
                     child: Text(
                       tabs[index],
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.bold,
                         color: isSelected ? const Color(0xFFFF4D67) : const Color(0xFF888888),
                       ),
@@ -700,7 +701,7 @@ class _InviteTabViewState extends ConsumerState<InviteTabView> {
           alignment: Alignment.center,
           child: Column(
             children: [
-              const Text('邀請人數（人）', style: TextStyle(fontSize: 12, color: Color(0xFFB1A3A9))),
+              Text(s.inviteesCountLabel, style: TextStyle(fontSize: 12, color: Color(0xFFB1A3A9))),
               const SizedBox(height: 8),
               Text(
                 '$currentCount',
@@ -724,18 +725,15 @@ class _InviteTabViewState extends ConsumerState<InviteTabView> {
                 // 標題列
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  child: const Row(
+                  child: Row(
                     children: [
                       Expanded(
-                        child: Text(
-                          '用戶',
-                          textAlign: TextAlign.start,
-                          style: TextStyle(fontSize: 14, color: Color(0xFF9E9E9E), fontWeight: FontWeight.bold),
+                        child: Text(s.userWord, textAlign: TextAlign.start,
+                          style: const TextStyle(fontSize: 14, color: Color(0xFF9E9E9E), fontWeight: FontWeight.bold),
                         ),
                       ),
                       Expanded(
-                        child: Text(
-                          '註冊時間',
+                        child: Text(s.registeredAt,
                           textAlign: TextAlign.center,
                           style: TextStyle(fontSize: 14, color: Color(0xFF9E9E9E), fontWeight: FontWeight.bold),
                         ),
@@ -800,10 +798,10 @@ class _InviteTabViewState extends ConsumerState<InviteTabView> {
       );
     }
     if (filtered.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
           padding: EdgeInsets.only(top: 40),
-          child: Text('暫無資料', style: TextStyle(color: Colors.grey)),
+          child: Text(S.of(context).noData, style: TextStyle(color: Colors.grey)),
         ),
       );
     }
@@ -816,7 +814,7 @@ class _InviteTabViewState extends ConsumerState<InviteTabView> {
         final it = filtered[index];
         final avatarRel = it.avatar.isNotEmpty ? it.avatar.first : '';
         final avatarUrl = _fullUrl(cdnBase, avatarRel);
-        final nick = it.nickName.isNotEmpty ? it.nickName : '用戶 ${it.inviteUid}';
+        final nick = it.nickName.isNotEmpty ? it.nickName : S.of(context).userWithId(it.inviteUid);
         final when = _fmtFull(it.createAt);
 
         return Container(

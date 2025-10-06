@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/member_video_model.dart';
 import '../../data/network/avatar_cache.dart';
+import '../../l10n/l10n.dart';
 import '../live/member_video_feed_state.dart';
 import '../live/video_repository_provider.dart';
 import '../profile/profile_controller.dart';
@@ -46,9 +47,12 @@ class _FullscreenImagePageState extends ConsumerState<FullscreenImagePage> {
 
   static const int _kMaxTitleLen = 300;
 
-  String _isTopToCategory(int isTop) => isTop == 1 ? '精選' : '日常';
+  // 用多語鍵取代硬字串
+  String _isTopToCategory(int isTop) =>
+      isTop == 1 ? S.of(context).categoryFeatured : S.of(context).categoryDaily;
 
-  int _categoryToIsTop(String cat) => cat == '精選' ? 1 : 2;
+  int _categoryToIsTop(String cat) =>
+      cat == S.of(context).categoryFeatured ? 1 : 2;
 
   bool _isBroadcaster = false;
 
@@ -64,7 +68,6 @@ class _FullscreenImagePageState extends ConsumerState<FullscreenImagePage> {
   @override
   void initState() {
     super.initState();
-    _selectedCategory = _isTopToCategory(widget.item.isTop);
     _textController.text = widget.item.title;
 
     // 初始化原始資料，做差異比對用
@@ -118,7 +121,7 @@ class _FullscreenImagePageState extends ConsumerState<FullscreenImagePage> {
       height: double.infinity,
       placeholder: (_, __) => const Center(
           child:
-              CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+          CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
       errorWidget: (_, __, ___) => const Center(
           child: Icon(Icons.broken_image, color: Colors.white54, size: 48)),
     );
@@ -128,7 +131,7 @@ class _FullscreenImagePageState extends ConsumerState<FullscreenImagePage> {
   Widget build(BuildContext context) {
     final user = ref.watch(userProfileProvider);
     _isBroadcaster = user?.isBroadcaster == true;
-
+    _selectedCategory = _isTopToCategory(widget.item.isTop);
     return WillPopScope(
       onWillPop: () async {
         if (_hasChanges) {
@@ -181,7 +184,7 @@ class _FullscreenImagePageState extends ConsumerState<FullscreenImagePage> {
                             if (user.isVip)
                               Container(
                                 padding:
-                                    const EdgeInsets.symmetric(horizontal: 8),
+                                const EdgeInsets.symmetric(horizontal: 8),
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(6),
                                   gradient: const LinearGradient(colors: [
@@ -203,15 +206,14 @@ class _FullscreenImagePageState extends ConsumerState<FullscreenImagePage> {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // ⬇️ 文字框填滿剩餘寬度，與畫面最右邊距離固定 10
+                      // ⬇️ 文字框填滿剩餘寬度
                       Expanded(
                         child: AutoGrowTextField(
                           controller: _textController,
                           style: const TextStyle(color: Colors.white, fontSize: 14),
                           inputFormatters: [ LengthLimitingTextInputFormatter(_kMaxTitleLen) ],
                           maxLength: _kMaxTitleLen,
-                          multiline: true,                // ⬅️ 開啟多行自動換行
-                          // 可保留預設 padding，也可稍微加高：
+                          multiline: true,
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         ),
                       ),
@@ -221,7 +223,7 @@ class _FullscreenImagePageState extends ConsumerState<FullscreenImagePage> {
                         const SizedBox(width: 8),
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: _selectedCategory == '精選'
+                            backgroundColor: _selectedCategory == S.of(context).categoryFeatured
                                 ? const Color(0xFFFF4D67)
                                 : const Color(0xFF3A9EFF),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -251,6 +253,8 @@ class _FullscreenImagePageState extends ConsumerState<FullscreenImagePage> {
   }
 
   void _showCategoryBottomSheet(BuildContext context) {
+    final t = S.of(context);
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
@@ -261,19 +265,33 @@ class _FullscreenImagePageState extends ConsumerState<FullscreenImagePage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('選擇分類', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              Text(t.selectCategory, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
               ListTile(
-                title: Text('精選', style: TextStyle(color: _selectedCategory == '精選' ? const Color(0xFFFF4D67) : Colors.black)),
+                title: Text(
+                  t.categoryFeatured,
+                  style: TextStyle(
+                    color: _selectedCategory == t.categoryFeatured
+                        ? const Color(0xFFFF4D67)
+                        : Colors.black,
+                  ),
+                ),
                 onTap: () {
-                  setState(() => _selectedCategory = '精選');
+                  setState(() => _selectedCategory = t.categoryFeatured);
                   Navigator.pop(context);
                 },
               ),
               ListTile(
-                title: Text('日常', style: TextStyle(color: _selectedCategory == '日常' ? const Color(0xFF3A9EFF) : Colors.black)),
+                title: Text(
+                  t.categoryDaily,
+                  style: TextStyle(
+                    color: _selectedCategory == t.categoryDaily
+                        ? const Color(0xFF3A9EFF)
+                        : Colors.black,
+                  ),
+                ),
                 onTap: () {
-                  setState(() => _selectedCategory = '日常');
+                  setState(() => _selectedCategory = t.categoryDaily);
                   Navigator.pop(context);
                 },
               ),
@@ -284,3 +302,4 @@ class _FullscreenImagePageState extends ConsumerState<FullscreenImagePage> {
     );
   }
 }
+

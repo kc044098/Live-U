@@ -13,6 +13,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../l10n/l10n.dart';
+
 class InviteDialog extends ConsumerStatefulWidget {
   const InviteDialog({super.key});
 
@@ -51,12 +53,13 @@ class _InviteDialogState extends ConsumerState<InviteDialog> {
         _error = '$e';
         _loading = false;
       });
-      Fluttertoast.showToast(msg: '取得邀請連結失敗');
+      Fluttertoast.showToast(msg: S.of(context).inviteGetLinkFailed);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
@@ -66,7 +69,7 @@ class _InviteDialogState extends ConsumerState<InviteDialog> {
           // 背景 + 內文
           Container(
             width: double.infinity,
-            height: 480,
+            height: 500,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
             decoration: BoxDecoration(borderRadius: BorderRadius.circular(16)),
             child: Stack(
@@ -82,11 +85,11 @@ class _InviteDialogState extends ConsumerState<InviteDialog> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SizedBox(height: 32),
-                      const Text('识别二维码下载',
-                          style: TextStyle(fontSize: 16, color: Colors.black)),
+                      Text(s.inviteScanQrTitle,
+                          style: const TextStyle(fontSize: 16, color: Colors.black)),
                       const SizedBox(height: 8),
-                      const Text('即可开启甜蜜交友之旅',
-                          style: TextStyle(fontSize: 18, color: Color(0xFFFB5D5D))),
+                      Text(s.inviteScanQrSubtitle,
+                          style: const TextStyle(fontSize: 18, color: Color(0xFFFB5D5D))),
                       const SizedBox(height: 16),
 
                       // 白色 QR 區塊（載入中/錯誤時有對應 UI）
@@ -98,9 +101,7 @@ class _InviteDialogState extends ConsumerState<InviteDialog> {
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: Center(
-                            child: _buildQrArea(),
-                          ),
+                          child: Center(child: _buildQrArea()),
                         ),
                       ),
 
@@ -110,94 +111,43 @@ class _InviteDialogState extends ConsumerState<InviteDialog> {
                       Material(
                         color: Colors.transparent,
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          child: Row(
-                            children: [
-                              // 分享海報
-                              Expanded(
-                                child: InkWell(
-                                  onTap: (_inviteUrl == null || _inviteUrl!.isEmpty)
-                                      ? null
-                                      : () => _showShareBottomSheet(context),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      SvgPicture.asset('assets/icon_share.svg', width: 18, height: 18),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        '分享海報',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: (_inviteUrl == null || _inviteUrl!.isEmpty)
-                                              ? Colors.grey
-                                              : const Color(0xFFFB5D5D),
-                                        ),
-                                      ),
-                                    ],
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              child: Row(
+                                children: [
+                                  _ActionItem(
+                                    iconAsset: 'assets/icon_share.svg',
+                                    label: s.inviteSharePoster,
+                                    enabled: (_inviteUrl ?? '').isNotEmpty,
+                                    onTap: (_inviteUrl ?? '').isEmpty ? null : () => _showShareBottomSheet(context),
                                   ),
-                                ),
-                              ),
-
-                              Container(width: 1, height: 20, color: const Color(0xFFFACCCC)),
-
-                              // 複製連結
-                              Expanded(
-                                child: InkWell(
-                                  onTap: (_inviteUrl == null || _inviteUrl!.isEmpty)
-                                      ? null
-                                      : () {
-                                    Clipboard.setData(ClipboardData(text: _inviteUrl!));
-                                    Fluttertoast.showToast(msg: "已複製連結");
-                                  },
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      SvgPicture.asset('assets/icon_copy.svg', width: 18, height: 18),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        '複製連接',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: (_inviteUrl == null || _inviteUrl!.isEmpty)
-                                              ? Colors.grey
-                                              : const Color(0xFFFB5D5D),
-                                        ),
-                                      ),
-                                    ],
+                                  Container(width: 1, height: 20, color: const Color(0xFFFACCCC)),
+                                  _ActionItem(
+                                    iconAsset: 'assets/icon_copy.svg',
+                                    label: s.inviteCopyLink,
+                                    enabled: (_inviteUrl ?? '').isNotEmpty,
+                                    onTap: (_inviteUrl ?? '').isEmpty ? null : () {
+                                      Clipboard.setData(ClipboardData(text: _inviteUrl!));
+                                      Fluttertoast.showToast(msg: s.inviteCopied);
+                                    },
                                   ),
-                                ),
-                              ),
-
-                              Container(width: 1, height: 20, color: const Color(0xFFFACCCC)),
-
-                              // 保存圖片
-                              Expanded(
-                                child: InkWell(
-                                  onTap: (_inviteUrl == null || _inviteUrl!.isEmpty)
-                                      ? null
-                                      : () => _saveQrCode(context),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      SvgPicture.asset('assets/icon_save.svg', width: 18, height: 18),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        '保存圖片',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: (_inviteUrl == null || _inviteUrl!.isEmpty)
-                                              ? Colors.grey
-                                              : const Color(0xFFFB5D5D),
-                                        ),
-                                      ),
-                                    ],
+                                  Container(width: 1, height: 20, color: const Color(0xFFFACCCC)),
+                                  _ActionItem(
+                                    iconAsset: 'assets/icon_save.svg',
+                                    label: s.inviteSaveImage,
+                                    enabled: (_inviteUrl ?? '').isNotEmpty,
+                                    onTap: (_inviteUrl ?? '').isEmpty ? null : () => _saveQrCode(context),
                                   ),
-                                ),
+                                ],
                               ),
-                            ],
+                            ),
                           ),
                         ),
-                      )
+                      ),
+
                     ],
                   ),
                 ),
@@ -220,6 +170,7 @@ class _InviteDialogState extends ConsumerState<InviteDialog> {
   }
 
   Widget _buildQrArea() {
+    final s = S.of(context);
     if (_loading) {
       return const SizedBox(
         width: 268,
@@ -232,15 +183,15 @@ class _InviteDialogState extends ConsumerState<InviteDialog> {
         width: 268,
         height: 268,
         child: Center(
-          child: Text('載入失敗', style: TextStyle(color: Colors.red[400])),
+          child: Text(s.inviteLoadFailed, style: TextStyle(color: Colors.red[400])),
         ),
       );
     }
     if ((_inviteUrl ?? '').isEmpty) {
-      return const SizedBox(
+      return SizedBox(
         width: 268,
         height: 268,
-        child: Center(child: Text('無效的連結')),
+        child: Center(child: Text(s.inviteInvalidLink)),
       );
     }
 
@@ -265,13 +216,14 @@ class _InviteDialogState extends ConsumerState<InviteDialog> {
   }
 
   Future<void> _saveQrCode(BuildContext context) async {
+    final s = S.of(context);
     try {
       final ok = await _ensureSavePermission(context);
       if (!ok) return;
 
       final boundary = _qrKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
       if (boundary == null) {
-        Fluttertoast.showToast(msg: "畫面尚未準備完成");
+        Fluttertoast.showToast(msg: s.inviteSavingNotReady);
         return;
       }
       final image = await boundary.toImage(pixelRatio: 3.0);
@@ -285,10 +237,10 @@ class _InviteDialogState extends ConsumerState<InviteDialog> {
       await file.writeAsBytes(pngBytes);
 
       await OpenFile.open(file.path);
-      Fluttertoast.showToast(msg: "已保存至相簿資料夾！");
+      Fluttertoast.showToast(msg: s.inviteSavedToAlbum);
     } catch (e) {
       debugPrint("❌ 錯誤: $e");
-      Fluttertoast.showToast(msg: "保存失敗");
+      Fluttertoast.showToast(msg: s.inviteSaveFailed);
     }
   }
 
@@ -319,20 +271,22 @@ class _InviteDialogState extends ConsumerState<InviteDialog> {
   }
 
   Future<bool?> _showOpenSettingsDialog(BuildContext context) {
+    final s = S.of(context);
     return showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('權限被停用'),
-        content: const Text('您已關閉儲存/相簿權限，請前往系統設定手動開啟。'),
+        title: Text(s.commonPermissionDisabled),
+        content: Text(s.commonPermissionRationaleOpenSettings),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          TextButton(onPressed: () => Navigator.pop(context, true),  child: const Text('去設定')),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(s.commonCancel)),
+          TextButton(onPressed: () => Navigator.pop(context, true),  child: Text(s.commonGoToSettings)),
         ],
       ),
     );
   }
 
   void _showShareBottomSheet(BuildContext context) {
+    final s = S.of(context);
     if ((_inviteUrl ?? '').isEmpty) return;
     showModalBottomSheet(
       context: context,
@@ -345,19 +299,15 @@ class _InviteDialogState extends ConsumerState<InviteDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('分享到', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              Text(s.shareTo, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  _buildShareIcon(context, 'facebook', 'Facebook', 'assets/icon_fb.png',
-                      _shareToFacebook),
-                  _buildShareIcon(context, 'twitter', 'Twitter',
-                      'assets/icon_twitter.png', _shareToTwitter),
-                  _buildShareIcon(context, 'whatsapp', 'WhatsApp',
-                      'assets/icon_whatsapp.png', _shareToWhatsApp),
-                  _buildShareIcon(context, 'messenger', 'Messenger',
-                      'assets/icon_messenger.png', _shareToMessenger),
+                  _buildShareIcon(context, 'facebook', 'Facebook', 'assets/icon_fb.png', _shareToFacebook),
+                  _buildShareIcon(context, 'twitter', 'Twitter', 'assets/icon_twitter.png', _shareToTwitter),
+                  _buildShareIcon(context, 'whatsapp', 'WhatsApp', 'assets/icon_whatsapp.png', _shareToWhatsApp),
+                  _buildShareIcon(context, 'messenger', 'Messenger', 'assets/icon_messenger.png', _shareToMessenger),
                 ],
               ),
               const SizedBox(height: 20),
@@ -412,31 +362,31 @@ class _InviteDialogState extends ConsumerState<InviteDialog> {
   Future<void> _shareToMessenger() async {
     final link = _inviteUrl;
     if (Platform.isIOS) {
-      shareToMessengerIOS(link);
+      await shareToMessengerIOS(link);
     } else {
-      shareToMessengerAndroid(link);
+      await shareToMessengerAndroid(link);
     }
   }
 
   Future<void> shareToMessengerAndroid(String? inviteUrl) async {
+    final s = S.of(context);
     final url = _inviteUrl ?? '';
     if (url.isEmpty) return;
 
-    // 用 Messenger 的 URL scheme
     final uri = Uri.parse('fb-messenger://share?link=${Uri.encodeComponent(url)}');
 
-    // 先檢測是否可處理，再嘗試啟動
     if (await canLaunchUrl(uri)) {
       final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
       if (!ok) {
-        Fluttertoast.showToast(msg: '未檢測到安裝Messenger，無法分享');
+        Fluttertoast.showToast(msg: s.messengerNotInstalled);
       }
     } else {
-      Fluttertoast.showToast(msg: '未檢測到安裝Messenger，無法分享');
+      Fluttertoast.showToast(msg: s.messengerNotInstalled);
     }
   }
 
   Future<void> shareToMessengerIOS(String? inviteUrl) async {
+    final s = S.of(context);
     final link = inviteUrl ?? '';
     if (link.isEmpty) return;
 
@@ -447,16 +397,49 @@ class _InviteDialogState extends ConsumerState<InviteDialog> {
       if (can) {
         final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
         if (!ok) {
-          Fluttertoast.showToast(msg: '未檢測到安裝Messenger, 無法分享');
+          Fluttertoast.showToast(msg: s.messengerNotInstalled);
         }
         return;
       }
-
-      // 沒安裝 Messenger → 你要的吐司
-      Fluttertoast.showToast(msg: '未檢測到安裝Messenger, 無法分享');
-
+      Fluttertoast.showToast(msg: s.messengerNotInstalled);
     } catch (_) {
-      Fluttertoast.showToast(msg: '未檢測到安裝Messenger, 無法分享');
+      Fluttertoast.showToast(msg: s.messengerNotInstalled);
     }
+  }
+}
+class _ActionItem extends StatelessWidget {
+  final String iconAsset;
+  final String label;
+  final bool enabled;
+  final VoidCallback? onTap;
+  const _ActionItem({
+    required this.iconAsset,
+    required this.label,
+    required this.enabled,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = enabled ? const Color(0xFFFB5D5D) : Colors.grey;
+    return Expanded(
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        child: Center(
+          // 關鍵：縮小以避免超寬
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SvgPicture.asset(iconAsset, width: 18, height: 18, color: color),
+                const SizedBox(width: 4),
+                Text(label, style: TextStyle(fontSize: 12, color: color)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

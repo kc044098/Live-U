@@ -1,9 +1,13 @@
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/cupertino.dart';
 
+import '../../core/error_handler.dart';
 import '../../data/network/api_client.dart';
 import '../../data/network/api_endpoints.dart';
+import '../../globals.dart';
+import '../../l10n/l10n.dart';
 import 'chat_thread_item.dart';
 import 'data_model/call_record_item.dart';
 
@@ -11,9 +15,37 @@ class ChatRepository {
   ChatRepository(this._api);
   final ApiClient _api;
 
-  /// 發送文字訊息
-  /// 回傳 true=成功, false=失敗
-  // 改成回傳 SendResult（文字）
+  // --- helpers --------------------------------------------------------------
+
+  String _i18nSendFailed() {
+    try {
+      final ctx = rootNavigatorKey.currentContext;
+      if (ctx != null) return S.of(ctx).sendFailed;
+    } catch (_) {}
+    return '發送失敗'; // fallback（與現有行為一致）
+  }
+
+  SendResult _fail(Object e) {
+    if (e is ApiException) {
+      return SendResult(ok: false, code: e.code, message: e.message);
+    }
+    if (e is DioException) {
+      final sc = e.response?.statusCode;
+      if (sc == 404) {
+        return SendResult(ok: false, code: 404, message: AppErrorCatalog.messageFor(404));
+      }
+      final msg = e.message?.trim();
+      return SendResult(
+        ok: false,
+        code: sc ?? -1,
+        message: (msg?.isNotEmpty == true) ? msg : _i18nSendFailed(),
+      );
+    }
+    return  SendResult(ok: false, code: -1, message: _i18nSendFailed());
+  }
+
+  // --- send APIs: 統一不丟例外，回傳 SendResult -------------------------------
+
   Future<SendResult> sendText({
     required String uuid,
     required int toUid,
@@ -26,9 +58,14 @@ class ChatRepository {
       "to_uid": toUid,
       "uuid": uuid,
     };
-    final resp = await _api.post(ApiEndpoints.messageSend, data: payload);
-    final (code, msg) = _parseCodeMsg(resp.data);
-    return SendResult(ok: code == 200, code: code, message: msg);
+    try {
+      final ok = await _api.postOk(ApiEndpoints.messageSend, data: payload);
+      final code = (ok['code'] as num?)?.toInt() ?? -1;
+      final msg  = '${ok['message'] ?? ok['msg'] ?? ''}';
+      return SendResult(ok: code == 200, code: code, message: msg);
+    } catch (e) {
+      return _fail(e);
+    }
   }
 
   Future<SendResult> sendVoice({
@@ -39,20 +76,21 @@ class ChatRepository {
     String flag = 'chat_person',
   }) async {
     final payload = {
-      "data": {
-        "voice_path": voicePath,
-        "duration": durationSec,
-      },
+      "data": {"voice_path": voicePath, "duration": durationSec},
       "flag": flag,
       "to_uid": toUid,
       "uuid": uuid,
     };
-    final resp = await _api.post(ApiEndpoints.messageSend, data: payload);
-    final (code, msg) = _parseCodeMsg(resp.data);
-    return SendResult(ok: code == 200, code: code, message: msg);
+    try {
+      final ok = await _api.postOk(ApiEndpoints.messageSend, data: payload);
+      final code = (ok['code'] as num?)?.toInt() ?? -1;
+      final msg  = '${ok['message'] ?? ok['msg'] ?? ''}';
+      return SendResult(ok: code == 200, code: code, message: msg);
+    } catch (e) {
+      return _fail(e);
+    }
   }
 
-  // 改成回傳 SendResult（圖片）
   Future<SendResult> sendImage({
     required String uuid,
     required int toUid,
@@ -62,14 +100,19 @@ class ChatRepository {
     String flag = 'chat_person',
   }) async {
     final payload = {
-      "data": {"img_path": imagePath},
+      "data": {"img_path": imagePath, if (width != null) "width": width.toString(), if (height != null) "height": height.toString()},
       "flag": flag,
       "to_uid": toUid,
       "uuid": uuid,
     };
-    final resp = await _api.post(ApiEndpoints.messageSend, data: payload);
-    final (code, msg) = _parseCodeMsg(resp.data);
-    return SendResult(ok: code == 200, code: code, message: msg);
+    try {
+      final ok = await _api.postOk(ApiEndpoints.messageSend, data: payload);
+      final code = (ok['code'] as num?)?.toInt() ?? -1;
+      final msg  = '${ok['message'] ?? ok['msg'] ?? ''}';
+      return SendResult(ok: code == 200, code: code, message: msg);
+    } catch (e) {
+      return _fail(e);
+    }
   }
 
   Future<void> messageRead({required int id}) async {
@@ -80,123 +123,109 @@ class ChatRepository {
     }
   }
 
-  /// 取得歷史聊天訊息（分頁）
   Future<List<Map<String, dynamic>>> fetchMessageHistory({
     required int page,
     required int toUid,
   }) async {
-    final resp = await _api.post(ApiEndpoints.messageHistory, data: {
-      "page": page,
-      "to_uid": toUid,
-    });
+    try {
+      // body code=100/404 都視為正常（空）
+      final ok = await _api.postOk(
+        ApiEndpoints.messageHistory,
+        data: {"page": page, "to_uid": toUid},
+        alsoOkCodes: {100, 404},
+      );
 
-    final raw = resp.data is String ? jsonDecode(resp.data) : resp.data;
-    if (raw is! Map) {
-      throw Exception('拉取歷史失敗: 非預期回應');
+      final data = (ok['data'] is Map) ? Map<String, dynamic>.from(ok['data']) : const <String, dynamic>{};
+      final listAny = data['list'];
+      if (listAny is! List) return <Map<String, dynamic>>[];
+
+      final listRaw = listAny
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e));
+
+      // 只檢查必填 id；用 id 去重
+      final filtered = listRaw.where((m) => ('${m['id'] ?? ''}').trim().isNotEmpty);
+      final seen = <String>{};
+      final deduped = <Map<String, dynamic>>[];
+      for (final m in filtered) {
+        final key = '${m['id']}';
+        if (seen.add(key)) deduped.add(m);
+      }
+
+      debugPrint('[ChatAPI] history page=$page -> raw=${listAny.length} filtered=${filtered.length} deduped=${deduped.length}');
+      return deduped;
+    } on DioException catch (e) {
+      // 真正的 HTTP 404 → 空
+      if (e.response?.statusCode == 404) return <Map<String, dynamic>>[];
+      rethrow;
     }
-
-    final code = raw['code'] is num
-        ? (raw['code'] as num).toInt()
-        : int.tryParse('${raw['code']}') ?? -1;
-    final msg  = '${raw['message'] ?? ''}';
-    if (code == 100 && msg.toLowerCase().contains('not found')) {
-      return <Map<String, dynamic>>[];
-    }
-    if (code != 200) {
-      throw Exception('拉取歷史失敗: ${msg.isEmpty ? 'unknown' : msg}');
-    }
-
-    // 1) 直接取 list
-    final listRaw = (raw['data']?['list'] as List? ?? [])
-        .whereType<Map>()
-        .map((e) => Map<String, dynamic>.from(e));
-
-    // 2) 只檢查 id（必要），不要用 request_id 篩
-    final filtered = listRaw.where((m) => ('${m['id'] ?? ''}').trim().isNotEmpty);
-
-    // 3) 去重改用 id（或乾脆不去重）
-    final seen = <String>{};
-    final deduped = <Map<String, dynamic>>[];
-    for (final m in filtered) {
-      final key = '${m['id']}'; // ✅ 唯一鍵
-      if (seen.add(key)) deduped.add(m);
-    }
-
-    // （可選）log 用來核對
-    debugPrint('[ChatAPI] history page=$page -> raw=${listRaw.length} '
-        'filtered=${filtered.length} deduped=${deduped.length}');
-
-    return deduped;
   }
-
 
   Future<List<CallRecordItem>> fetchUserCallRecordList({
     required int page,
     int? toUid,
   }) async {
-    final resp = await _api.post(
-      ApiEndpoints.userCallRecordList,
-      data: {'page': page, if (toUid != null) 'to_uid': toUid},
-    );
-    final raw = resp.data is String ? jsonDecode(resp.data) : resp.data;
-    final list = (raw?['data']?['list'] ?? []) as List;
-    return list.map((e) => CallRecordItem.fromJson(Map<String, dynamic>.from(e))).toList();
+    try {
+      final ok = await _api.postOk(
+        ApiEndpoints.userCallRecordList,
+        data: {'page': page, if (toUid != null) 'to_uid': toUid},
+        alsoOkCodes: {100, 404},
+      );
+      final data = (ok['data'] is Map) ? Map<String, dynamic>.from(ok['data']) : const <String, dynamic>{};
+      final listAny = data['list'];
+      if (listAny is! List) return <CallRecordItem>[];
+      return listAny
+          .whereType<Map>()
+          .map((e) => CallRecordItem.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return <CallRecordItem>[];
+      rethrow;
+    }
   }
 
   Future<ChatThreadPage> fetchUserMessageList({int page = 1}) async {
-    final resp = await _api.post(ApiEndpoints.userMessageList, data: {"page": page});
-    final raw = resp.data is String ? jsonDecode(resp.data) : resp.data;
+    try {
+      final ok = await _api.postOk(
+        ApiEndpoints.userMessageList,
+        data: {"page": page},
+        alsoOkCodes: {100, 404},
+      );
 
-    // 處理「沒有資料」
-    final code = raw['code'] is num
-        ? (raw['code'] as num).toInt()
-        : int.tryParse('${raw['code']}') ?? -1;
-    final msg  = '${raw['message'] ?? ''}';
-    if (code == 100 && msg.toLowerCase().contains('not found')) {
-      return ChatThreadPage(items: [], totalCount: 0); // ← 當作空資料
+      final data = (ok['data'] is Map) ? Map<String, dynamic>.from(ok['data']) : const <String, dynamic>{};
+      final listAny = data['list'];
+      final countAny = data['count'];
+
+      final list = (listAny is List)
+          ? listAny
+          .whereType<Map>()
+          .map((e) => ChatThreadItem.fromJson(Map<String, dynamic>.from(e)))
+          .toList()
+          : <ChatThreadItem>[];
+
+      final count = (countAny is num) ? countAny.toInt() : list.length;
+      return ChatThreadPage(items: list, totalCount: count);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        return ChatThreadPage(items: const [], totalCount: 0);
+      }
+      rethrow;
     }
-
-    if (raw is! Map || raw['code'] != 200 || raw['data'] == null) {
-      throw Exception('載入失敗, 非預期回應 , 請檢查網路');
-    }
-
-    final data = Map<String, dynamic>.from(raw['data']);
-    final list = (data['list'] as List? ?? [])
-        .map((e) => ChatThreadItem.fromJson(Map<String, dynamic>.from(e)))
-        .toList();
-    final count = (data['count'] as num?)?.toInt() ?? list.length;
-
-    return ChatThreadPage(items: list, totalCount: count);
   }
 
   Future<void> sendAck(String uuid) async {
     try {
-      await _api.post(ApiEndpoints.messageSend, data: {
-        'flag': 'reply',
-        'uuid': uuid,
-      });
+      await _api.post(ApiEndpoints.messageSend, data: {'flag': 'reply', 'uuid': uuid});
     } catch (_) {
-      // ACK 失敗可忽略或做輕量重試；不要阻塞主流程
+      // ACK 失敗可忽略
     }
   }
 
-
-  (int?, String?) _parseCodeMsg(dynamic raw) {
-    final data = raw is String ? jsonDecode(raw) : raw;
-    if (data is Map) {
-      final c = (data['code'] is num)
-          ? (data['code'] as num).toInt()
-          : int.tryParse('${data['code']}');
-      final m = '${data['message'] ?? data['msg'] ?? ''}';
-      return (c, m);
-    }
-    return (null, null);
-  }
 }
 
 class SendResult {
   final bool ok;           // 是否成功（code == 200）
-  final int? code;         // 後端回傳 code
+  final int? code;         // 後端回傳 code 或錯誤碼（含 404）
   final String? message;   // 後端 message（可選）
   const SendResult({required this.ok, this.code, this.message});
 }

@@ -8,7 +8,7 @@ class ApiEndpoints {
   static const String logout = '/api/member/logout';
   static const String memberInfo = '/api/member/info';
   static const String memberInfoUpdate = '/api/member/info/update';
-  static const String memberVipList = '/api/member/vip/list'; // Vip方案列表
+  static const String memberVipList = '/api/finance/vip/list'; // Vip方案列表
 
   static const String memberFans = '/api/member/fans';
   static const String memberFocus = '/api/member/focus';  // 關注主播
@@ -36,7 +36,7 @@ class ApiEndpoints {
   static const String userCallRecordList = '/api/live/list'; // 接收用戶撥打電話記錄列表
 
   static const String moneyCash = '/api/member/cash'; // 獲取金幣
-  static const String coinPacketList = '/api/member/gold/list'; // 金幣禮包列表
+  static const String coinPacketList = '/api/finance/gold/list'; // 金幣禮包列表
   static const String giftList = '/api/live/gift/list'; // 禮物列表
   static const String musicList = '/api/member/music/list'; // 音樂列表
   static const String recharge = '/api/finance/recharge'; // 充值金幣 （測試用）
@@ -58,5 +58,6 @@ class ApiEndpoints {
   static const String renewRtcToken = '/api/live/token/renew';
 
   static const String liveEnd = '/api/live/report';
+  static const String iapVerify = '/iap/verify';
 
 }

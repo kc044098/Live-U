@@ -5,6 +5,7 @@ import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:pull_to_refresh_flutter3/pull_to_refresh_flutter3.dart';
 import 'package:djs_live_stream/features/message/voice_bubble.dart';
@@ -17,6 +18,7 @@ import 'package:record/record.dart';
 import '../../core/error_handler.dart';
 import '../../data/models/gift_item.dart';
 import '../../data/models/user_model.dart';
+import '../../l10n/l10n.dart';
 import '../call/call_request_page.dart';
 import '../live/data_model/gift_effect_player.dart';
 import '../live/gift_providers.dart';
@@ -269,6 +271,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
   }
 
   Widget _buildListView() {
+    final s = S.of(context);
     final list = ListView.builder(
       controller: _scrollController,
       reverse: true, // 最新在下（offset=0）
@@ -294,10 +297,10 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
       enablePullUp: _hasMore,       // 用「上拉載入」取得更舊訊息（對 reverse 來說是滾到頂）
       onLoading: _onSmartLoadOlder, // 到頂觸發
       footer: ClassicFooter(
-        idleText: '上拉載入更多',
-        canLoadingText: '釋放以載入更多',
-        loadingText: '載入中…',
-        noDataText: '已顯示最舊的消息',
+        idleText: s.pullUpToLoadMore,        // '上拉載入更多'
+        canLoadingText: s.releaseToLoadMore, // '釋放以載入更多'
+        loadingText: s.loadingEllipsis,      // '載入中…'
+        noDataText: s.oldestMessagesShown,   // '已顯示最舊的消息'
       ),
       child: list,
     );
@@ -389,14 +392,14 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
       // 先上傳 S3（需要路徑才可發送）
       final rel = await userRepo.uploadToS3(file: File(path));
       final full = cu.joinCdn(user?.cdnUrl, rel);
-
+      debugPrint('📤 upload done rel=$rel full=$full');
       final SendResult res = await chatRepo.sendVoice(
         uuid: uuid,
         toUid: toUid,
         voicePath: rel,
         durationSec: _recordDuration.toString(),
       );
-
+      debugPrint('🛰️ sendImage res ok=${res.ok} code=${res.code} msg=${res.message}');
       if (!mounted) return;
 
       // 若超上限 → 撤回樂觀訊息 + 彈窗
@@ -569,6 +572,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
   }
 
   void _showLimitDialog() async {
+    final s = S.of(context);
     FocusManager.instance.primaryFocus?.unfocus();
     await showDialog(
       context: context,
@@ -588,8 +592,8 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
                 const SizedBox(height: 24),
 
                 // 提示文字
-                const Text(
-                  '当天私信次数已用完，\n您可和她直接视频通话哦！',
+                Text(
+                  s.dmDailyLimitHint,
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 16, color: Colors.black87),
                 ),
@@ -612,12 +616,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
                             borderRadius: BorderRadius.circular(24),
                             color: Colors.white,
                           ),
-                          child: const Center(
-                            child: Text(
-                              '取消',
-                              style: TextStyle(fontSize: 16, color: Colors.black87),
-                            ),
-                          ),
+                          child: Center(child: Text(s.cancel, style: TextStyle(fontSize: 16, color: Colors.black87))),
                         ),
                       ),
                     ),
@@ -652,15 +651,13 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
                               colors: [Color(0xFFFFA770), Color(0xFFD247FE)],
                             ),
                           ),
-                          child: const Center(
+                          child: Center(
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.videocam, color: Colors.white, size: 20),
-                                SizedBox(width: 6),
-                                Text(
-                                  '視頻通話',
-                                  style: TextStyle(fontSize: 16, color: Colors.white),
+                                const Icon(Icons.videocam, color: Colors.white, size: 20),
+                                const SizedBox(width: 6),
+                                Text(s.videoCall, style: const TextStyle(fontSize: 16, color: Colors.white),
                                 ),
                               ],
                             ),
@@ -716,6 +713,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     final partnerUid = widget.partnerUid;
     if (partnerUid != null) {
       ref.listen<AsyncValue<ChatMessage>>(
@@ -783,11 +781,11 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('載入失敗：$_error'),
+                        Text('${s.loadFailedPrefix}${_error ?? ''}'),
                         const SizedBox(height: 12),
                         OutlinedButton(
                           onPressed: _refreshHistory,
-                          child: const Text('重試'),
+                          child: Text(s.retry),
                         ),
                       ],
                     ),
@@ -941,11 +939,12 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
   }
 
   Widget _buildBottomActions() {
+    final s = S.of(context);
     final items = <Map<String, dynamic>>[
-      {'icon': 'assets/message_icon_1.svg', 'label': '表情', 'onTap': () {
+      {'icon': 'assets/message_icon_1.svg', 'label': s.emojiLabel, 'onTap': () {
         _toggleEmojiPanel();
       }},
-      {'icon': 'assets/message_icon_2.svg', 'label': '通話', 'onTap': () {
+      {'icon': 'assets/message_icon_2.svg', 'label': s.callLabel, 'onTap': () {
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -959,7 +958,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
           ),
         );
       }},
-      {'icon': 'assets/message_icon_3.svg', 'label': '視頻', 'onTap': () {
+      {'icon': 'assets/message_icon_3.svg', 'label': s.videoLabel, 'onTap': () {
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -973,8 +972,8 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
           ),
         );
       }},
-      {'icon': 'assets/message_icon_4.svg', 'label': '禮物', 'onTap': _openGiftSheet},
-      {'icon': 'assets/message_icon_5.svg', 'label': '圖片', 'onTap': () async {
+      {'icon': 'assets/message_icon_4.svg', 'label': s.giftLabel, 'onTap': _openGiftSheet},
+      {'icon': 'assets/message_icon_5.svg', 'label': s.imageLabel, 'onTap': () async {
         await _pickAndSendImage();
       }},
     ];
@@ -1152,7 +1151,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
 
     final voicePathRel = c?['voice_path']?.toString();
     final chatText     = c?['chat_text']?.toString();
-    final duration     = int.parse(c?['duration'] ?? '0');
+    final duration = _asInt(c?['duration']) ?? 0;
     final imgPathRel   = (c?['img_path'] ?? c?['image_path'])?.toString();
 
     // 圖片
@@ -1230,6 +1229,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
   }
 
   Widget _buildInputBar() {
+    final s = S.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       height: 60,
@@ -1298,9 +1298,9 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
                     ),
                   ],
                 )
-                    : const Center(
+                    : Center(
                   child: Text(
-                    "按住說話",
+                    s.holdToTalk,
                     style: TextStyle(color: Colors.black54, fontSize: 14),
                   ),
                 ),
@@ -1319,8 +1319,8 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
                 inputFormatters: [
                   platformEmojiBackspaceFormatter(EmojiPack.tokenReg),
                 ],
-                decoration: const InputDecoration(
-                  hintText: '請輸入消息…',
+                decoration: InputDecoration(
+                  hintText: s.inputMessageHint,
                   border: InputBorder.none,
                   isCollapsed: true,
                 ),
@@ -1336,7 +1336,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
                 gradient: const LinearGradient(colors: [Color(0xFFFFB56B), Color(0xFFDF65F8)]),
                 borderRadius: BorderRadius.circular(24),
               ),
-              child: const Text('發送', style: TextStyle(color: Colors.white)),
+              child: Text(s.send, style: TextStyle(color: Colors.white)),
             ),
           ),
         ],
@@ -1529,100 +1529,55 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
       builder: (_) {
         return GiftBottomSheet(
           onSelected: (gift) async {
-            final user = ref.read(userProfileProvider);
-            final myUid = int.tryParse(user?.uid ?? '0')!;
-            final toUid = widget.partnerUid ?? 0;
-            final uuid = cu.genUuid(myUid);
+            final user   = ref.read(userProfileProvider);
+            final myUid  = int.tryParse(user?.uid ?? '0') ?? 0;
+            final toUid  = widget.partnerUid ?? 0;
+            final uuid   = cu.genUuid(myUid);
 
-            // ★ 先播本地特效（相對路徑→完整 URL）
-            final effectUrl = cu.joinCdn(user?.cdnUrl, gift.url);
-            _enqueueGift(effectUrl);
-
-            // payload（後端扣款/留存）
+            // 準備 payload：只送聊天訊息，讓後端扣款與推送
             final payload = jsonEncode({
-              'type': 'gift',
-              'gift_id': gift.id,
+              'type'      : 'gift',
+              'gift_id'   : gift.id,
               'gift_title': gift.title,
-              'gift_gold': gift.gold,
-              'gift_icon': gift.icon, // 相對路徑
+              'gift_gold' : gift.gold,
+              'gift_icon' : gift.icon,  // 相對路徑
               'gift_count': 1,
-              // 可選：也把 gift_url 帶給對端，方便它端解析
-              'gift_url': gift.url,
+              'gift_url'  : gift.url,   // 讓對端/自己收到 WS 時可直接播特效
             });
 
-            // 樂觀 UI（略，同你原有）
-            final iconFull = cu.joinCdn(user?.cdnUrl, gift.icon);
-            final optimistic = ChatMessage(
-              type: MessageType.self,
-              contentType: ChatContentType.gift,
-              text: gift.title,
-              uuid: uuid,
-              flag: 'chat_gift',
-              toUid: toUid,
-              data: {
-                'gift_id': gift.id,
-                'gift_title': gift.title,
-                'gift_icon': iconFull,
-                'gift_gold': gift.gold,
-                'gift_count': 1,
-                'gift_url': gift.url,
-              },
-              sendState: SendState.sending,
-              createAt: cu.nowSec(),
-            );
-            setState(() => _messages.add(optimistic));
-            _scrollToBottom();
-
-            final sendResult = await ref.read(chatRepositoryProvider).sendText(
+            // ⛔ 不要先播特效、不要樂觀插入訊息
+            final res = await ref.read(chatRepositoryProvider).sendText(
               uuid: uuid,
               toUid: toUid,
               text: payload,
               flag: 'chat_gift',
-            ).catchError((e) {
-              // 讓下方統一處理
-              throw e;
-            });
+            );
 
-            try {
-              if (!mounted) return sendResult.ok;
-              if (sendResult.code == 101) {
-                // 撤回樂觀訊息 + 彈窗
-                _removeOptimisticByUuid(uuid);
-                _showLimitDialog();
-                return false;
-              }
-              final i = _messages.indexWhere((m) => m.uuid == uuid);
-              if (i >= 0) {
-                setState(() {
-                  _messages[i] = _messages[i].copyWith(
-                    sendState: sendResult.ok ? SendState.sent : SendState.failed,
-                  );
-                });
-              }
-              return sendResult.ok;
-            } on ApiException catch (e) {
-              if (e.code == 101) {
-                _removeOptimisticByUuid(uuid);
-                _showLimitDialog();
-                return false;
-              }
-              final i = _messages.indexWhere((m) => m.uuid == uuid);
-              if (i >= 0) {
-                setState(() { _messages[i] = _messages[i].copyWith(sendState: SendState.failed); });
-              }
-              return false;
-            } on DioException catch (_) {
-              final i = _messages.indexWhere((m) => m.uuid == uuid);
-              if (i >= 0) {
-                setState(() { _messages[i] = _messages[i].copyWith(sendState: SendState.failed); });
-              }
+            if (!mounted) return false;
+
+            // 當天次數用完：走你原本的彈窗，且不顯示訊息、不播特效
+            if (res.code == 101) {
+              _showLimitDialog();
               return false;
             }
+
+            // 其它錯誤：用 toast 告知，不顯示訊息、不播特效
+            if (!res.ok) {
+              final msg = AppErrorCatalog.messageFor(res.code ?? -1, serverMessage: res.message);
+              Fluttertoast.showToast(msg: msg);
+              return false;
+            }
+
+            // ✅ 成功：
+            // 不手動加訊息，等 WS 推回來後（roomChatProvider）自動加到面板，
+            // 並由 _tryPlayGiftFromMessage(msg) 解析 gift_url 後播放特效（確保只有成功才會播）
+            return true;
           },
         );
       },
     );
   }
+
 
   void _enqueueGift(String url) {
     if (url.isEmpty) return;
@@ -1668,11 +1623,12 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
   }
 
   String get _presenceLabel {
-    final s = widget.statusText;
-    if (s == 0) return '離線';
-    if (s == 1 || s == 2) return '當前在線';
-    if (s == 3 || s == 4 || s == 5) return '忙線中';
-    return '離線';
+    final sL = S.of(context);
+    final st = widget.statusText;
+    if (st == 0) return sL.offlineStatusLabel;      // '離線'
+    if (st == 1 || st == 2) return sL.currentlyOnlineLabel; // '當前在線'
+    if (st == 3 || st == 4 || st == 5) return sL.busyStatusLabel; // '忙線中'
+    return sL.offlineStatusLabel;
   }
 
   void _openPartnerProfile() {
@@ -1715,25 +1671,23 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
     return (curr - prev).abs() >= 60;
   }
 
+// 時間格式：'昨日 HH:mm' 與日期
   String _formatChatTime(int epochSec) {
-    if (epochSec <= 0) epochSec = cu.nowSec();    // ✅ 防呆：0 就用現在
+    final s = S.of(context);
+    if (epochSec <= 0) epochSec = cu.nowSec();
     final dt  = DateTime.fromMillisecondsSinceEpoch(epochSec * 1000, isUtc: true).toLocal();
     final now = DateTime.now();
-
-    bool isSameDay(DateTime a, DateTime b) =>
-        a.year == b.year && a.month == b.month && a.day == b.day;
-
+    bool sameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
     final yesterday = now.subtract(const Duration(days: 1));
-
     String two(int v) => v.toString().padLeft(2, '0');
     final hhmm = '${two(dt.hour)}:${two(dt.minute)}';
 
-    if (isSameDay(dt, now)) {
-      return hhmm;                         // 當日
-    } else if (isSameDay(dt, yesterday)) {
-      return '昨日 $hhmm';                  // 昨日
+    if (sameDay(dt, now)) {
+      return hhmm;
+    } else if (sameDay(dt, yesterday)) {
+      return '${s.yesterdayLabel} $hhmm'; // '昨日 HH:mm'
     } else {
-      return '${dt.year}/${two(dt.month)}/${two(dt.day)} $hhmm';
+      return '${s.dateYmd(dt.year, dt.month, dt.day)} $hhmm'; // 用既有 dateYmd
     }
   }
 
@@ -1793,4 +1747,3 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
   }
 
 }
-

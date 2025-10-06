@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/l10n.dart';
 import 'model/withdraw_record.dart';
 
 class WithdrawInfoPage extends StatelessWidget {
@@ -12,32 +13,35 @@ class WithdrawInfoPage extends StatelessWidget {
     return '${dt.year}-${two(dt.month)}-${two(dt.day)} ${two(dt.hour)}:${two(dt.minute)}:${two(dt.second)}';
   }
 
-  String _methodText(String code) {
+  String _methodText(BuildContext context, String code) {
+    final t = S.of(context);
     switch (code.toLowerCase()) {
-      case 'paypal': return 'Paypal';
+      case 'paypal': return 'PayPal'; // 品牌名大小寫
       case 'visa':   return 'Visa';
-      default:       return code.isEmpty ? '未知方式' : code;
+      default:       return code.isEmpty ? t.unknownMethod : code;
     }
   }
 
   /// 狀態：1=审核中,2=成功,3=审核拒绝,4=审核通过
-  (String, Color) _statusTextAndColor(int s) {
+  (String, Color) _statusTextAndColor(BuildContext context, int s) {
+    final t = S.of(context);
     switch (s) {
-      case 1: return ('审核中', const Color(0xFFFF4D67)); // 粉色
-      case 2: return ('成功',    const Color(0xFF25C685)); // 綠色
-      case 3: return ('审核拒绝', const Color(0xFFE53935)); // 紅色
-      case 4: return ('审核通过', const Color(0xFFFF4D67)); // 粉色
+      case 1: return (t.statusReviewing, const Color(0xFFFF4D67)); // 粉色
+      case 2: return (t.statusSuccess,   const Color(0xFF25C685)); // 綠色
+      case 3: return (t.statusRejected,  const Color(0xFFE53935)); // 紅色
+      case 4: return (t.statusApproved,  const Color(0xFFFF4D67)); // 粉色
       default:return ('—', Colors.grey);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final (statusText, statusColor) = _statusTextAndColor(record.status);
+    final t = S.of(context);
+    final (statusText, statusColor) = _statusTextAndColor(context, record.status);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('账单详情', style: TextStyle(fontSize: 16, color: Colors.black)),
+        title: Text(t.billDetailTitle, style: const TextStyle(fontSize: 16, color: Colors.black)),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.white,
@@ -68,11 +72,11 @@ class WithdrawInfoPage extends StatelessWidget {
           const Divider(color: Color(0xFFEDEDED)),
 
           const SizedBox(height: 6),
-          _kvRow('提现时间', _formatDate(record.createAt)),
-          _kvRow('提现方式', _methodText(record.bankCode)),
-          _kvRow('提现账户', record.account.isEmpty ? '—' : record.account),
-          _kvRow('提现户名', record.cardName.isEmpty ? '—' : record.cardName),
-          _kvRow('提现单号', record.orderNumber.isEmpty ? '—' : record.orderNumber),
+          _kvRow(t.withdrawTimeLabel, _formatDate(record.createAt)),
+          _kvRow(t.withdrawMethodLabel, _methodText(context, record.bankCode)),
+          _kvRow(t.withdrawAccountLabel, record.account.isEmpty ? '—' : record.account),
+          _kvRow(t.withdrawAccountNameLabel, record.cardName.isEmpty ? '—' : record.cardName),
+          _kvRow(t.withdrawOrderIdLabel, record.orderNumber.isEmpty ? '—' : record.orderNumber),
         ],
       ),
     );

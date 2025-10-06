@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:pull_to_refresh_flutter3/pull_to_refresh_flutter3.dart';
 
+import '../../l10n/l10n.dart';
 import '../profile/profile_controller.dart';
 import 'model/finance_record.dart';
 
@@ -105,14 +106,17 @@ class _WalletDetailPageState extends ConsumerState<WalletDetailPage> {
     return DateFormat('yyyy-MM-dd HH:mm:ss').format(dt);
   }
 
-  String _titleFor(FinanceRecord r) {
+  String _titleFor(S t, FinanceRecord r) {
     switch (r.flag) {
-      case 1:   return '充值 - 金幣';
-      case 101: return '給主播送禮物';
-      case 100: return '收到禮物';
-      case 104: return '視頻消費';
-      case 105: return '語音消費';
-      case 5:   return '活動獎勵';
+      case 1:   return '${t.rechargeWord} - ${t.coinWord}';
+      case 101: {
+        final name = r.nickName.trim();
+        return name.isNotEmpty ? t.giftToName(name) : t.giftSent;
+      }
+      case 100: return t.titleReceiveGift;
+      case 104: return t.filterVideoPaid;
+      case 105: return t.filterVoicePaid;
+      case 5:   return t.filterCampaign;
       default:  return '';
     }
   }
@@ -187,13 +191,15 @@ class _WalletDetailPageState extends ConsumerState<WalletDetailPage> {
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
+    final t = S.of(context);
     final list = _visibleItems;
     final canPullUp = list.isNotEmpty && _hasMore;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('明細', style: TextStyle(fontSize: 16, color: Colors.black)),
+        title: Text(t.walletDetails, style: const TextStyle(fontSize: 16, color: Colors.black)),
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
@@ -202,39 +208,37 @@ class _WalletDetailPageState extends ConsumerState<WalletDetailPage> {
         actions: [
           TextButton(
             onPressed: () => _showFilterBottomSheet(context),
-            child: const Text('篩選', style: TextStyle(color: Colors.pinkAccent, fontSize: 16)),
+            child: Text(t.filter, style: const TextStyle(color: Colors.pinkAccent, fontSize: 16)),
           ),
         ],
       ),
       body: SmartRefresher(
         controller: _refreshController,
         enablePullDown: true,
-        enablePullUp: canPullUp,                 // 有下一頁才開啟上拉
+        enablePullUp: canPullUp,
         onRefresh: _onRefresh,
         onLoading: _onLoading,
         header: const WaterDropHeader(),
-        // ✅ 用自訂 footer：idle/無更多時也只佔 10 高度，保留底部間距
         footer: CustomFooter(
-          builder: (context, mode) {
+          builder: (ctx, mode) {
+            final tt = S.of(ctx);
             if (!canPullUp) return const SizedBox(height: 10);
             switch (mode) {
               case LoadStatus.loading:
                 return const SizedBox(height: 44, child: Center(child: CupertinoActivityIndicator()));
               case LoadStatus.failed:
-                return const SizedBox(height: 44, child: Center(child: Text('加載失敗，點擊重試')));
+                return SizedBox(height: 44, child: Center(child: Text(tt.loadFailedTapRetry)));
               case LoadStatus.noMore:
-                return const SizedBox(height: 10); // 仍保留 10px 間距
+                return const SizedBox(height: 10);
               default:
-                return const SizedBox(height: 10); // idle/canLoading → 10px 間距
+                return const SizedBox(height: 10);
             }
           },
         ),
-
-        // ✅ 單一可滾區域：尾端固定補一個 10px
         child: ListView.builder(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.only(top: 8),
-          itemCount: list.isEmpty ? 1 : (list.length + 1), // 多一個「尾項」
+          itemCount: list.isEmpty ? 1 : (list.length + 1),
           itemBuilder: (context, index) {
             if (list.isEmpty) {
               return const Padding(
@@ -243,12 +247,11 @@ class _WalletDetailPageState extends ConsumerState<WalletDetailPage> {
               );
             }
             if (index == list.length) {
-              return const SizedBox(height: 10); // ← 底部固定 10px
+              return const SizedBox(height: 10);
             }
 
             final item = list[index];
-            final title = _titleFor(item);
-            final (amountText, amountColor) = _amountFor(item);
+            final title = _titleFor(t, item);
 
             return Column(
               children: [
@@ -284,6 +287,7 @@ class _WalletDetailPageState extends ConsumerState<WalletDetailPage> {
   }
 
   void _showFilterBottomSheet(BuildContext context) {
+    final t = S.of(context);
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -294,13 +298,13 @@ class _WalletDetailPageState extends ConsumerState<WalletDetailPage> {
 
         // 與設計稿一致的順序
         final options = <(LedgerType type, String label)>[
-          (LedgerType.all, '全部'),
-          (LedgerType.recharge, '充值'),
-          (LedgerType.sendGift, '送禮'),
-          (LedgerType.receiveGift, '收禮'),
-          (LedgerType.videoPaid, '視頻消費'),
-          (LedgerType.voicePaid, '語音消費'),
-          (LedgerType.campaign, '活動獎勵'),
+          (LedgerType.all,        t.filterAll),
+          (LedgerType.recharge,   t.filterRecharge),
+          (LedgerType.sendGift,   t.filterSendGift),
+          (LedgerType.receiveGift,t.filterReceiveGift),
+          (LedgerType.videoPaid,  t.filterVideoPaid),
+          (LedgerType.voicePaid,  t.filterVoicePaid),
+          (LedgerType.campaign,   t.filterCampaign),
         ];
 
         return StatefulBuilder(
@@ -320,7 +324,7 @@ class _WalletDetailPageState extends ConsumerState<WalletDetailPage> {
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                    const Text('選擇交易類型', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                    Text(t.selectTransactionType, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 24),
 
                     // ✅ 動態均分 + 間距 20
@@ -437,10 +441,11 @@ class _EmptyView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    final t = S.of(context);
+    return Center(
       child: Padding(
         padding: EdgeInsets.only(top: 80),
-        child: Text('尚無紀錄'),
+        child: Text(t.walletNoRecords),
       ),
     );
   }

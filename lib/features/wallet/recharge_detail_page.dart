@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../l10n/l10n.dart';
 import 'model/recharge_detail.dart';
 
 class RechargeDetailPage extends ConsumerStatefulWidget {
@@ -43,16 +44,29 @@ class _RechargeDetailPageState extends ConsumerState<RechargeDetailPage> {
         .format(DateTime.fromMillisecondsSinceEpoch(ts * 1000));
   }
 
-  String _statusText(int s) => switch (s) { 2 => '充值成功', 1 => '處理中', 3 => '充值失敗', _ => '未知狀態' };
-  Color  _statusColor(int s) => switch (s) { 2 => const Color(0xFFFF4D67), 1 => Colors.orange, 3 => Colors.red, _ => Colors.grey };
+  String _statusText(S t, int s) => switch (s) {
+    2 => t.rechargeSuccess,
+    1 => t.processing,
+    3 => t.rechargeFailedShort,
+    _ => t.unknownStatus,
+  };
+
+  Color _statusColor(int s) => switch (s) {
+    2 => const Color(0xFFFF4D67),
+    1 => Colors.orange,
+    3 => Colors.red,
+    _ => Colors.grey,
+  };
 
   @override
   Widget build(BuildContext context) {
     final d = _detail;
+    final t = S.of(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('帳單詳情', style: TextStyle(fontSize: 16, color: Colors.black)),
+        title: Text(t.billDetailTitle,
+            style: const TextStyle(fontSize: 16, color: Colors.black)),
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
@@ -62,7 +76,7 @@ class _RechargeDetailPageState extends ConsumerState<RechargeDetailPage> {
       body: d == null || d.isLoading
           ? const Center(child: CircularProgressIndicator())
           : d.when(
-        data: (rd) => _buildBody(rd),
+        data: (rd) => _buildBody(context, rd),
         error: (e, _) => _ErrorView(
           message: '$e',
           onRetry: () {
@@ -82,42 +96,61 @@ class _RechargeDetailPageState extends ConsumerState<RechargeDetailPage> {
     );
   }
 
-  Widget _buildBody(RechargeDetail d) {
+  Widget _buildBody(BuildContext context, RechargeDetail d) {
+    final t = S.of(context);
+
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
       child: Column(
         children: [
           // 上方圓形圖示 + 標題
           Container(
-            width: 120, height: 120,
+            width: 120,
+            height: 120,
             decoration: const BoxDecoration(
               shape: BoxShape.circle,
               gradient: LinearGradient(
                 colors: [Color(0xFFFF8AA8), Color(0xFFFF6A8E)],
-                begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
               ),
             ),
-            child: const Center(child: Icon(Icons.savings, color: Colors.white, size: 56)),
+            child: const Center(
+                child: Icon(Icons.savings, color: Colors.white, size: 56)),
           ),
           const SizedBox(height: 16),
-          const Text('充值 - 金幣', style: TextStyle(fontSize: 16, color: Colors.black87)),
+          Text(
+            '${t.rechargeWord} - ${t.coinWord}',
+            style: const TextStyle(fontSize: 16, color: Colors.black87),
+          ),
           const SizedBox(height: 8),
 
           // 金額
-          Text(d.amount.toStringAsFixed(2),
-              style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w600)),
+          Text(
+            d.amount.toStringAsFixed(2),
+            style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w600),
+          ),
 
           const SizedBox(height: 8),
-          Text(_statusText(d.status), style: TextStyle(fontSize: 14, color: _statusColor(d.status))),
+          Text(
+            _statusText(t, d.status),
+            style:
+            TextStyle(fontSize: 14, color: _statusColor(d.status)),
+          ),
           const SizedBox(height: 24),
           const Divider(),
 
           // 明細項
-          _kvRow('充值詳情', '\$ ${d.amount.toStringAsFixed(2)}'),
-          _kvRow('充值金幣', '${d.gold} 個'),
-          _kvRow('充值方式', d.channelCode.isNotEmpty ? d.channelCode : (d.remark.isNotEmpty ? d.remark : '充值')),
-          _kvRow('充值時間', _fmtTime(d.createAt)),
-          _kvRow('充值單號', d.orderNumber),
+          _kvRow(t.rechargeDetails, '\$ ${d.amount.toStringAsFixed(2)}'),
+          _kvRow(t.rechargeCoinsLabel, '${d.gold} ${t.coinWord}'),
+          _kvRow(
+            t.rechargeMethodLabel,
+            d.channelCode.isNotEmpty
+                ? d.channelCode
+                : (d.remark.isNotEmpty ? d.remark : t.rechargeWord),
+          ),
+          _kvRow(t.rechargeTimeLabel, _fmtTime(d.createAt)),
+          _kvRow(t.rechargeOrderIdLabel, d.orderNumber),
         ],
       ),
     );
@@ -129,9 +162,11 @@ class _RechargeDetailPageState extends ConsumerState<RechargeDetailPage> {
       child: Row(
         children: [
           Expanded(
-            child: Text(k, style: const TextStyle(color: Colors.black45, fontSize: 14)),
+            child: Text(k,
+                style: const TextStyle(color: Colors.black45, fontSize: 14)),
           ),
-          Text(v, style: const TextStyle(fontSize: 14, color: Colors.black87)),
+          Text(v,
+              style: const TextStyle(fontSize: 14, color: Colors.black87)),
         ],
       ),
     );
@@ -145,6 +180,7 @@ class _ErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = S.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -153,7 +189,7 @@ class _ErrorView extends StatelessWidget {
           children: [
             Text(message, style: const TextStyle(color: Colors.red)),
             const SizedBox(height: 12),
-            OutlinedButton(onPressed: onRetry, child: const Text('重試')),
+            OutlinedButton(onPressed: onRetry, child: Text(t.retry)),
           ],
         ),
       ),

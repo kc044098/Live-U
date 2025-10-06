@@ -1,11 +1,15 @@
+import 'dart:io';
+
 import 'package:djs_live_stream/features/mine/user_repository_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
 
+import '../../l10n/l10n.dart';
 import '../profile/profile_controller.dart';
-import '../wallet/payment_method_page.dart';
+import '../wallet/iap_service.dart';
 import '../wallet/wallet_repository.dart';
 import 'model/vip_plan.dart';
 
@@ -24,10 +28,24 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
   int _bestIndex = 0; // 標示「最佳選擇」
   bool _buying = false;
 
+// === IAP 相關 ===
+  bool _iapReady = false;
+  Map<String, ProductDetails> _productMap = {}; // productId -> ProductDetails
+  String? _iapWarn;
+
   @override
   void initState() {
     super.initState();
-    _loadPlans();
+    _initIap().then((_) => _loadPlans());
+  }
+
+  Future<void> _initIap() async {
+    try {
+      await IapService.instance.init();
+      setState(() => _iapReady = IapService.instance.isAvailable);
+    } catch (_) {
+      setState(() => _iapReady = false);
+    }
   }
 
   Future<void> _loadPlans() async {
@@ -38,6 +56,19 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
     try {
       final repo = ref.read(userRepositoryProvider);
       final plans = await repo.fetchVipPlans();
+      final t = S.of(context);
+
+      if (!mounted) return;
+
+      if (plans.isEmpty) {
+        setState(() {
+          _plans = const [];
+          selectedIndex = 0;
+          _bestIndex = 0;
+          _loading = false;
+        });
+        return;
+      }
 
       // 預設選擇：優先 3 個月，其次「每月單價最低」
       int defaultIdx = plans.indexWhere((p) => p.month == 3);
@@ -53,7 +84,7 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
         if (defaultIdx < 0) defaultIdx = 0;
       }
 
-      // 「最佳選擇」：每月單價最低（跟上面的 default 可以一致）
+      // 「最佳選擇」：每月單價最低
       int bestIdx = 0;
       double bestPer = plans.first.perMonth;
       for (var i = 1; i < plans.length; i++) {
@@ -63,13 +94,29 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
         }
       }
 
+      // 如果是 iOS 且 IAP 可用 → 查商品
+      Map<String, ProductDetails> pMap = {};
+      String? iapWarn;
+      if (Platform.isIOS && _iapReady) {
+        final ids = plans.map((e) => e.productId).where((s) => s.isNotEmpty).toSet();
+        if (ids.isNotEmpty) {
+          pMap = await IapService.instance.queryProducts(ids);
+          if (pMap.isEmpty) iapWarn = t.iapWarnNoProducts;         // ← 改
+        } else {
+          iapWarn = t.iapWarnNoProductId;                           // ← 改
+        }
+      }
+
       setState(() {
         _plans = plans;
         selectedIndex = defaultIdx;
         _bestIndex = bestIdx;
         _loading = false;
+        _productMap = pMap;
+        _iapWarn = iapWarn;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = '$e';
         _loading = false;
@@ -77,20 +124,74 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
     }
   }
 
-  String _fmtMoney(double v) => '\$ ${v.toStringAsFixed(2)}';
+  Future<ProductDetails?> _ensureProduct(String productId) async {
+    if (productId.isEmpty) return null;
+    final cached = _productMap[productId];
+    if (cached != null) return cached;
+    // 補查單一商品
+    final map = await IapService.instance.queryProducts({productId});
+    if (map.isNotEmpty) {
+      setState(() => _productMap.addAll(map));
+      return map[productId];
+    }
+    return null;
+  }
 
-  String _fmtPerMonth(VipPlan p) => '${_fmtMoney(p.perMonth)} / 月';
+  Future<void> _buySelectedPlan() async {
+    final sel = _plans[selectedIndex];
+    final t = S.of(context);
+    if (Platform.isIOS) {
+      if (!_iapReady) { Fluttertoast.showToast(msg: t.iapUnavailable); return; }
+      if (sel.productId.isEmpty) { Fluttertoast.showToast(msg: t.iapProductIdMissing); return; }
+      final pd = await _ensureProduct(sel.productId);
+      if (pd == null) { Fluttertoast.showToast(msg: t.iapProductNotFound); return; }
+
+      setState(() => _buying = true);
+      try {
+        final purchase = await IapService.instance.buyNonConsumable(pd);
+        final receipt = purchase.verificationData.serverVerificationData;
+
+        await ref.read(walletRepositoryProvider).verifyIapAndCredit(
+          platform: 'ios',
+          productId: pd.id,
+          packetId: sel.id,
+          purchaseTokenOrReceipt: receipt,
+        );
+        await IapService.instance.finish(purchase);
+
+        final walletRepo = ref.read(walletRepositoryProvider);
+        final w = await walletRepo.fetchMoneyCash();
+        final user = ref.read(userProfileProvider);
+        if (user != null) {
+          ref.read(userProfileProvider.notifier).state = user.copyWith(
+            isVip: true, vipExpire: w.vipExpire, gold: w.gold,
+          );
+        }
+        Fluttertoast.showToast(msg: t.vipOpenSuccess); // ← 改
+      } catch (e) {
+        Fluttertoast.showToast(msg: t.vipOpenFailed('$e')); // ← 改
+      } finally {
+        if (mounted) setState(() => _buying = false);
+      }
+      return;
+    }
+
+    // Android 日後再接
+    Fluttertoast.showToast(msg: 'Android 訂閱即將開放');
+  }
+
+  String _fmtMoney(double v) => '\$ ${v.toStringAsFixed(2)}';
 
   @override
   Widget build(BuildContext context) {
+    final t = S.of(context);
     final user = ref.watch(userProfileProvider);
     final vipActive = user?.isVipEffective == true;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('VIP特权',
-            style: TextStyle(fontSize: 16, color: Colors.black)),
+        title: Text(t.vipAppBarTitle, style: const TextStyle(fontSize: 16, color: Colors.black)),
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
@@ -107,10 +208,10 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('載入失敗：$_error'),
+                      Text(t.loadFailed(_error!)),
                       const SizedBox(height: 12),
                       OutlinedButton(
-                          onPressed: _loadPlans, child: const Text('重試')),
+                          onPressed: _loadPlans, child: Text(t.retry)),
                     ],
                   ),
                 )
@@ -119,12 +220,30 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                     children: [
                       const SizedBox(height: 70),
 
-                      // 🟣 會員特權區塊（不變）
+                      // 顯示 IAP 警語（若有）
+                      if (_iapWarn != null && _iapWarn!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF3F3),
+                              borderRadius: BorderRadius.circular(8),
+                              border:
+                                  Border.all(color: const Color(0xFFFFD6D6)),
+                            ),
+                            child: Text(_iapWarn!,
+                                style: const TextStyle(
+                                    fontSize: 12, color: Colors.red)),
+                          ),
+                        ),
+
+                      // 會員特權卡片（原樣）
                       Container(
                         width: double.infinity,
                         height: 235,
-                        margin: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 0),
+                        margin: const EdgeInsets.symmetric(horizontal: 16),
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                           image: const DecorationImage(
@@ -138,11 +257,11 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text('會員特權',
+                              Text(t.vipCardTitle,
                                   style: TextStyle(
                                       fontSize: 28, color: Color(0xFF35012B))),
-                              const SizedBox(height: 16),
-                              const Text('解鎖特權，享頂級體驗',
+                              const SizedBox(height: 30),
+                              Text(t.vipCardSubtitle,
                                   style: TextStyle(
                                       fontSize: 14, color: Color(0xFF35012B))),
                               const Spacer(),
@@ -179,12 +298,10 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                                             borderRadius:
                                                 BorderRadius.circular(12),
                                           ),
-                                          child: const Text(
-                                            '暫未開通',
-                                            style: TextStyle(
-                                                fontSize: 12,
-                                                color: Colors.pinkAccent),
-                                          ),
+                                    child: Text(t.vipNotActivated,
+                                              style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.pinkAccent)),
                                         ),
                                   const SizedBox(width: 10),
                                 ],
@@ -194,12 +311,12 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                         ),
                       ),
 
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 20),
 
                       // 🟣 方案卡片（可橫向捲動；每個 item 最小間距 10）
                       if (!vipActive) ...[
                         SizedBox(
-                          height: 146, // 卡片120 + 上方徽標空間6 + 一點餘裕
+                          height: 146,
                           child: ListView.separated(
                             padding: const EdgeInsets.symmetric(horizontal: 16),
                             scrollDirection: Axis.horizontal,
@@ -207,7 +324,6 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                             itemCount: _plans.length,
                             separatorBuilder: (_, __) =>
                                 const SizedBox(width: 10),
-                            // 最小水平間隔 10
                             itemBuilder: (context, index) {
                               final p = _plans[index];
                               final selected = selectedIndex == index;
@@ -219,7 +335,6 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                                   width: 115,
                                   child: Stack(
                                     children: [
-                                      // 把卡片整體往下 6px，留出徽標空間
                                       Positioned(
                                         top: 6,
                                         left: 0,
@@ -256,7 +371,7 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                                                       fontSize: 16,
                                                       color: Colors.black)),
                                               const SizedBox(height: 4),
-                                              Text('原价 ${_fmtMoney(p.price)}',
+                                              Text(t.vipOriginalPrice(_fmtMoney(p.price)),
                                                   style: const TextStyle(
                                                     fontSize: 12,
                                                     color: Colors.grey,
@@ -264,7 +379,7 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                                                         .lineThrough,
                                                   )),
                                               const SizedBox(height: 4),
-                                              Text(_fmtPerMonth(p),
+                                              Text(t.vipPerMonth(_fmtMoney(p.perMonth)),
                                                   style: const TextStyle(
                                                       fontSize: 12,
                                                       color: Colors.grey)),
@@ -272,8 +387,6 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                                           ),
                                         ),
                                       ),
-
-                                      // 徽標放在 top: 0（不再使用負位移）
                                       if (index == _bestIndex)
                                         Positioned(
                                           top: 0,
@@ -290,12 +403,10 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                                                 bottomRight: Radius.circular(8),
                                               ),
                                             ),
-                                            child: const Text(
-                                              '最佳选择',
-                                              style: TextStyle(
-                                                  fontSize: 10,
-                                                  color: Colors.white),
-                                            ),
+                                            child: Text(t.vipBestChoice,
+                                                style: TextStyle(
+                                                    fontSize: 10,
+                                                    color: Colors.white)),
                                           ),
                                         ),
                                     ],
@@ -313,8 +424,7 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              '专属特权',
+                            Text(t.vipPrivilegesTitle,
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
@@ -323,31 +433,11 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                             ),
                             const SizedBox(height: 6),
                             ...[
-                              {
-                                'icon': 'assets/icon_vip_privilege1.svg',
-                                'title': 'VIP尊享标识',
-                                'desc': '点亮特权，让你成为与众不同的那颗心',
-                              },
-                              {
-                                'icon': 'assets/icon_vip_privilege2.svg',
-                                'title': '访问记录全解锁',
-                                'desc': '不错过每个喜欢你的人',
-                              },
-                              {
-                                'icon': 'assets/icon_vip_privilege3.svg',
-                                'title': '无限制连线',
-                                'desc': '无限连线，给你更多可能',
-                              },
-                              {
-                                'icon': 'assets/icon_vip_privilege4.svg',
-                                'title': '畅想直接私聊',
-                                'desc': '免费无线私聊，随时发起',
-                              },
-                              {
-                                'icon': 'assets/icon_vip_privilege5.svg',
-                                'title': '高级美颜',
-                                'desc': '特效更多，妆造更美丽帅气',
-                              },
+                              {'icon': 'assets/icon_vip_privilege1.svg', 'title': t.privBadgeTitle,       'desc': t.privBadgeDesc},
+                              {'icon': 'assets/icon_vip_privilege2.svg', 'title': t.privVisitsTitle,     'desc': t.privVisitsDesc},
+                              {'icon': 'assets/icon_vip_privilege3.svg', 'title': t.privUnlimitedCallTitle,'desc': t.privUnlimitedCallDesc},
+                              {'icon': 'assets/icon_vip_privilege4.svg', 'title': t.privDirectDmTitle,   'desc': t.privDirectDmDesc},
+                              {'icon': 'assets/icon_vip_privilege5.svg', 'title': t.privBeautyTitle,     'desc': t.privBeautyDesc},
                             ].map((item) {
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 10),
@@ -407,40 +497,7 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                             width: double.infinity,
                             height: 50,
                             child: ElevatedButton(
-                              onPressed: _buying
-                                  ? null
-                                  : () async {
-                                      final sel = _plans[selectedIndex];
-
-                                      setState(() => _buying = true);
-                                      try {
-                                        await ref
-                                            .read(userRepositoryProvider)
-                                            .buyVip(id: sel.id);
-
-                                        Fluttertoast.showToast(msg: '開通成功');
-
-                                        // 刷新使用者/錢包，更新 vip 到期時間
-                                        final walletRepo =
-                                        ref.read(walletRepositoryProvider);
-                                        final w =
-                                        await walletRepo.fetchMoneyCash(); // ({gold, vipExpire, inviteNum, totalIncome, cashAmount})
-
-                                        final user = ref.read(userProfileProvider);
-                                        if (user != null) { ref.read(userProfileProvider.notifier).state = user.copyWith(
-                                            isVip: true,
-                                            vipExpire: w.vipExpire,
-                                            gold: w.gold,
-                                          );
-                                        }
-                                        setState(() {}); // 讓畫面上的「暫未開通」等依綁定狀態刷新
-                                      } catch (e) {
-                                        Fluttertoast.showToast(msg: '開通失敗：$e');
-                                      } finally {
-                                        if (mounted)
-                                          setState(() => _buying = false);
-                                      }
-                                    },
+                              onPressed: _buying ? null : _buySelectedPlan,
                               style: ElevatedButton.styleFrom(
                                 elevation: 0,
                                 shape: RoundedRectangleBorder(
@@ -450,22 +507,20 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                               ),
                               child: Ink(
                                 decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      Color(0xFFFFA06E),
-                                      Color(0xFFDC5EF9)
-                                    ],
-                                  ),
+                                  gradient: const LinearGradient(colors: [
+                                    Color(0xFFFFA06E),
+                                    Color(0xFFDC5EF9)
+                                  ]),
                                   borderRadius: BorderRadius.circular(30),
                                 ),
                                 child: Container(
                                   alignment: Alignment.center,
                                   child: Text(
-                                    '${_fmtMoney(_plans[selectedIndex].payPrice).replaceAll("\$ ", "")} 美元 / ${_plans[selectedIndex].title} 开通身份',
-                                    style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white),
+                                    t.vipBuyCta(
+                                      _fmtMoney(_plans[selectedIndex].payPrice).replaceAll('\$ ', ''), // price (only number)
+                                      _plans[selectedIndex].title,                                      // plan title
+                                    ), // ← 改
+                                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                                   ),
                                 ),
                               ),
@@ -483,6 +538,7 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
   // 放在 _State 裡（工具函式）
   String _fmtExpire(DateTime? dt) {
     if (dt == null) return '';
+    final t = S.of(context);
     // 簡單格式化：yyyy-MM-dd HH:mm:ss
     final y = dt.year.toString().padLeft(4, '0');
     final m = dt.month.toString().padLeft(2, '0');
@@ -490,6 +546,6 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
     final hh = dt.hour.toString().padLeft(2, '0');
     final mm = dt.minute.toString().padLeft(2, '0');
     final ss = dt.second.toString().padLeft(2, '0');
-    return '$y-$m-$d $hh:$mm:$ss 到期';
+    return '$y-$m-$d $hh:$mm:$ss ${t.vipExpireSuffix}';
   }
 }

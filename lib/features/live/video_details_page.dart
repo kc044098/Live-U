@@ -12,6 +12,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../core/error_handler.dart';
 import '../../data/network/api_client_provider.dart';
 import '../../data/network/api_endpoints.dart';
+import '../../l10n/l10n.dart';
 import '../../routes/app_routes.dart';
 import '../mine/user_repository_provider.dart';
 import '../profile/profile_controller.dart';
@@ -50,6 +51,12 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
   // ===== 新增：追蹤當前階段（只用於錯誤訊息更精準） =====
   _Stage _stage = _Stage.none;
 
+  String _selectedCategoryDisplay(S s) {
+    if (_selectedCategory == '精選') return s.categoryFeatured;
+    if (_selectedCategory == '日常') return s.categoryDaily;
+    return s.selectCategory;
+  }
+
   @override
   void dispose() {
     _descController.dispose();
@@ -74,6 +81,8 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
 
   Future<void> _onPublish() async {
     if (_isUploading) return;
+
+    final s = S.of(context);
 
     final api = ref.read(apiClientProvider);
     final repo = ref.read(userRepositoryProvider);
@@ -156,7 +165,7 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
       await api.postOk(ApiEndpoints.momentCreate, data: payload);
 
       if (!mounted) return;
-      Fluttertoast.showToast(msg: "上傳成功～");
+      Fluttertoast.showToast(msg: s.uploadSuccess);
       Navigator.of(context, rootNavigator: true)
           .pushNamedAndRemoveUntil(AppRoutes.home, (route) => false);
     } on ApiException catch (e) {
@@ -164,7 +173,7 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
       Fluttertoast.showToast(msg: _messageForApiException(e, _stage));
     } on DioException catch (e) {
       if (CancelToken.isCancel(e)) {
-        Fluttertoast.showToast(msg: '已取消上傳');
+        Fluttertoast.showToast(msg: S.of(context).uploadCanceled);
       } else {
         Fluttertoast.showToast(msg: _messageForDio(e, _stage));
       }
@@ -185,6 +194,7 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     final displayPath = _coverPath ?? widget.thumbnailPath;
     final isBroadcaster = ref.watch(userProfileProvider)?.isBroadcaster == true;
 
@@ -216,7 +226,7 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
                         ),
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Text('發布',
+                      child: Text( s.publish,
                           style: TextStyle(color: Colors.white, fontSize: 14)),
                     ),
                   ),
@@ -244,9 +254,9 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
                     ],
                     maxLength: _kMaxTitleLen,
                     maxLengthEnforcement: MaxLengthEnforcement.enforced,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       border: InputBorder.none,
-                      hintText: '記錄這一刻',
+                      hintText: s.momentHint,
                       hintStyle:
                       TextStyle(color: Color(0xFF999999), fontSize: 14),
                       counterText: '',
@@ -273,7 +283,7 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
                           padding: const EdgeInsets.symmetric(vertical: 2),
                           color: Colors.black45,
                           alignment: Alignment.center,
-                          child: const Text('編輯封面',
+                          child: Text(s.editCover,
                               style:
                               TextStyle(color: Colors.white, fontSize: 12)),
                         ),
@@ -292,7 +302,7 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
                       children: [
                         SvgPicture.asset('assets/icon_paper.svg'),
                         const SizedBox(width: 8),
-                        Text(_selectedCategory,
+                        Text( _selectedCategoryDisplay(s),
                             style: const TextStyle(fontSize: 16)),
                         const Spacer(),
                         const Icon(Icons.chevron_right, color: Colors.black38),
@@ -312,6 +322,7 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
   }
 
   Widget _buildUploadingOverlay() {
+    final s = S.of(context);
     final pct = ((_progress.clamp(0.0, 1.0)) * 100).toStringAsFixed(0);
 
     return Positioned.fill(
@@ -350,19 +361,13 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
                   // 膠囊進度條
                   _GradientCapsuleProgress(value: _progress.clamp(0.0, 1.0)),
                   const SizedBox(height: 16),
-                  const Text(
-                    '上传视频中...',
+                  Text(
+                    s.uploadingVideo,
                     style: TextStyle(
                       fontSize: 16,
                       color: Color(0xFF333333),
                     ),
                   ),
-                  // 如果要保留取消按鈕，就把下面註解拿掉
-                  // const SizedBox(height: 8),
-                  // TextButton(
-                  //   onPressed: () => _cancelToken?.cancel('user cancel'),
-                  //   child: const Text('取消上传'),
-                  // ),
                 ],
               ),
             ),
@@ -373,6 +378,7 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
   }
 
   void _showCategoryBottomSheet(BuildContext context) {
+    final s = S.of(context);
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
@@ -391,9 +397,9 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
                   Stack(
                     alignment: Alignment.center,
                     children: [
-                      const Center(
+                      Center(
                         child: Text(
-                          '選擇分類',
+                          s.selectCategory,
                           style:
                           TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                         ),
@@ -422,7 +428,7 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       child: Text(
-                        '精選',
+                        s.categoryFeatured,
                         style: TextStyle(
                           color: _selectedCategory == '精選'
                               ? const Color(0xFFFF4D67)
@@ -453,7 +459,7 @@ class _VideoDetailsPageState extends ConsumerState<VideoDetailsPage> {
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       child: Text(
-                        '日常',
+                        s.categoryDaily,
                         style: TextStyle(
                           color: _selectedCategory == '日常'
                               ? const Color(0xFF3A9EFF)

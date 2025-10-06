@@ -1,7 +1,9 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../l10n/l10n.dart';
 import '../user_repository.dart';
 import '../user_repository_provider.dart';
 
@@ -9,14 +11,17 @@ import '../user_repository_provider.dart';
 /* ------------------------- 狀態 & 控制器 ------------------------- */
 
 /// 1~6 對應時長；0=關閉
-const Map<int, String> kDndOptions = {
-  1: '15分钟',
-  2: '30分钟',
-  3: '1小时',
-  4: '6小时',
-  5: '12小时',
-  6: '24小时',
-};
+Map<int, String> kDndOptionsOf(BuildContext context) {
+  final s = S.of(context);
+  return <int, String>{
+    1: s.dnd15m,
+    2: s.dnd30m,
+    3: s.dnd1h,
+    4: s.dnd6h,
+    5: s.dnd12h,
+    6: s.dnd24h,
+  };
+}
 
 final dndProvider = StateNotifierProvider<DndController, DndState>((ref) {
   final repo = ref.read(userRepositoryProvider);
@@ -54,10 +59,11 @@ class DndController extends StateNotifier<DndState> {
   }
 
   /// 設定 id（0=關閉；1~6=時長）
-  Future<void> setById(int id) async {
+  Future<void> setById(int id, {BuildContext? ctx}) async {
     final ok = await repo.setDndById(id);
     if (!ok) {
-      Fluttertoast.showToast(msg: '設定失敗，請稍後再試');
+      final msg = ctx != null ? S.of(ctx).dndSetFailed : '設定失敗，請稍後再試';
+      Fluttertoast.showToast(msg: msg);
       return;
     }
     state = DndState(selectedId: id);
@@ -66,8 +72,8 @@ class DndController extends StateNotifier<DndState> {
   }
 
   /// 開關切換；若要開且目前是 0，就預設選 1(15分鐘)
-  Future<void> toggle(bool enable) async {
+  Future<void> toggle(bool enable, BuildContext? ctx) async {
     final targetId = enable ? (state.selectedId == 0 ? 1 : state.selectedId) : 0;
-    await setById(targetId);
+    await setById(targetId, ctx: ctx);
   }
 }

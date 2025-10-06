@@ -8,6 +8,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 
 import '../../core/error_handler.dart';
 import '../../core/user_local_storage.dart';
+import '../../l10n/l10n.dart';
 import '../profile/profile_controller.dart';
 import 'auth_repository.dart';
 
@@ -31,10 +32,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   int _secondsLeft = 0;
 
   Future<void> _onSendCode() async {
-    if (_secondsLeft > 0) return; // 倒數中不可再發
+    final t = S.of(context);
+    if (_secondsLeft > 0) return;
     final email = _emailController.text.trim();
     if (email.isEmpty) {
-      Fluttertoast.showToast(msg: '請輸入郵箱');
+      Fluttertoast.showToast(msg: t.pleaseEnterEmail);
       return;
     }
 
@@ -42,37 +44,35 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     try {
       final authRepo = ref.read(authRepositoryProvider);
       await authRepo.sendEmailCode(email);
-      Fluttertoast.showToast(msg: '驗證碼已發送');
-      _startCodeCountdown(60); // 開始倒數
+      Fluttertoast.showToast(msg: t.codeSent);
+      _startCodeCountdown(60);
     } on EmailFormatException {
-      Fluttertoast.showToast(msg: 'Email 格式錯誤');
+      Fluttertoast.showToast(msg: t.emailFormatError);
     } catch (e) {
-      AppErrorToast.show(e); // 其餘（ApiException/Dio/未知）→ 統一轉中文 Toast
+      AppErrorToast.show(e);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _onConfirm() async {
+    final t = S.of(context);
     final email = _emailController.text.trim();
     final code = _codeController.text.trim();
     final password = _passwordController.text.trim();
 
-    // 判斷欄位是否為空
     if (email.isEmpty || code.isEmpty || password.isEmpty) {
-      Fluttertoast.showToast(msg: '請完整輸入所有欄位');
+      Fluttertoast.showToast(msg: t.enterAllFields);
       return;
     }
 
-    // 驗證密碼格式（6-16位，僅限數字、字母和特殊字符）
     final passwordRegex = RegExp(r'^[A-Za-z0-9!@#\$%^&*(),.?":{}|<>]{6,16}$');
     if (!passwordRegex.hasMatch(password)) {
-      Fluttertoast.showToast(msg: '密碼需為6-16位且只包含數字、字母或特殊字符');
+      Fluttertoast.showToast(msg: t.passwordFormatError);
       return;
     }
 
     FocusScope.of(context).unfocus();
-
     setState(() => _isLoading = true);
     try {
       final authRepo = ref.read(authRepositoryProvider);
@@ -85,10 +85,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       await UserLocalStorage.saveUser(user);
       ref.read(userProfileProvider.notifier).setUser(user);
 
-      Fluttertoast.showToast(msg: '註冊成功');
+      Fluttertoast.showToast(msg: t.registerSuccess);
+      if (!mounted) return;
       Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {
-      // 若後端回 112/113 會變成 ApiException，這裡用集中字典顯示對應中文
       AppErrorToast.show(e);
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -97,17 +97,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = S.of(context);
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: _isLoading ? null : AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: SvgPicture.asset(
-            'assets/arrow_back.svg',
-            width: 24,
-            height: 24,
-          ),
+          icon: SvgPicture.asset('assets/arrow_back.svg', width: 24, height: 24),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -119,10 +116,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    '账号注册',
-                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-                  ),
+                  Text(t.registerTitle, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 48),
                   // 郵箱
                   TextField(
@@ -132,7 +126,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         padding: const EdgeInsets.all(12),
                         child: SvgPicture.asset('assets/icon_email2.svg'),
                       ),
-                      hintText: '请输入邮箱账号',
+                      hintText: t.emailHint,
                       filled: true,
                       fillColor: const Color(0xFFFAFAFA),
                       border: OutlineInputBorder(
@@ -150,8 +144,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         padding: const EdgeInsets.all(12),
                         child: SvgPicture.asset('assets/icon_password.svg'),
                       ),
-
-                      // 固定寬度，確保文字長短不影響位置
                       suffixIconConstraints: const BoxConstraints(minWidth: 100, minHeight: 48),
                       suffixIcon: Padding(
                         padding: const EdgeInsets.only(right: 8.0),
@@ -160,18 +152,16 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           child: TextButton(
                             onPressed: (_secondsLeft > 0 || _isLoading) ? null : _onSendCode,
                             child: Text(
-                              _secondsLeft > 0 ? '${_secondsLeft}s' : '获取验证码',
+                              _secondsLeft > 0 ? '$_secondsLeft${t.secondsSuffix}' : t.getCode,
                               style: TextStyle(
                                 color: _secondsLeft > 0 ? const Color(0xFFBBBBBB) : const Color(0xFFFF4D67),
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
+                                fontSize: 14, fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
                         ),
                       ),
-
-                      hintText: '请输入验证码',
+                      hintText: t.codeHint,
                       filled: true,
                       fillColor: const Color(0xFFFAFAFA),
                       border: OutlineInputBorder(
@@ -191,16 +181,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         child: SvgPicture.asset('assets/icon_password.svg'),
                       ),
                       suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_off_outlined
-                              : Icons.visibility_outlined,
-                        ),
-                        onPressed: () =>
-                            setState(() => _obscurePassword = !_obscurePassword),
-                        tooltip: _obscurePassword ? '顯示密碼' : '隱藏密碼',
+                        icon: Icon(_obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                        tooltip: _obscurePassword ? t.showPassword : t.hidePassword,
                       ),
-                      hintText: '请输入新密码',
+                      hintText: t.newPasswordHint,
                       filled: true,
                       fillColor: const Color(0xFFFAFAFA),
                       border: OutlineInputBorder(
@@ -210,10 +195,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  const Text(
-                    '密码6-16字符，只能包括数字、字母或者特殊字符',
-                    style: TextStyle(fontSize: 14, color: Color(0xFF999999)),
-                  ),
+                  Text(t.passwordRuleTip, style: const TextStyle(fontSize: 14, color: Color(0xFF999999))),
                   const SizedBox(height: 48),
                   // 確定按鈕
                   GestureDetector(
@@ -221,16 +203,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     child: Container(
                       height: 52,
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFFFB56B), Color(0xFFDF65F8)],
-                        ),
+                        gradient: const LinearGradient(colors: [Color(0xFFFFB56B), Color(0xFFDF65F8)]),
                         borderRadius: BorderRadius.circular(30),
                       ),
-                      child: const Center(
-                        child: Text(
-                          '确定',
-                          style: TextStyle(color: Colors.white, fontSize: 16),
-                        ),
+                      child: Center(
+                        child: Text(t.confirm, style: const TextStyle(color: Colors.white, fontSize: 16)),
                       ),
                     ),
                   ),
@@ -238,12 +215,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               ),
             ),
           ),
-          // **全屏 Loading 遮罩**
           if (_isLoading)
-            Container(
-              color: Colors.black.withOpacity(0.3),
-              child: const Center(child: CircularProgressIndicator()),
-            ),
+            Container(color: Colors.black.withOpacity(0.3), child: const Center(child: CircularProgressIndicator())),
         ],
       ),
     );

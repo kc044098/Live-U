@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 
+import '../../l10n/l10n.dart';
 import '../widgets/cached_network_image.dart';
 
 class IncomingCallBanner extends StatelessWidget {
@@ -22,6 +23,7 @@ class IncomingCallBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final top = MediaQuery.of(context).padding.top;
+    final t = S.of(context);
 
     return IgnorePointer(
       ignoring: false,
@@ -59,7 +61,7 @@ class IncomingCallBanner extends StatelessWidget {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                flag == 1 ? '邀請你進行視頻通話...' : '邀請你進行語音通話...',
+                                flag == 1 ? t.inviteVideoCall : t.inviteVoiceCall,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(color: Colors.white70, fontSize: 12),

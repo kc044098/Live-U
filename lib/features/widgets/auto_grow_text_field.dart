@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../l10n/l10n.dart';
+
 class AutoGrowTextField extends StatefulWidget {
   final TextEditingController controller;
   final TextStyle style;
@@ -58,8 +60,8 @@ class AutoGrowTextFieldState extends State<AutoGrowTextField> {
           inputFormatters: widget.inputFormatters,
           maxLength: widget.maxLength,
           maxLengthEnforcement: MaxLengthEnforcement.enforced,
-          decoration: const InputDecoration(
-            hintText: '請輸入內容...',
+          decoration: InputDecoration(
+            hintText: S.of(context).momentHint1,
             hintStyle: TextStyle(color: Colors.white70, fontSize: 14),
             border: InputBorder.none,
             isDense: true,
@@ -97,9 +99,9 @@ class AutoGrowTextFieldState extends State<AutoGrowTextField> {
             inputFormatters: widget.inputFormatters,
             maxLength: widget.maxLength,
             maxLengthEnforcement: MaxLengthEnforcement.enforced,
-            decoration: const InputDecoration(
-              hintText: '請輸入內容...',
-              hintStyle: TextStyle(color: Colors.white70, fontSize: 14),
+            decoration: InputDecoration(
+              hintText: S.of(context).momentHint1,
+              hintStyle: const TextStyle(color: Colors.white70, fontSize: 14),
               border: InputBorder.none,
               isDense: true,
               contentPadding: EdgeInsets.zero,

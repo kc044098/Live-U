@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../l10n/l10n.dart';
 import '../../wallet/payment_method_page.dart';
 import '../../wallet/wallet_repository.dart';
 
@@ -66,6 +67,7 @@ class _InsufficientGoldSheetState extends ConsumerState<_InsufficientGoldSheet> 
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     final walletAsync = ref.watch(walletBalanceProvider);
     final gold = walletAsync.maybeWhen(data: (t) => t.gold, orElse: () => null);
     final isInsufficient = widget.suggestedAmount != null;
@@ -98,18 +100,18 @@ class _InsufficientGoldSheetState extends ConsumerState<_InsufficientGoldSheet> 
                         ? Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('當前金幣不足！',
+                        Text(s.insufficientGoldNow,
                             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                         const SizedBox(height: 6),
                         Text(
-                          '餘額：${gold == null ? '—' : _fullFmt(context, gold)} 金幣',
+                          '${s.balancePrefix}${gold == null ? '—' : _fullFmt(context, gold)} ${s.coinsUnit}',
                           style: const TextStyle(fontSize: 14, color: Colors.grey),
                         ),
                       ],
                     )
                         : Row(
                       children: [
-                        const Text('當前金幣：',
+                        Text(s.currentCoins,
                             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                         Text(
                           gold == null ? '—' : _fullFmt(context, gold),
@@ -120,7 +122,7 @@ class _InsufficientGoldSheetState extends ConsumerState<_InsufficientGoldSheet> 
                           ),
                         ),
                         const SizedBox(width: 6),
-                        const Text('個', style: TextStyle(fontSize: 14, color: Colors.black54)),
+                        Text(s.coinsUnit, style: TextStyle(fontSize: 14, color: Colors.black54)),
                       ],
                     ),
                   ),
@@ -138,11 +140,10 @@ class _InsufficientGoldSheetState extends ConsumerState<_InsufficientGoldSheet> 
               Expanded(
                 child: packetsAsync.when(
                   loading: () => const Center(child: CircularProgressIndicator()),
-                  error: (e, st) => Center(child: Text('禮包載入失敗')),
+                  error: (e, st) => Center(child: Text(s.packetsLoadFailed)),
                   data: (packets) {
                     final customIndex = packets.length;           // ★ 最末為自定義
                     final itemCount = packets.length + 1;
-                    final isCustomSelected = _selectedIndex == customIndex;
 
                     // 避免 index 溢位
                     if (_selectedIndex >= itemCount) {
@@ -196,27 +197,31 @@ class _InsufficientGoldSheetState extends ConsumerState<_InsufficientGoldSheet> 
                                                 ),
                                               ),
                                             ],
-                                          )
-                                              : Row(
-                                            mainAxisAlignment: MainAxisAlignment.center,
-                                            children: [
-                                              Image.asset('assets/icon_gold1.png', width: 28),
-                                              const SizedBox(width: 6),
-                                              Text(
-                                                '${NumberFormat.decimalPattern().format(packets[index].gold)}币',
-                                                style: TextStyle(
-                                                  fontSize: 14,
-                                                  color: isSelected ? Colors.red : const Color(0xFF9E9E9E),
-                                                  fontWeight: FontWeight.w600,
+                                          ):
+                                          Transform.translate(
+                                            offset: const Offset(0, 6),
+                                                child: Row(
+                                                                                            mainAxisAlignment: MainAxisAlignment.center,
+                                                                                            children: [
+                                                Image.asset('assets/icon_gold1.png', width: 28),
+                                                const SizedBox(width: 6),
+                                                Text(
+                                                  '${NumberFormat.decimalPattern(Localizations.maybeLocaleOf(context)?.toLanguageTag())
+                                                      .format(packets[index].gold)} ${s.coinsUnit}',
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    color: isSelected ? Colors.red : const Color(0xFF9E9E9E),
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
                                                 ),
+                                                                                            ],
+                                                                                          ),
                                               ),
-                                            ],
-                                          ),
                                         ),
                                       ),
                                       const SizedBox(height: 6),
                                       isCustom
-                                          ? const Text('自定义金额', style: TextStyle(fontSize: 13, color: Colors.black))
+                                          ? Text(s.customAmount, style: TextStyle(fontSize: 13, color: Colors.black))
                                           : Text(
                                         '\$${_displayPrice(packets[index].price)}',
                                         style: const TextStyle(fontSize: 12, color: Colors.black),
@@ -231,7 +236,8 @@ class _InsufficientGoldSheetState extends ConsumerState<_InsufficientGoldSheet> 
                                   left: 0,
                                   right: 0,
                                   child: Container(
-                                    height: 24,
+                                    height: 32,
+                                    padding: const EdgeInsets.symmetric(horizontal: 10),
                                     decoration: const BoxDecoration(
                                       color: Color(0xFFFFE4CC),
                                       borderRadius: BorderRadius.only(
@@ -241,7 +247,7 @@ class _InsufficientGoldSheetState extends ConsumerState<_InsufficientGoldSheet> 
                                     ),
                                     child: Center(
                                       child: Text(
-                                        '限時贈送${packets[index].bonus}幣',
+                                        s.limitedTimeBonus(packets[index].bonus),
                                         style: const TextStyle(fontSize: 10, color: Color(0xFFFF3535)),
                                       ),
                                     ),
@@ -265,7 +271,7 @@ class _InsufficientGoldSheetState extends ConsumerState<_InsufficientGoldSheet> 
                   error: (e, st) => _bottomBar(
                     context: context,
                     showCustom: false,
-                    onPress: () => Fluttertoast.showToast(msg: '禮包尚未載入，請稍候'),
+                    onPress: () => Fluttertoast.showToast(msg: s.packetsNotReady),
                   ),
                   data: (packets) {
                     final customIndex = packets.length;
@@ -289,11 +295,11 @@ class _InsufficientGoldSheetState extends ConsumerState<_InsufficientGoldSheet> 
                           // ★ 自訂金額：只帶 amount
                           final parsed = double.tryParse(_customCtrl.text.trim());
                           if (parsed == null || parsed < 1) {
-                            Fluttertoast.showToast(msg: '至少輸入 1 元');
+                            Fluttertoast.showToast(msg: s.amountAtLeastOne);
                             return;
                           }
                           if (parsed % 1 != 0) {
-                            Fluttertoast.showToast(msg: '金額必須是整數');
+                            Fluttertoast.showToast(msg: s.amountMustBeInteger);
                             return;
                           }
                           Navigator.push(
@@ -305,7 +311,7 @@ class _InsufficientGoldSheetState extends ConsumerState<_InsufficientGoldSheet> 
                         } else {
                           // ★ 後端禮包：帶 packetId + amount
                           if (_selectedIndex < 0 || _selectedIndex >= packets.length) {
-                            Fluttertoast.showToast(msg: '請先選擇禮包');
+                            Fluttertoast.showToast(msg: s.pleaseChoosePackage);
                             return;
                           }
                           final picked = packets[_selectedIndex];
@@ -341,6 +347,7 @@ class _InsufficientGoldSheetState extends ConsumerState<_InsufficientGoldSheet> 
     TextEditingController? controller,
     bool showCustom = false,
   }) {
+    final s = S.of(context);
     return Row(
       children: [
         if (showCustom)
@@ -356,10 +363,10 @@ class _InsufficientGoldSheetState extends ConsumerState<_InsufficientGoldSheet> 
                 controller: controller,
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   border: InputBorder.none,
-                  hintText: '请输入您的充值金额',
-                  hintStyle: TextStyle(color: Colors.grey, fontSize: 12),
+                  hintText: s.enterRechargeAmount,
+                  hintStyle: const TextStyle(color: Colors.grey, fontSize: 12),
                 ),
               ),
             ),
@@ -385,9 +392,9 @@ class _InsufficientGoldSheetState extends ConsumerState<_InsufficientGoldSheet> 
                 ),
                 borderRadius: BorderRadius.all(Radius.circular(24)),
               ),
-              child: const Center(
+              child: Center(
                 child: Text(
-                  '充值',
+                  s.recharge,
                   style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ),

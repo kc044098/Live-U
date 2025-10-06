@@ -11,9 +11,12 @@ import 'package:fluttertoast/fluttertoast.dart';
 
 import '../../core/error_handler.dart';
 import '../../core/user_local_storage.dart';
+import '../../l10n/l10n.dart';
 import '../mine/user_repository_provider.dart';
 import '../profile/profile_controller.dart';
+import 'apple_auth_service.dart';
 import 'auth_repository.dart';
+import 'facebook_auth_service.dart';
 import 'google_auth_service.dart';
 
 class EmailLoginScreen extends ConsumerStatefulWidget {
@@ -32,39 +35,38 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
   bool _useCodeLogin = false; // 切換帳號密碼 / 驗證碼登錄
 
   final GoogleAuthService _googleAuthService = GoogleAuthService();
+  final AppleAuthService _appleAuthService = AppleAuthService();
+  final FacebookAuthService _facebookAuthService = FacebookAuthService();
   bool _isLoading = false;
 
   Timer? _codeTimer;
   int _secondsLeft = 0;
 
   Future<void> _onLoginPressed() async {
+    final t = S.of(context);
     FocusScope.of(context).unfocus();
 
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
     final code = _codeController.text.trim();
 
-    // 1. 驗證郵箱是否為空
     if (email.isEmpty) {
-      Fluttertoast.showToast(msg: '請輸入郵箱');
+      Fluttertoast.showToast(msg: t.pleaseEnterEmail);
       return;
     }
-
-    // 2. 驗證郵箱格式（簡單判斷含 @ 符號）
     if (!email.contains('@')) {
-      Fluttertoast.showToast(msg: '郵箱格式錯誤');
+      Fluttertoast.showToast(msg: t.emailFormatError);
       return;
     }
 
-    // 3. 驗證對應輸入欄位
     if (_useCodeLogin) {
       if (code.isEmpty) {
-        Fluttertoast.showToast(msg: '請輸入驗證碼');
+        Fluttertoast.showToast(msg: t.pleaseEnterCode);
         return;
       }
     } else {
       if (password.isEmpty) {
-        Fluttertoast.showToast(msg: '請輸入密碼');
+        Fluttertoast.showToast(msg: t.pleaseEnterPassword);
         return;
       }
     }
@@ -73,38 +75,26 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
     try {
       final authRepo = ref.read(authRepositoryProvider);
       final user = _useCodeLogin
-          ? await authRepo.loginWithEmailCode(
-        account: email,
-        code: code,
-      )
-          : await authRepo.loginWithAccountPassword(
-        account: email,
-        password: password,
-      );
+          ? await authRepo.loginWithEmailCode(account: email, code: code)
+          : await authRepo.loginWithAccountPassword(account: email, password: password);
 
       await UserLocalStorage.saveUser(user);
       ref.read(userProfileProvider.notifier).setUser(user);
 
-      // 再調用會員資訊 API（用最新 token）
       final updatedUser = await ref.read(userRepositoryProvider).getMemberInfo(user);
-
-      // 4. 用完整資料覆蓋
       await UserLocalStorage.saveUser(updatedUser);
       ref.read(userProfileProvider.notifier).setUser(updatedUser);
 
-      Fluttertoast.showToast(msg: '登入成功');
+      Fluttertoast.showToast(msg: t.loginSuccess);
+      if (!mounted) return;
       Navigator.pushReplacementNamed(context, '/home');
     } on BadCredentialsException {
-      // 帳密錯誤（後端 code=110）
-      Fluttertoast.showToast(msg: '登錄失敗: 帳號或密碼錯誤');
+      Fluttertoast.showToast(msg: t.loginFailedWrongCredentials);
     } on VerificationCodeException {
-      // 驗證碼錯誤（後端 code=112）
-      Fluttertoast.showToast(msg: '登錄失敗: 驗證碼錯誤');
+      Fluttertoast.showToast(msg: t.loginFailedWrongCode);
     } on EmailFormatException {
-      // 信箱格式錯誤（後端 code=113）
-      Fluttertoast.showToast(msg: '登錄失敗: 信箱格式錯誤');
+      Fluttertoast.showToast(msg: t.loginFailedEmailFormat);
     } catch (e) {
-      // 其它錯誤（ApiException/DioException/未知）→ 統一字典轉中文 + Toast
       AppErrorToast.show(e);
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -112,11 +102,12 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
   }
 
   Future<void> _onSendCode() async {
-    if (_secondsLeft > 0) return; // 保險：倒數中不再發送
+    final t = S.of(context);
+    if (_secondsLeft > 0) return;
 
     final email = _emailController.text.trim();
     if (email.isEmpty) {
-      Fluttertoast.showToast(msg: '請輸入郵箱');
+      Fluttertoast.showToast(msg: t.pleaseEnterEmail);
       return;
     }
 
@@ -124,20 +115,20 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
     try {
       final authRepo = ref.read(authRepositoryProvider);
       await authRepo.sendEmailCode(email);
-      Fluttertoast.showToast(msg: '驗證碼已發送');
-      _startCodeCountdown(60);        // ← 啟動 60s 倒數
+      Fluttertoast.showToast(msg: t.codeSent);
+      _startCodeCountdown(60);
     } on EmailFormatException {
-      Fluttertoast.showToast(msg: 'Email 格式錯誤');
+      Fluttertoast.showToast(msg: t.emailFormatError);
     } catch (e) {
-      AppErrorToast.show(e); // 其它錯誤（含 ApiException 由字典顯示中文）
+      AppErrorToast.show(e);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
+    final t = S.of(context);
     return Scaffold(
       backgroundColor: Colors.white,
       extendBodyBehindAppBar: true,
@@ -147,11 +138,7 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          icon: SvgPicture.asset(
-            'assets/arrow_back.svg',
-            width: 24,
-            height: 24,
-          ),
+          icon: SvgPicture.asset('assets/arrow_back.svg', width: 24, height: 24),
           onPressed: () {
             FocusScope.of(context).unfocus();
             Navigator.pop(context);
@@ -166,10 +153,8 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    '通过邮箱登录',
-                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-                  ),
+                  Text(t.emailLoginTitle,
+                      style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 90),
 
                   // Email
@@ -180,7 +165,7 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
                         padding: const EdgeInsets.all(12),
                         child: SvgPicture.asset('assets/icon_email2.svg'),
                       ),
-                      hintText: '请输入邮箱账号',
+                      hintText: t.emailHint,
                       filled: true,
                       fillColor: const Color(0xFFFAFAFA),
                       border: OutlineInputBorder(
@@ -200,18 +185,15 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
                           padding: const EdgeInsets.all(12),
                           child: SvgPicture.asset('assets/icon_password.svg'),
                         ),
-
-                        // 讓 suffix 區域保持固定寬度與位置
                         suffixIconConstraints: const BoxConstraints(minWidth: 100, minHeight: 48),
-
                         suffixIcon: Padding(
                           padding: const EdgeInsets.only(right: 8.0),
                           child: SizedBox(
-                            width: 92, // 固定一個寬度避免文字長短造成位移
+                            width: 92,
                             child: TextButton(
                               onPressed: (_secondsLeft > 0 || _isLoading) ? null : _onSendCode,
                               child: Text(
-                                _secondsLeft > 0 ? '${_secondsLeft}s' : '获取验证码',
+                                _secondsLeft > 0 ? '$_secondsLeft${t.secondsSuffix}' : t.getCode,
                                 style: TextStyle(
                                   color: _secondsLeft > 0 ? const Color(0xFFBBBBBB) : const Color(0xFFFF4D67),
                                   fontSize: 14,
@@ -221,8 +203,7 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
                             ),
                           ),
                         ),
-
-                        hintText: '请输入验证码',
+                        hintText: t.codeHint,
                         filled: true,
                         fillColor: const Color(0xFFFAFAFA),
                         border: OutlineInputBorder(
@@ -231,7 +212,6 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
                         ),
                       ),
                     ),
-
                   ] else ...[
                     TextField(
                       controller: _passwordController,
@@ -242,15 +222,12 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
                           child: SvgPicture.asset('assets/icon_password.svg'),
                         ),
                         suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_off_outlined
-                                : Icons.visibility_outlined,
-                          ),
-                          onPressed: () =>
-                              setState(() => _obscurePassword = !_obscurePassword),
+                          icon: Icon(_obscurePassword
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined),
+                          onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                         ),
-                        hintText: '请输入密码',
+                        hintText: t.passwordHint,
                         filled: true,
                         fillColor: const Color(0xFFFAFAFA),
                         border: OutlineInputBorder(
@@ -264,19 +241,17 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
                       alignment: Alignment.centerLeft,
                       child: GestureDetector(
                         onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const ResetPasswordScreen()),
-                          );
+                          Navigator.push(context,
+                              MaterialPageRoute(builder: (_) => const ResetPasswordScreen()));
                         },
-                        child: const Text(
-                          '忘记密码 ？',
-                          style: TextStyle(
-                              color: Color(0xFFFF4D67),
-                              decoration: TextDecoration.underline,
-                              decorationColor: Color(0xFFFF4D67),
-                              decorationThickness: 1.5),
+                        child: Text(
+                          t.forgotPassword,
+                          style: const TextStyle(
+                            color: Color(0xFFFF4D67),
+                            decoration: TextDecoration.underline,
+                            decorationColor: Color(0xFFFF4D67),
+                            decorationThickness: 1.5,
+                          ),
                         ),
                       ),
                     ),
@@ -295,10 +270,10 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
                         ),
                         borderRadius: BorderRadius.circular(30),
                       ),
-                      child: const Center(
+                      child: Center(
                         child: Text(
-                          '登录',
-                          style: TextStyle(color: Colors.white, fontSize: 16),
+                          t.login, // 原本 '登录'
+                          style: const TextStyle(color: Colors.white, fontSize: 16),
                         ),
                       ),
                     ),
@@ -307,18 +282,15 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
 
                   // 切換按鈕（不再跳頁）
                   OutlinedButton(
-                    onPressed: () =>
-                        setState(() => _useCodeLogin = !_useCodeLogin),
+                    onPressed: () => setState(() => _useCodeLogin = !_useCodeLogin),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: Colors.black12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
-                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       minimumSize: const Size(double.infinity, 52),
                     ),
                     child: Text(
-                      _useCodeLogin ? '账号密码登录' : '验证码登录',
+                      _useCodeLogin ? t.accountPasswordLogin : t.codeLogin,
                       style: const TextStyle(color: Colors.black, fontSize: 16),
                     ),
                   ),
@@ -326,42 +298,29 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
 
                   // Divider
                   Row(
-                    children: const [
-                      Expanded(
-                          child: Divider(
-                            thickness: 1,
-                            color: Color(0xFFEEEEEE),
-                            endIndent: 24,
-                          )),
+                    children: [
+                      const Expanded(child: Divider(thickness: 1, color: Color(0xFFEEEEEE), endIndent: 24)),
                       Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8),
-                        child: Text('其他方式登录',
-                            style:
-                            TextStyle(fontSize: 18, color: Color(0xFF616161))),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Text(t.otherLoginMethods,
+                            style: const TextStyle(fontSize: 18, color: Color(0xFF616161))),
                       ),
-                      Expanded(
-                          child: Divider(
-                            thickness: 1,
-                            color: Color(0xFFEEEEEE),
-                            indent: 24,
-                          )),
+                      const Expanded(child: Divider(thickness: 1, color: Color(0xFFEEEEEE), indent: 24)),
                     ],
                   ),
                   const SizedBox(height: 48),
+
                   // Social login
                   LayoutBuilder(
                     builder: (context, constraints) {
-                      const double gap = 12; // 最小間距（原來 32 太大了）
+                      const double gap = 12;
                       return Row(
                         children: [
                           Expanded(child: _buildSocialButton('assets/icon_facebook_2.svg')),
                           const SizedBox(width: gap),
-                          Expanded(child: _buildSocialButton(
-                            'assets/icon_google_2.svg',
-                            onTap: _handleGoogleLogin,
-                          )),
+                          Expanded(child: _buildSocialButton('assets/icon_google_2.svg', onTap: _handleGoogleLogin)),
                           const SizedBox(width: gap),
-                          Expanded(child: _buildSocialButton('assets/icon_apple_2.svg')),
+                          Expanded(child: _buildSocialButton('assets/icon_apple_2.svg', onTap: _handleAppleLogin)),
                         ],
                       );
                     },
@@ -372,21 +331,21 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Text('还没有账号？'),
+                      Text(t.noAccountYet),
                       TextButton(
                         onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const RegisterScreen()),
-                          );
+                          Navigator.push(context,
+                              MaterialPageRoute(builder: (_) => const RegisterScreen()));
                         },
-                        child: const Text('立即注册',
-                            style: TextStyle(
-                                color: Color(0xFFFF4D67),
-                                decoration: TextDecoration.underline,
-                                decorationColor: Color(0xFFFF4D67),
-                                decorationThickness: 1.5)),
+                        child: Text(
+                          t.registerNow,
+                          style: const TextStyle(
+                            color: Color(0xFFFF4D67),
+                            decoration: TextDecoration.underline,
+                            decorationColor: Color(0xFFFF4D67),
+                            decorationThickness: 1.5,
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -394,13 +353,12 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
               ),
             ),
           ),
+
           // Loading 遮罩
           if (_isLoading)
             Container(
               color: Colors.black.withOpacity(0.3),
-              child: const Center(
-                child: CircularProgressIndicator(),
-              ),
+              child: const Center(child: CircularProgressIndicator()),
             ),
         ],
       ),
@@ -411,7 +369,6 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        // 不再固定寬度，交給 Expanded 等分
         height: 60,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -419,14 +376,9 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
           borderRadius: BorderRadius.circular(16),
         ),
         child: Center(
-          // FittedBox 讓圖示在狹窄時等比縮小，避免撐爆
           child: FittedBox(
             fit: BoxFit.scaleDown,
-            child: SvgPicture.asset(
-              assetPath,
-              width: 24,
-              height: 24,
-            ),
+            child: SvgPicture.asset(assetPath, width: 24, height: 24),
           ),
         ),
       ),
@@ -443,9 +395,10 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
   }
 
   Future<void> _handleGoogleLogin() async {
+    final t = S.of(context);
 
     if (Firebase.apps.isEmpty) {
-      Fluttertoast.showToast(msg: '初始化中，請稍後再試');
+      Fluttertoast.showToast(msg: t.initializingWait);
       return;
     }
 
@@ -458,7 +411,24 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
     if (user != null) {
       Navigator.pushReplacementNamed(context, '/home');
     } else {
-      Fluttertoast.showToast(msg: 'Google 登入失敗');
+      Fluttertoast.showToast(msg: t.signInFailedGoogle);
+    }
+  }
+
+  Future<void> _handleAppleLogin() async {
+    if (Firebase.apps.isEmpty) {
+      Fluttertoast.showToast(msg: S.of(context).initializingWait);
+      return;
+    }
+    setState(() => _isLoading = true);
+    final user = await _appleAuthService.signInWithAppleViaFirebase(ref);
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (user != null) {
+      Navigator.pushReplacementNamed(context, '/home');
+    } else {
+      Fluttertoast.showToast(msg: S.of(context).signInFailedApple);
     }
   }
 

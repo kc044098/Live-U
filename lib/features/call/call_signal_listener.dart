@@ -10,11 +10,11 @@ import '../../core/error_handler.dart';
 import '../../core/ws/ws_provider.dart';
 import '../../data/models/gift_item.dart';
 import '../../globals.dart';
+import '../../l10n/l10n.dart';
 import '../../routes/app_routes.dart';
 import '../live/data_model/call_overlay.dart';
 import '../live/gift_providers.dart';
 import '../message/chat_providers.dart';
-import '../message/chat_repository.dart';
 import '../message/inbox_message_banner.dart';
 import '../message/message_chat_page.dart';
 import '../profile/profile_controller.dart';
@@ -195,7 +195,8 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
     debugPrint('📬[Banner] uids: from=$fromUid -> to=$toUid, myId=$myId');
     if (fromUid <= 0 || toUid != myId) return;
 
-    final nick = _s(data['nick_name'] ?? '用戶 $fromUid');
+    final t = S.of(context);
+    final nick = _s(data['nick_name'] ?? '${t.userWord} $fromUid');
     final avatarRaw = (() {
       final v = data['avatar'];
       if (v is List && v.isNotEmpty) return _s(v.first);
@@ -229,7 +230,7 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
     _insertMsgBannerWithRetry(entry);
   }
 
-  void _abortAndGoHome(Map p, {String toast = '對方已結束通話'}) {
+  void _abortAndGoHome(Map p, {String? toast}) {
     final ch = _channel(p);
     if (ch.isEmpty) return;
 
@@ -240,7 +241,9 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
     _hideIncomingBanner();                // ★ 只關 Banner，不導航
     if (CallOverlay.isShowing) CallOverlay.hide();
 
-    if (toast.isNotEmpty) Fluttertoast.showToast(msg: toast);
+    final t = S.of(rootNavigatorKey.currentContext ?? context);
+    final msg = (toast == null || toast.isEmpty) ? t.peerEndedCall : toast;
+    Fluttertoast.showToast(msg: msg);
 
     _stopRingtoneAndUnduck();
 
@@ -259,7 +262,7 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
   String _token(Map p) => (_dataOf(p)['string'] ?? _dataOf(p)['token'])?.toString() ?? '';
   int? _status(Map p) => _asInt(_dataOf(p)['status']); // 0/缺省=響鈴, 1=接通, 2=拒絕
   int? _peerUid(Map p) => _asInt(_dataOf(p)['uid']);
-  String _nick(Map p) => _dataOf(p)['nick_name']?.toString() ?? '來電';
+  String _nick(Map p) => _dataOf(p)['nick_name']?.toString() ?? S.of(context).incomingCallTitle;
   dynamic _avatarRaw(Map p) => _dataOf(p)['avatar'];
   int _flag(Map p) {
     final d = _dataOf(p);
@@ -508,7 +511,7 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
   }) async {
     // 已被中止就不處理
     if (ref.read(callAbortProvider).contains(channel)) {
-      Fluttertoast.showToast(msg: '對方已結束通話');
+      Fluttertoast.showToast(msg: S.of(context).peerEndedCall);
       return;
     }
 
@@ -519,7 +522,9 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
     final micOk = statuses[Permission.microphone] == PermissionStatus.granted;
     final camOk = !needCam || statuses[Permission.camera] == PermissionStatus.granted;
     if (!micOk || !camOk) {
-      Fluttertoast.showToast(msg: '請先授權麥克風${needCam ? "與相機" : ""}');
+      final t = S.of(context);
+      final msg = needCam ? t.needMicCamPermission : t.needMicPermission;
+      Fluttertoast.showToast(msg: msg);
       return;
     }
 
@@ -534,16 +539,16 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
       if (e is ApiException) {
         switch (e.code) {
           case 102: // Insufficient Quota
-            Fluttertoast.showToast(msg: '餘額不足, 請前往充值～');
+            Fluttertoast.showToast(msg: S.of(context).balanceNotEnough);
             break;
           case 121: // The User Is On Calling
-            Fluttertoast.showToast(msg: '對方忙線中');
+            Fluttertoast.showToast(msg: S.of(context).calleeBusy);
             break;
           case 123: // User Offline
-            Fluttertoast.showToast(msg: '對方不在線');
+            Fluttertoast.showToast(msg: S.of(context).calleeOffline);
             break;
           case 125: // User Do Not Disturb Mode
-            Fluttertoast.showToast(msg: '對方開啟免擾');
+            Fluttertoast.showToast(msg: S.of(context).calleeDndOn);
             break;
           default:
             AppErrorToast.show(e);
@@ -565,7 +570,7 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
           : const <String, dynamic>{};
       token = (data['string'] ?? data['token'])?.toString();
       if (token == null || token.isEmpty) {
-        Fluttertoast.showToast(msg: '接聽失敗：缺少通話憑證');
+        Fluttertoast.showToast(msg: S.of(context).acceptFailedMissingToken);
         return;
       }
     } else {
@@ -575,7 +580,7 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
 
     // 3) 再次確認未被中止
     if (ref.read(callAbortProvider).contains(channel)) {
-      Fluttertoast.showToast(msg: '對方已結束通話');
+      Fluttertoast.showToast(msg: S.of(context).peerEndedCall);
       return;
     }
 

@@ -8,6 +8,7 @@ import 'package:flutter_svg/svg.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../data/network/avatar_cache.dart';
+import '../../l10n/l10n.dart';
 import '../../routes/app_routes.dart';
 import '../live/data_model/feed_item.dart';
 import '../live/data_model/home_feed_state.dart';
@@ -32,7 +33,7 @@ class ViewOtherVideoPage extends ConsumerStatefulWidget {
     required this.videoPath,
     required this.displayName,
     required this.avatarPath,
-    this.message = '別睡了, 起來嗨',
+    this.message = '',
     this.isVip = false,
     required this.isLike,
     required this.uid,
@@ -52,7 +53,10 @@ class _ViewOtherVideoPageState extends ConsumerState<ViewOtherVideoPage>
   late final int _intUid;
   bool _showSpinner = false;
 
-  String _catText(int v) => v == 1 ? '精選' : '日常';
+  String _catText(int v) {
+    final l = S.of(context);
+    return v == 1 ? l.categoryFeatured : l.categoryDaily;
+  }
   Color _catColor(int v) => v == 1 ? const Color(0xFFFF4D67) : const Color(0xFF3A9EFF);
 
   @override

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../l10n/l10n.dart';
 import '../../message/chat_message.dart';
 
 class LiveChatPanel extends StatelessWidget {
@@ -50,7 +51,7 @@ class LiveChatPanel extends StatelessWidget {
                     color: Colors.black.withOpacity(0.5), // 50% 半透明
                     borderRadius: BorderRadius.circular(20), // 圓角 20
                   ),
-                  child: _rowContent(m, name),
+                  child: _rowContent(context, m, name),
                 ),
               ),
             ),
@@ -60,8 +61,9 @@ class LiveChatPanel extends StatelessWidget {
     );
   }
 
-  Widget _rowContent(ChatMessage m, String name) {
+  Widget _rowContent(BuildContext context,ChatMessage m, String name) {
     const nickBlue = Color(0xFF94E1DF);
+    final t = S.of(context);
 
     switch (m.contentType) {
       case ChatContentType.gift:
@@ -82,8 +84,9 @@ class LiveChatPanel extends StatelessWidget {
             children: [
               // 「user 贈送」→ 淡藍色
               TextSpan(
-                text: '$name 贈送 ',
-                style: const TextStyle(color: nickBlue, fontWeight: FontWeight.w600),
+                text: t.giftSend(name),
+                style: const TextStyle(
+                    color: nickBlue, fontWeight: FontWeight.w600),
               ),
               // 「禮物名」→ 白色、加粗，外面包個書名號
               TextSpan(
@@ -102,7 +105,8 @@ class LiveChatPanel extends StatelessWidget {
                       width: 18,
                       height: 18,
                       fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => const SizedBox(width: 18, height: 18),
+                      errorBuilder: (_, __, ___) =>
+                          const SizedBox(width: 18, height: 18),
                     ),
                   ),
                 ),
@@ -114,13 +118,14 @@ class LiveChatPanel extends StatelessWidget {
         );
 
       default:
-      // 其他訊息維持原本樣式
+        // 其他訊息維持原本樣式
         return Text.rich(
           TextSpan(
             children: [
               TextSpan(
                 text: '$name：',
-                style: const TextStyle(color: nickBlue, fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                    color: nickBlue, fontWeight: FontWeight.w600),
               ),
               TextSpan(text: m.text ?? ''),
             ],
@@ -135,6 +140,4 @@ class LiveChatPanel extends StatelessWidget {
         );
     }
   }
-
-
 }

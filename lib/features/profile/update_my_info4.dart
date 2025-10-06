@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../core/error_handler.dart';
 import '../../core/user_local_storage.dart';
+import '../../l10n/l10n.dart';
 import '../home/home_screen.dart';
 import '../mine/user_repository_provider.dart';
 
@@ -34,14 +35,15 @@ class _UpdateMyInfoPage4State extends ConsumerState<UpdateMyInfoPage4> {
   }
 
   String _msgForApi(ApiException e) {
-    final m = (e.message ?? '').trim();
+    final t = S.of(context);
+    final m = (e.message).trim(); // 保持原有優先取 server message 的行為
     if (m.isNotEmpty) return m;
     switch (e.code) {
-      case 401: return '登入已失效，請重新登入';
-      case 413: return '請求資料過大';
-      case 422: return '參數不完整或不合法';
-      case 429: return '操作太頻繁，稍後再試';
-      default:  return '服務異常，請稍後再試';
+      case 401: return t.apiErrLoginExpired;
+      case 413: return t.apiErrPayloadTooLarge;
+      case 422: return t.apiErrUnprocessable;
+      case 429: return t.apiErrTooManyRequests;
+      default:  return t.apiErrServiceGeneric;
     }
   }
 
@@ -72,24 +74,24 @@ class _UpdateMyInfoPage4State extends ConsumerState<UpdateMyInfoPage4> {
   }
 
   void _onFinish() async {
+    final t = S.of(context);
     if (_selectedImage == null) {
-      Fluttertoast.showToast(msg: "請先選擇照片");
+      Fluttertoast.showToast(msg: t.pickPhotoFirst);
       return;
     }
 
-    // ✅ 送出前再做一次防呆校驗（型別/大小/存在）
     final file = _selectedImage!;
     if (!await file.exists()) {
-      Fluttertoast.showToast(msg: "請先選擇照片");
+      Fluttertoast.showToast(msg: t.pickPhotoFirst);
       return;
     }
     if (!_isProbablyImage(file.path)) {
-      Fluttertoast.showToast(msg: "只能上傳圖片檔案");
+      Fluttertoast.showToast(msg: t.uploadImagesOnly);
       return;
     }
     final size = await file.length();
     if (size > _kMaxBytes1GiB) {
-      Fluttertoast.showToast(msg: "只能上傳1G以下的檔案");
+      Fluttertoast.showToast(msg: t.uploadLimitMaxSize('1G'));
       return;
     }
 
@@ -102,7 +104,7 @@ class _UpdateMyInfoPage4State extends ConsumerState<UpdateMyInfoPage4> {
     try {
       final repo = ref.read(userRepositoryProvider);
       final user = ref.read(userProfileProvider);
-      if (user == null) throw Exception("使用者未登入");
+      if (user == null) throw Exception(t.userNotLoggedIn);
 
       // 1. 上傳圖片到 S3
       final s3Url = await repo.uploadToS3Avatar(file);
@@ -128,23 +130,21 @@ class _UpdateMyInfoPage4State extends ConsumerState<UpdateMyInfoPage4> {
       };
       await repo.updateMemberInfo(updateData);
 
-      Fluttertoast.showToast(msg: "個人資料已完成！");
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const HomeScreen()),
             (route) => false,
       );
     } on ApiException catch (e) {
-      // 後端業務碼錯誤（如 4xx/業務邏輯失敗）
       Fluttertoast.showToast(msg: _msgForApi(e));
-      Navigator.of(context).pop(); // 關掉 loading
+      Navigator.of(context).pop();
     } on DioException catch (e) {
-      // 連線/逾時/502-504 等
-      final msg = _isNetworkIssue(e) ? '網路連線異常，請稍後重試' : (e.message ?? '上傳失敗');
+      final msg = _isNetworkIssue(e) ? S.of(context).netIssueRetryLater : (e.message ?? S.of(context).uploadFailed);
       Fluttertoast.showToast(msg: msg);
       Navigator.of(context).pop();
     } catch (e) {
       debugPrint("上傳失敗: $e");
-      Fluttertoast.showToast(msg: e.toString().contains('未登入') ? '使用者未登入' : '上傳失敗');
+      final msg = e.toString().contains('未登入') ? S.of(context).userNotLoggedIn : S.of(context).uploadFailed;
+      Fluttertoast.showToast(msg: msg);
       Navigator.of(context).pop();
     }
   }
@@ -171,6 +171,8 @@ class _UpdateMyInfoPage4State extends ConsumerState<UpdateMyInfoPage4> {
 
   @override
   Widget build(BuildContext context) {
+    final t = S.of(context);
+
     return Scaffold(
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
@@ -180,7 +182,6 @@ class _UpdateMyInfoPage4State extends ConsumerState<UpdateMyInfoPage4> {
       ),
       body: Column(
         children: [
-          // 可捲動內容
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -189,19 +190,11 @@ class _UpdateMyInfoPage4State extends ConsumerState<UpdateMyInfoPage4> {
                 children: [
                   _buildProgressIndicator(),
                   const SizedBox(height: 20),
-                  const Text("最後一步",
-                      style: TextStyle(fontSize: 14, color: Colors.black)),
+                  Text(t.setupLastStep, style: const TextStyle(fontSize: 14, color: Colors.black)),
                   const SizedBox(height: 8),
-                  const Text(
-                    "你的照片",
-                    style:
-                    TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                  ),
+                  Text(t.setupYourPhoto, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
-                  const Text(
-                    "上傳一張本人五官清晰的正面照",
-                    style: TextStyle(fontSize: 14, color: Colors.grey),
-                  ),
+                  Text(t.setupPhotoSubtitle, style: const TextStyle(fontSize: 14, color: Colors.grey)),
                   const SizedBox(height: 30),
 
                   // 上傳區
@@ -216,14 +209,10 @@ class _UpdateMyInfoPage4State extends ConsumerState<UpdateMyInfoPage4> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: _selectedImage == null
-                            ? const Icon(Icons.add,
-                            size: 48, color: Colors.grey)
+                            ? const Icon(Icons.add, size: 48, color: Colors.grey)
                             : ClipRRect(
                           borderRadius: BorderRadius.circular(12),
-                          child: Image.file(
-                            _selectedImage!,
-                            fit: BoxFit.cover,
-                          ),
+                          child: Image.file(_selectedImage!, fit: BoxFit.cover),
                         ),
                       ),
                     ),
@@ -233,10 +222,10 @@ class _UpdateMyInfoPage4State extends ConsumerState<UpdateMyInfoPage4> {
                   // 示範圖片
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: const [
-                      _PhotoExample(label: "無遮擋"),
-                      _PhotoExample(label: "記得微笑"),
-                      _PhotoExample(label: "五官清晰"),
+                    children: [
+                      _PhotoExample(label: t.photoSampleClear),
+                      _PhotoExample(label: t.photoSampleSmile),
+                      _PhotoExample(label: t.photoSampleClearFeatures),
                     ],
                   ),
                   const SizedBox(height: 40),
@@ -247,27 +236,20 @@ class _UpdateMyInfoPage4State extends ConsumerState<UpdateMyInfoPage4> {
 
           // 固定底部按鈕
           Padding(
-            padding:
-            const EdgeInsets.symmetric(horizontal: 20).copyWith(bottom: 40),
+            padding: const EdgeInsets.symmetric(horizontal: 20).copyWith(bottom: 40),
             child: InkWell(
               borderRadius: BorderRadius.circular(22),
               onTap: _onFinish,
               child: Ink(
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFFFA770), Color(0xFFD247FE)],
-                  ),
+                  gradient: const LinearGradient(colors: [Color(0xFFFFA770), Color(0xFFD247FE)]),
                   borderRadius: BorderRadius.circular(22),
                 ),
                 height: 48,
-                child: const Center(
+                child: Center(
                   child: Text(
-                    '完成',
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    t.setupFinish,
+                    style: const TextStyle(fontSize: 15, color: Colors.white, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
@@ -279,38 +261,34 @@ class _UpdateMyInfoPage4State extends ConsumerState<UpdateMyInfoPage4> {
   }
 
   Future<void> _pickImage() async {
+    final t = S.of(context);
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(
-      source: ImageSource.gallery, // 只允許相簿
+      source: ImageSource.gallery,
       imageQuality: 85,
     );
     if (pickedFile == null) return;
 
     final file = File(pickedFile.path);
     if (!await file.exists()) {
-      Fluttertoast.showToast(msg: '選取失敗，請重試');
+      Fluttertoast.showToast(msg: t.pickFailedRetry);
       return;
     }
 
-    // 型別檢查：不是圖片就阻擋
     final okType = _isProbablyImage(pickedFile.path, pickedFile.mimeType);
     if (!okType) {
-      Fluttertoast.showToast(msg: '只能上傳圖片檔案');
+      Fluttertoast.showToast(msg: t.uploadImagesOnly);
       return;
     }
 
-    // 大小檢查：> 1G 阻擋
     final size = await file.length();
     if (size > _kMaxBytes1GiB) {
-      Fluttertoast.showToast(msg: '只能上傳1G以下的檔案');
+      Fluttertoast.showToast(msg: t.uploadLimitMaxSize('1G'));
       return;
     }
 
-    setState(() {
-      _selectedImage = file;
-    });
+    setState(() => _selectedImage = file);
   }
-
 }
 
 class _PhotoExample extends StatelessWidget {

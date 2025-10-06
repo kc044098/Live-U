@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
+import '../../l10n/l10n.dart';
 import 'model/dnd_state.dart';
 
 class DndModePage extends ConsumerStatefulWidget {
@@ -36,9 +37,12 @@ class _DndModePageState extends ConsumerState<DndModePage> {
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     final dnd = ref.watch(dndProvider);
     final ctrl = ref.read(dndProvider.notifier);
     const bg = Color(0xFFF6F6F6);
+
+    final opt = kDndOptionsOf(context);
 
     return Scaffold(
       backgroundColor: bg,
@@ -47,7 +51,7 @@ class _DndModePageState extends ConsumerState<DndModePage> {
         elevation: 0,
         centerTitle: true,
         leading: const BackButton(color: Colors.black54),
-        title: const Text('免扰模式',
+        title: Text( s.dndTitle,
             style: TextStyle(fontSize: 16, color: Colors.black)),
       ),
       body: ListView(
@@ -63,14 +67,13 @@ class _DndModePageState extends ConsumerState<DndModePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('视频勿扰',
+                      Text(
+                          s.dndVideoDnd,
                           style: TextStyle(
                               fontSize: 16, fontWeight: FontWeight.w600)),
                       const SizedBox(height: 6),
                       Text(
-                        dnd.isActive
-                            ? '已开启。在此期间，后台会将你的状态设为忙碌，别人无法发起视频聊天'
-                            : '选择一个时长开启免扰。开启后期间别人无法和你进行视频聊天',
+                        dnd.isActive ? s.dndActiveHint : s.dndInactiveHint,
                         style: const TextStyle(
                             fontSize: 13, color: Colors.black54, height: 1.3),
                       ),
@@ -83,11 +86,12 @@ class _DndModePageState extends ConsumerState<DndModePage> {
                   child: CupertinoSwitch(
                     value: dnd.isActive,
                     onChanged: (v) async {
-                      await ctrl.toggle(v);
+                      await ctrl.toggle( v, context);
                       if (!mounted) return;
                       final id = ref.read(dndProvider).selectedId;
-                      final msg =
-                      id == 0 ? '已关闭免扰' : '已开启免扰（${kDndOptions[id] ?? ''}）';
+                      final msg = id == 0
+                          ? s.dndOffToast
+                          : s.dndOnToast(opt[id] ?? '');
                       Fluttertoast.showToast(msg: msg);
                       setState(() {});
                     },
@@ -104,7 +108,7 @@ class _DndModePageState extends ConsumerState<DndModePage> {
           Container(
             decoration: _card(),
             child: Column(
-              children: kDndOptions.entries.map((e) {
+              children: opt.entries.map((e) { // ← 用本地化選項
                 final id = e.key;
                 final label = e.value;
                 final selected = dnd.selectedId == id;
@@ -113,7 +117,7 @@ class _DndModePageState extends ConsumerState<DndModePage> {
                   onTap: () async {
                     await ctrl.setById(id);
                     if (!mounted) return;
-                    Fluttertoast.showToast(msg: '已开启免扰（$label）');
+                    Fluttertoast.showToast(msg: s.dndOnToast(label));
                     setState(() {});
                   },
                   child: Container(

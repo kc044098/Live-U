@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../l10n/l10n.dart';
+
 class LiveChatInputBar extends StatelessWidget {
   const LiveChatInputBar({
     required this.controller,
@@ -15,6 +17,7 @@ class LiveChatInputBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = S.of(context);
     return SafeArea(
       top: false,
       child: Row(
@@ -44,8 +47,8 @@ class LiveChatInputBar extends StatelessWidget {
                 },
                 onTap: onTapField,
                 onTapOutside: (_) => focusNode.unfocus(),      // ← 點外面也收
-                decoration: const InputDecoration(
-                  hintText: ' 说点什么…',
+                decoration: InputDecoration(
+                  hintText: t.liveChatHint,
                   hintStyle: TextStyle(color: Colors.white70),
                   border: InputBorder.none,
                   isCollapsed: true,

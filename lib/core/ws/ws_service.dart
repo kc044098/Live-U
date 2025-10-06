@@ -1,11 +1,10 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/io.dart';
-import 'package:web_socket_channel/status.dart' as ws_status;
 import 'dart:io' show WebSocket;
-
 
 enum WsStatus { disconnected, connecting, connected }
 typedef WsHandler = FutureOr<void> Function(Map<String, dynamic> payload);
@@ -37,6 +36,9 @@ class WsService {
   final Map<int, void Function(dynamic raw)> _rawTaps = {}; // 攔 raw frame
   final Map<int, WsHandler> _anyHandlers = {};             // 攔所有事件
 
+  final _seenUuids = LinkedHashMap<String, int>(); // uuid -> firstSeenMs
+  static const _seenTtl = Duration(minutes: 10);
+  static const _seenCap = 4096;
 
   DateTime _lastRx = DateTime.now();
 
@@ -210,6 +212,9 @@ class WsService {
                   // 與下方 Map 流程相同的派發 + 日誌
                   final typeStr = _mapType(m['type'] ?? m['flag']);
                   debugPrint('[WS] dispatch type(list-item)=$typeStr');
+
+                  if (_isDupAndRemember(m)) continue; // 丟掉重複的 item
+
                   for (final h in _anyHandlers.values.toList()) {
                     try { h({'__type__': typeStr, ...m}); } catch (_) {}
                   }
@@ -240,6 +245,9 @@ class WsService {
           // 主類型（gift/recharge/room_chat/reply/notice/call/unknown）
           final typeStr = _mapType(data!['type'] ?? data['flag']);
           debugPrint('[WS] dispatch type=$typeStr');
+
+          // 去重：命中就直接 return，不派發（但 ACK 還是會在 raw-tap 那邊送）
+          if (_isDupAndRemember(data)) return;
 
           // 先給「所有事件攔截器」
           for (final h in _anyHandlers.values.toList()) {
@@ -469,4 +477,53 @@ class WsService {
   void forceReconnect([String reason = 'watchdog']) {
     _safeClose(reason); // 會走 onDone -> _scheduleReconnect()
   }
+
+  bool _isDupAndRemember(Map<String, dynamic> m) {
+    final uuid = _extractUuid(m);
+    if (uuid == null || uuid.isEmpty) return false;
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    // 清掉過期
+    if (_seenUuids.length % 128 == 0) {
+      final cutoff = now - _seenTtl.inMilliseconds;
+      _seenUuids.removeWhere((_, ts) => ts < cutoff);
+    }
+
+    // 命中重複（有效期內）
+    final ts = _seenUuids[uuid];
+    if (ts != null && now - ts <= _seenTtl.inMilliseconds) {
+      debugPrint('[WS] drop duplicate uuid=$uuid');
+      return true;
+    }
+
+    // 新記錄 + 簡易 LRU 截斷
+    _seenUuids[uuid] = now;
+    if (_seenUuids.length > _seenCap) {
+      _seenUuids.remove(_seenUuids.keys.first);
+    }
+    return false;
+  }
+
+// 和你在 CallSignalListener 裡的版本一致：頂層或 data/Data 皆可取到
+  String? _extractUuid(Map<String, dynamic> m) {
+    String? pick(Map mm, List<String> ks) {
+      for (final k in ks) {
+        final v = mm[k];
+        if (v == null) continue;
+        final s = v.toString();
+        if (s.isNotEmpty) return s;
+      }
+      return null;
+    }
+    final top = pick(m, ['uuid','UUID']);
+    if (top != null) return top;
+
+    Map<String, dynamic> asMap(dynamic v) =>
+        (v is Map) ? v.map((k, v) => MapEntry(k.toString(), v)) : <String, dynamic>{};
+
+    final data = asMap(m['data']).isNotEmpty ? asMap(m['data']) : asMap(m['Data']);
+    return pick(data, ['uuid','UUID','id','Id']);
+  }
+
 }

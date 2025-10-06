@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
+import '../../l10n/l10n.dart';
 import 'modify_password_page.dart';
 
 class AccountInfoPage extends StatelessWidget {
@@ -15,11 +16,16 @@ class AccountInfoPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final modifyTitle = modifyType == 'account' ? '修改帳號密碼' : '修改郵箱密碼';
+    final s = S.of(context);
+    final modifyTitle = modifyType == 'account'
+        ? s.changeAccountPassword
+        : s.changeEmailPassword;
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('賬號信息', style: TextStyle(fontSize: 16, color: Colors.black)),
+        title: Text(s.accountInfoTitle,
+            style: const TextStyle(fontSize: 16, color: Colors.black)),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.white,
@@ -39,8 +45,9 @@ class AccountInfoPage extends StatelessWidget {
           ),
 
           const SizedBox(height: 30),
-          const Divider(height: 1 , indent: 60, endIndent: 60, color: Color(0xFFEEEEEE),),
+          const Divider(height: 1 , indent: 60, endIndent: 60, color: Color(0xFFEEEEEE)),
           const SizedBox(height: 20),
+
           // 修改密碼選項
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -54,8 +61,7 @@ class AccountInfoPage extends StatelessWidget {
                   MaterialPageRoute(builder: (_) => const ModifyPasswordPage()),
                 );
                 if (result == true) {
-                  // TODO: 成功修改密碼後刷新頁面或提示
-                  Fluttertoast.showToast(msg: '密碼修改成功');
+                  Fluttertoast.showToast(msg: s.passwordResetSuccess);
                 }
               },
             ),

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/l10n.dart';
+
 class GiftBubble extends StatelessWidget {
   const GiftBubble({
     super.key,
@@ -40,7 +42,7 @@ class GiftBubble extends StatelessWidget {
             shaderCallback: (r) => const LinearGradient(
               colors: [Color(0xFF86E5FF), Color(0xFFC2F2FF)],
             ).createShader(r),
-            child: const Text('贈送', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+            child: Text(S.of(context).giftSentShort, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
           ),
           const SizedBox(width: 6),
           Text(title, style: TextStyle(color: textColor, fontWeight: FontWeight.w600)),

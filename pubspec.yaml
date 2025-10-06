@@ -3,7 +3,7 @@ name: djs_live_stream
 description: "djs_live_stream Flutter project."
 publish_to: 'none'
 
-version: 0.0.1+1
+version: 1.0.0+1
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -19,7 +19,7 @@ dependencies:
   firebase_core: ^3.0.0
   firebase_auth: ^5.0.0
   google_sign_in: ^6.1.5
-  flutter_facebook_auth: ^6.0.0
+  flutter_facebook_auth: ^5.0.11
   sign_in_with_apple: ^6.1.0
   crypto: ^3.0.3
   cupertino_icons: ^1.0.8
@@ -64,6 +64,7 @@ dependencies:
   svgaplayer_flutter: ^2.2.0
   archive: ^3.4.10
   in_app_purchase: ^3.1.11
+  in_app_purchase_storekit: ^0.3.6
   webview_flutter: ^4.7.0
 
   fulive_plugin:

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 
 import '../../data/network/avatar_cache.dart';
+import '../../l10n/l10n.dart';
 import '../live/data_model/feed_item.dart';
 import '../live/data_model/home_feed_state.dart';
 import '../mine/user_repository_provider.dart';
@@ -38,25 +39,28 @@ class ViewOtherImagePage extends ConsumerStatefulWidget {
   @override
   ConsumerState<ViewOtherImagePage> createState() => _ViewOtherImagePageState();
 }
-
 class _ViewOtherImagePageState extends ConsumerState<ViewOtherImagePage>
     with SingleTickerProviderStateMixin {
   late bool isLiked;
   double _scale = 1.0;
   late final int _intUid;
 
-  String _catText(int v) => v == 1 ? '精選' : '日常';
+  // 分類文字 → 改用多語系
+  String _catText(int v) {
+    final l = S.of(context);
+    return v == 1 ? l.categoryFeatured : l.categoryDaily;
+  }
+
   Color _catColor(int v) => v == 1 ? const Color(0xFFFF4D67) : const Color(0xFF3A9EFF);
 
   @override
   void initState() {
     super.initState();
     _intUid = int.tryParse(widget.uid) ?? -1;
-
-    // 以首頁列表中最新資料為準；找不到才用路由參數
     final likedFromList = _selectLikeFromHomeFeed(ref, _intUid);
     isLiked = likedFromList ?? widget.isLike;
   }
+
 
   @override
   void didChangeDependencies() {

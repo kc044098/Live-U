@@ -5,6 +5,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/user_local_storage.dart';
+import '../../l10n/l10n.dart';
 import '../home/home_screen.dart';
 import '../mine/user_repository_provider.dart';
 import 'update_my_info2.dart';
@@ -110,9 +111,10 @@ class _UpdateMyInfoPageState extends ConsumerState<UpdateMyInfoPage> {
 
   @override
   Widget build(BuildContext context) {
+    final t = S.of(context);
     return WillPopScope(
       onWillPop: () async {
-        Fluttertoast.showToast(msg: "請先設定個人資料");
+        Fluttertoast.showToast(msg: t.setupToastSetProfileFirst);
         return false; // 阻止返回鍵
       },
       child: Scaffold(
@@ -137,11 +139,14 @@ class _UpdateMyInfoPageState extends ConsumerState<UpdateMyInfoPage> {
                     children: [
                       _buildProgressIndicator(),
                       const SizedBox(height: 20),
-                      const Text("請選擇", style: TextStyle(fontSize: 14, color: Colors.black)),
+                      Text(t.setupPleaseChoose,
+                          style: const TextStyle(fontSize: 14, color: Colors.black)),
                       const SizedBox(height: 8),
-                      const Text("你的性別", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                      Text(t.setupYourGender,
+                          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 4),
-                      const Text("性別一旦設置，不可更改", style: TextStyle(fontSize: 14, color: Colors.grey)),
+                      Text(t.setupGenderImmutable,
+                          style: const TextStyle(fontSize: 14, color: Colors.grey)),
                       const SizedBox(height: 30),
 
                       _buildGenderCard(gender: "female", bgImage: "assets/pic_girl.png"),
@@ -159,8 +164,9 @@ class _UpdateMyInfoPageState extends ConsumerState<UpdateMyInfoPage> {
                             borderRadius: BorderRadius.circular(22),
                           ),
                           height: 48,
-                          child: const Center(
-                            child: Text('下一步', style: TextStyle(fontSize: 15, color: Colors.white, fontWeight: FontWeight.bold)),
+                          child: Center(
+                            child: Text(
+                                t.setupNext, style: TextStyle(fontSize: 15, color: Colors.white, fontWeight: FontWeight.bold)),
                           ),
                         ),
                       ),
@@ -168,7 +174,8 @@ class _UpdateMyInfoPageState extends ConsumerState<UpdateMyInfoPage> {
                       Center(
                         child: TextButton(
                           onPressed: _onSkip,
-                          child: const Text("跳過", style: TextStyle(color: Color(0xFFFF4D67), fontSize: 16)),
+                          child: Text(
+                              t.setupSkip, style: TextStyle(color: Color(0xFFFF4D67), fontSize: 16)),
                         ),
                       ),
                       const SizedBox(height: 40),

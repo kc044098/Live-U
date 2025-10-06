@@ -42,9 +42,7 @@ class UserRepository {
   Future<UserModel> getMemberInfo(UserModel currentUser) async {
     try {
       final map = await _api.postOk(ApiEndpoints.memberInfo, data: {});
-      final data = map['data'] as Map?;
-
-      if (data == null) throw ApiException(-1, '資料格式錯誤');
+      final data = toMap(map['data']);
 
       return currentUser.copyWith(
         displayName: (data['nick_name'] as String?)?.isNotEmpty == true
@@ -91,7 +89,7 @@ class UserRepository {
     int? _intOf(dynamic v) => v is num ? v.toInt() : (v == null ? null : int.tryParse(v.toString()));
     try {
       final map = await _api.postOk(ApiEndpoints.memberInfo, data: {"id": id});
-      final data = (map['data'] as Map).cast<String, dynamic>();
+      final data = toMap(map['data']);
 
       return UserModel(
         uid: data['id']?.toString() ?? '',
@@ -127,7 +125,8 @@ class UserRepository {
 
     if (raw is! Map || raw['code'] != 200) {
       debugPrint('更新失敗: $raw');
-      throw Exception("更新失敗 , 請確認網路連線");
+      final s = AppErrorToast.resolveT(null);
+      throw Exception(s.updateFailedCheckNetwork);
     }
 
     return true;
@@ -137,8 +136,8 @@ class UserRepository {
   Future<List<VipPlan>> fetchVipPlans() async {
     try {
       final map = await _api.postOk(ApiEndpoints.memberVipList, data: {});
-      final data = (map['data'] as Map).cast<String, dynamic>();
-      final listJson = (data['list'] as List?) ?? const [];
+      final data = toMap(map['data']);
+      final listJson = toList(data['list']);
       final plans = listJson
           .map((e) => VipPlan.fromJson((e as Map).cast<String, dynamic>()))
           .toList();
@@ -178,8 +177,8 @@ class UserRepository {
         return InviteUserPage(list: const [], count: 0);
       }
 
-      final data = (map['data'] as Map).cast<String, dynamic>();
-      final listJson = (data['list'] as List?) ?? const [];
+      final data = toMap(map['data']);
+      final listJson = toList(data['list']);
       final list = listJson
           .map((e) => InviteUserItem.fromJson((e as Map).cast<String, dynamic>()))
           .toList();
@@ -212,7 +211,7 @@ class UserRepository {
           return allTags.reversed.toList();
         }
 
-        final data = map['data'] as Map?;
+        final data = toMap(map['data']);
         if (data == null) return allTags.reversed.toList();
 
         final list = data['list'];
@@ -249,6 +248,8 @@ class UserRepository {
 
   // 獲取粉絲列表（改：postOk + 統一錯誤）
   Future<MemberFansPage> fetchMemberFans({int page = 1}) async {
+    int? _asInt(dynamic v) => v is num ? v.toInt() : int.tryParse('${v ?? ''}');
+
     try {
       final map = await _api.postOk(
         ApiEndpoints.memberFans,
@@ -256,18 +257,22 @@ class UserRepository {
         alsoOkCodes: kNoDataCodes,
       );
 
+      // 100、204…等「沒有資料」直接回空頁
       if (kNoDataCodes.contains(map['code'])) {
-        return MemberFansPage(list: [], count: 0);
+        return MemberFansPage(list: const [], count: 0);
       }
 
-      final data = (map['data'] as Map).cast<String, dynamic>();
-      final listJson = (data['list'] as List?) ?? const [];
+      final data = toMap(map['data']);
+      final listJson = toList(data['list']);
+
+      // ✅ 逐項保護轉型
       final list = listJson
-          .map((e) => MemberFanUser.fromJson((e as Map).cast<String, dynamic>()))
+          .whereType<Map>()
+          .map((e) => MemberFanUser.fromJson(e.cast<String, dynamic>()))
           .toList();
 
-      final countRaw = data['count'];
-      final count = countRaw is int ? countRaw : int.tryParse('$countRaw') ?? 0;
+      // ✅ count 取不到就用 list.length 當保底
+      final count = _asInt(data['count']) ?? list.length;
 
       return MemberFansPage(list: list, count: count);
     } catch (e) {
@@ -289,7 +294,7 @@ class UserRepository {
         return MemberFocusPage(list: [], count: 0);
       }
 
-      final data = (map['data'] as Map).cast<String, dynamic>();
+      final data = toMap(map['data']);
       final listJson = (data['list'] as List?) ?? const [];
       final list = listJson
           .map((e) => MemberFocusUser.fromJson((e as Map).cast<String, dynamic>()))
@@ -344,8 +349,8 @@ class UserRepository {
       int? video;
       int? voice;
 
-      final data = map['data'] as Map?;
-      final list = data?['list'] as List?;
+      final data = toMap(map['data']);
+      final list = toList(data['list']);
       if (list != null) {
         for (final it in list) {
           if (it is Map) {
@@ -458,7 +463,7 @@ class UserRepository {
     }
   }
 
-// 上傳檔案至 S3（改：Step1 用 postOk + 統一錯誤）
+  // 上傳檔案至 S3（改：Step1 用 postOk + 統一錯誤）
   Future<String> uploadToS3Avatar(File file) async {
     try {
       final fileExtension = getFileExtension(file);
@@ -468,8 +473,7 @@ class UserRepository {
       final map = await _api.postOk(ApiEndpoints.preUpload, data: {
         'file_type': fileExtension,
       });
-      final data = map['data'] as Map?;
-      if (data == null) throw ApiException(-1, '資料格式錯誤');
+      final data = toMap(map['data']);
 
       final uploadUrl = data['url'];
       final fileUrl = data['file_url'];
@@ -487,7 +491,8 @@ class UserRepository {
         ),
       );
       if (uploadRes.statusCode != 200) {
-        throw ApiException(-1, '資料上傳失敗，請檢查網路');
+        final s = AppErrorToast.resolveT(null);
+        throw ApiException(-1, s.uploadFailedCheckNetwork);
       }
       return fileUrl;
     } catch (e) {
@@ -500,10 +505,11 @@ class UserRepository {
   Future<String> fetchInviteUrl() async {
     try {
       final map = await _api.postOk(ApiEndpoints.inviteUrl, data: {});
-      final data = map['data'] as Map?;
-      final url = data?['values']?.toString() ?? '';
+      final data = toMap(map['data']);
+      final url = data['values']?.toString() ?? '';
       if (url.isEmpty) {
-        throw ApiException(-1, '邀請連結為空');
+        final s = AppErrorToast.resolveT(null);
+        throw ApiException(-1, s.inviteLinkEmpty);
       }
       return url;
     } catch (e) {
@@ -525,8 +531,8 @@ class UserRepository {
         return RewardPage(list: [], count: 0);
       }
 
-      final data = (map['data'] as Map).cast<String, dynamic>();
-      final listJson = (data['list'] as List?) ?? const [];
+      final data = toMap(map['data']);
+      final listJson = toList(data['list']);
       final list = listJson
           .map((e) => RewardItem.fromJson((e as Map).cast<String, dynamic>()))
           .toList();
@@ -542,7 +548,7 @@ class UserRepository {
     }
   }
 
-// 通用：上傳任何檔案到 S3（改：Step1 用 postOk + 統一錯誤）
+  // 通用：上傳任何檔案到 S3（改：Step1 用 postOk + 統一錯誤）
   Future<String> uploadToS3({
     required File file,
     CancelToken? cancelToken,
@@ -556,8 +562,7 @@ class UserRepository {
       final map = await _api.postOk(ApiEndpoints.preUpload, data: {
         'file_type': fileExtension,
       });
-      final data = map['data'] as Map?;
-      if (data == null) throw ApiException(-1, '資料格式錯誤');
+      final data = toMap(map['data']);
 
       final uploadUrl = data['url'];
       final fileUrl = data['file_url'];
@@ -582,7 +587,8 @@ class UserRepository {
       );
 
       if (res.statusCode != 200) {
-        throw ApiException(-1, '資料上傳失敗，請檢查網路');
+        final s = AppErrorToast.resolveT(null);
+        throw Exception(s.updateFailedCheckNetwork);
       }
       return fileUrl;
     } catch (e) {
@@ -614,6 +620,12 @@ class UserRepository {
     }
   }
 
+  Map<String, dynamic> toMap(Object? v) =>
+      v is Map ? v.cast<String, dynamic>() : const {};
+  List toList(Object? v) => v is List ? v : const [];
+  int? toInt(dynamic v) =>
+      v is num ? v.toInt() : int.tryParse('${v ?? ''}');
+
   String getFileExtension(File file) {
     final ext = p.extension(file.path).toLowerCase(); // 例如 .jpg
     return ext.startsWith('.') ? ext.substring(1) : ext;
@@ -630,5 +642,3 @@ extension FirstNonEmpty on List<String> {
     return '';
   }
 }
-
-

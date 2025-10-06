@@ -14,6 +14,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../core/error_handler.dart';
 import '../../core/ws/ws_provider.dart';
 import '../../globals.dart';
+import '../../l10n/l10n.dart';
 import '../../routes/app_routes.dart' hide routeObserver;
 import '../live/data_model/call_overlay.dart';
 import '../live/mini_call_view.dart';
@@ -29,8 +30,6 @@ class CallRequestPage extends ConsumerStatefulWidget {
   final String broadcasterName;
   final String broadcasterImage;
   final bool isVideoCall;
-
-  /// 新增：對方狀態（預設 online）
   final CalleeState calleeState;
 
   const CallRequestPage({
@@ -39,8 +38,6 @@ class CallRequestPage extends ConsumerStatefulWidget {
     required this.broadcasterName,
     required this.broadcasterImage,
     this.isVideoCall = true,
-
-    // ✅ 向下相容：若舊程式仍傳 isBusy，會自動轉成 busy，否則 online
     CalleeState? calleeState,
     @Deprecated('Use calleeState instead') bool? isBusy,
   }) : calleeState = calleeState ?? (isBusy == true ? CalleeState.busy : CalleeState.online);
@@ -58,10 +55,10 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
 
   Timer? _timeoutTimer;
 
-  String? _channelId;     // 一律使用 data.channel_id / data.channel_name
-  String? _callerToken;   // 主叫 token（liveCall 回來）
-  int? _callerUid;        // 我方 uid（若後端有回）
-  int? _calleeUid;        // 對方 uid
+  String? _channelId;
+  String? _callerToken;
+  int? _callerUid;
+  int? _calleeUid;
 
   bool _finished = false;
   bool _cancelled = false;
@@ -70,7 +67,8 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
 
   bool _inMini = false;
 
-  static const String _kToastTimeout = '電話撥打超時，對方無回應';
+  // 改為 getter：依目前語系取字串
+  String get _kToastTimeout => S.of(_rootCtx).callTimeoutNoResponse;
 
   BuildContext get _rootCtx =>
       rootNavigatorKey.currentContext ?? Navigator.of(context, rootNavigator: true).context;
@@ -79,32 +77,28 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-
-    // 把非同步啟動流程移出去；放到 frame 之後做，避免在 build 前用到 context
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _kickoffFlow();
     });
-
   }
 
-  // 啟動整體流程（同步入口）
   void _kickoffFlow() {
+    final t = S.of(_rootCtx);
     switch (widget.calleeState) {
       case CalleeState.busy:
         _playUnavailableTone();
-        _startTimeout(toast: '對方忙線中');
+        _startTimeout(toast: t.calleeBusy);
         break;
       case CalleeState.offline:
         _playUnavailableTone();
-        _startTimeout(toast: '對方不在線');
+        _startTimeout(toast: t.calleeOffline);
         break;
       case CalleeState.online:
-        _handleOnlineFlow(); // 非同步，但不要在這裡 await
+        _handleOnlineFlow();
         break;
     }
   }
 
-  // 在線時的非同步處理：權限 -> 鈴聲 -> 撥號 -> 監聽
   Future<void> _handleOnlineFlow() async {
     final ok = await ensureMicCam(
       needCam: widget.isVideoCall == true,
@@ -112,8 +106,8 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
     );
     if (!mounted) return;
     if (!ok) {
-      Fluttertoast.showToast(msg: '請先授權相機與麥克風');
-      return; // ensureMicCam 內已處理返回或引導設定
+      Fluttertoast.showToast(msg: S.of(context).needMicCamPermission);
+      return;
     }
 
     await _playRingtone();
@@ -124,15 +118,9 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-  }
-
-  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     if (_cancelled && !_sentCancel) {
-      // 保底通知一次
       unawaited(_notifyCancelOnce());
     }
     _timeoutTimer?.cancel();
@@ -157,10 +145,11 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
 
     if (micOk && camOk) return true;
 
-    // 若永久拒絕 → 引導去設定
+    final t = context != null ? S.of(context) : S.of(_rootCtx);
+
     final perma = res.values.any((s) => s.isPermanentlyDenied);
     if (perma) {
-      Fluttertoast.showToast(msg: '請到系統設定開啟相機/麥克風權限');
+      Fluttertoast.showToast(msg: t.micCamPermissionPermanentlyDenied);
       unawaited(openAppSettings());
     }
     if (context != null && Navigator.of(context).canPop()) Navigator.of(context).pop();
@@ -189,15 +178,11 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
             )),
           );
         },
-        // ← 不要傳 onHangup: 讓小窗無掛斷鈕
       ),
     );
-
-    // 可選：把首頁頂上來，讓本頁留在棧中持續聽 WS
     Navigator.of(rootNavigatorKey.currentContext!).pushNamed(AppRoutes.home);
   }
 
-  // ========= 原本撥號流程（略帶清理） =========
   Future<void> _playUnavailableTone() async {
     await _busyPlayer.setReleaseMode(ReleaseMode.loop);
     await _busyPlayer.play(AssetSource('unavailable_phone.mp3'));
@@ -216,13 +201,11 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
 
       final flag = widget.isVideoCall ? 1 : 2;
 
-      // ★ 成功時回傳的是「data」map，錯誤會直接丟 ApiException
       final data = await ref.read(callRepositoryProvider).liveCall(
         flag: flag,
         toUid: int.parse(widget.broadcasterId),
       );
 
-      // 解析 data
       final Map<String, dynamic> m =
       (data is Map) ? Map<String, dynamic>.from(data) : <String, dynamic>{};
 
@@ -241,37 +224,34 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
         throw ApiException(-1, '電話撥打失敗：token 空');
       }
 
-      // 成功後才啟動超時計時
       _startTimeout();
     } on ApiException catch (e) {
-      // 常見錯誤碼給更友善的文案；其餘交給字典
+      final t = S.of(_rootCtx);
       if (e.code == 102) {
-        Fluttertoast.showToast(msg: '餘額不足, 請前往充值～');
+        Fluttertoast.showToast(msg: t.balanceNotEnough);
       } else if (e.code == 121) {
-        Fluttertoast.showToast(msg: '對方忙線中');
+        Fluttertoast.showToast(msg: t.calleeBusy);
       } else if (e.code == 123) {
-        Fluttertoast.showToast(msg: '對方不在線');
+        Fluttertoast.showToast(msg: t.calleeOffline);
       } else if (e.code == 125) {
-        Fluttertoast.showToast(msg: '對方開啟免擾');
+        Fluttertoast.showToast(msg: t.calleeDndOn);
       } else {
-        AppErrorToast.show(e); // 字典：例如 114「系統繁忙，請稍候再試」…
+        AppErrorToast.show(e);
       }
       await _audioPlayer.stop();
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      debugPrint('電話撥打失敗：$e');
-      Fluttertoast.showToast(msg: "電話撥打失敗, 請稍後再撥");
+      Fluttertoast.showToast(msg: S.of(_rootCtx).callDialFailed);
       await _audioPlayer.stop();
       if (mounted) Navigator.pop(context);
     }
   }
 
-  // ---- WS helpers（只看 data.*）----
   Map<String, dynamic> _dataOf(Map p) =>
       (p['data'] is Map) ? Map<String, dynamic>.from(p['data']) : const {};
   int? _asInt(dynamic v) => (v is num) ? v.toInt() : int.tryParse(v?.toString() ?? '');
   String _ch(Map p) => _dataOf(p)['channel_id']?.toString() ?? '';
-  int? _status(Map p) => _asInt(_dataOf(p)['status']); // 1=對方接通, 2=對方拒絕
+  int? _status(Map p) => _asInt(_dataOf(p)['status']);
   int? _peerUid(Map p) => _asInt(_dataOf(p)['uid']);
   int _flagOf(Map p) {
     final data = _dataOf(p);
@@ -302,16 +282,13 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
       await _audioPlayer.stop();
       _timeoutTimer?.cancel();
 
-      // ✅ 先關小窗（若目前在 mini）
       if (CallOverlay.isShowing) {
         CallOverlay.hide();
-        // 小等一幀，避免 overlay 殘留在新頁上方
         await Future<void>.delayed(const Duration(milliseconds: 1));
       }
 
       final myName = ref.read(userProfileProvider)?.displayName ?? '';
 
-      // ✅ 直接導到直播頁（用 root navigator）
       Navigator.of(_rootCtx).pushNamed(
         AppRoutes.broadcaster,
         arguments: {
@@ -323,37 +300,36 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
           'isCallMode'   : true,
           'asBroadcaster': true,
           'remoteUid'    : _calleeUid,
-          'callFlag'     : callFlag,               // 1=video, 2=voice
+          'callFlag'     : callFlag,
           'peerAvatar'   : widget.broadcasterImage,
           'free_at'      : _freeAtSec,
         },
       );
     }
 
-    // 接聽/拒絕
     _wsUnsubs.add(ws.on('call.accept', (p) async {
       if (_cancelled || !_sameCall(p)) return;
       final st = _status(p);
       if (st == 1) {
-        final peerFlag = _flagOf(p);               // 1=video, 2=voice
-        final myPrefVideo = widget.isVideoCall;    // 我方意願
+        final peerFlag = _flagOf(p);
+        final myPrefVideo = widget.isVideoCall;
         final wantVideo = myPrefVideo && (peerFlag == 1);
         final int callFlag = wantVideo ? 1 : 2;
         await _goToRoom(callFlag: callFlag);
       } else if (st == 2) {
-        await _endWithToast('對方已拒絕');
+        await _endWithToast(S.of(_rootCtx).peerDeclined);
       }
     }));
 
     _wsUnsubs.add(ws.on('call.invite', (p) async {
       if (_cancelled || !_sameCall(p)) return;
-      if (_status(p) == 2) await _endWithToast('對方已拒絕');
+      if (_status(p) == 2) await _endWithToast(S.of(_rootCtx).peerDeclined);
     }));
   }
 
   void _startTimeout({ String? toast}) {
     _timeoutTimer?.cancel();
-    _timeoutTimer = Timer(Duration(seconds: 30), () async {
+    _timeoutTimer = Timer(const Duration(seconds: 30), () async {
       if (_cancelled) return;
       await _endWithToast(toast ?? _kToastTimeout);
     });
@@ -371,12 +347,10 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
       Fluttertoast.showToast(msg: msg);
     }
 
-    // 停止聲音與 RTC
     unawaited(_audioPlayer.stop());
     unawaited(_busyPlayer.stop());
     unawaited(_rtc.safeLeave().timeout(const Duration(seconds: 2), onTimeout: () {}));
 
-    // ✅ 關小窗 + 清棧回首頁
     _closeMiniAndGoHome();
   }
 
@@ -391,7 +365,7 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
       await ref.read(callRepositoryProvider)
           .respondCall(channelName: channel, callId: null, accept: false)
           .timeout(const Duration(seconds: 2));
-    } catch (_) { /* ignore */ }
+    } catch (_) {}
   }
 
   Future<void> _cancelByUser() async {
@@ -405,7 +379,6 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
     unawaited(_notifyCancelOnce().timeout(const Duration(seconds: 2), onTimeout: () {}));
     unawaited(_rtc.safeLeave().timeout(const Duration(seconds: 2), onTimeout: () {}));
 
-    // ✅ 關小窗 + 清棧回首頁
     _closeMiniAndGoHome();
   }
 
@@ -441,10 +414,11 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
   }
 
   String _statusTextFor(CalleeState s) {
+    final t = S.of(_rootCtx);
     switch (s) {
-      case CalleeState.busy:    return '對方忙線中！';
-      case CalleeState.offline: return '對方不在線';
-      case CalleeState.online:  return '正在接通中...';
+      case CalleeState.busy:    return t.statusBusy;
+      case CalleeState.offline: return t.statusOffline;
+      case CalleeState.online:  return t.statusConnecting;
     }
   }
 
@@ -476,7 +450,7 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
                       Text(
                         widget.broadcasterName,
                         style: const TextStyle(fontSize: 18, color: Colors.white),
-                        overflow: TextOverflow.ellipsis, // 避免長名爆版
+                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 24),
                       Text(
@@ -494,13 +468,12 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
               ),
             ),
 
-            // 左上：縮小（App 內 Mini）
             Positioned(
               top: top + 8, left: 8,
               child: IconButton(
                 icon: Image.asset('assets/zoom.png', width: 20, height: 20),
                 onPressed: _goMini,
-                tooltip: '縮小畫面',
+                tooltip: S.of(context).minimizeTooltip,
                 splashRadius: 22,
               ),
             ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
+import '../../l10n/l10n.dart';
 class AddEmailAccountPage extends StatefulWidget {
   const AddEmailAccountPage({Key? key}) : super(key: key);
 
@@ -10,10 +11,12 @@ class AddEmailAccountPage extends StatefulWidget {
 
 class _AddEmailAccountPageState extends State<AddEmailAccountPage> {
   final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _codeController = TextEditingController();
+  final TextEditingController _codeController  = TextEditingController();
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
+
     return Scaffold(
       resizeToAvoidBottomInset: true,
       backgroundColor: Colors.white,
@@ -33,39 +36,42 @@ class _AddEmailAccountPageState extends State<AddEmailAccountPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 40),
-                const Text('添加郵箱', style: TextStyle(fontSize: 36, fontWeight: FontWeight.bold)),
+                Text(s.addEmailTitle, style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                const Text('输入您想要与您的账号关联的邮箱地址，您的郵箱地址不會顯示在您的公開資料中',
-                  style: TextStyle(fontSize: 14, color: Color(0xFF9E9E9E))),
+                Text(
+                  s.addEmailSubtitle,
+                  style: const TextStyle(fontSize: 14, color: Color(0xFF9E9E9E)),
+                ),
                 const SizedBox(height: 50),
-          
+
                 // 郵箱輸入框
                 _buildInputField(
                   controller: _emailController,
-                  hint: '請輸入郵箱賬號',
+                  hint: s.addEmailHintEmail,
                   icon: Icons.email_outlined,
                 ),
                 const SizedBox(height: 20),
-          
+
                 // 驗證碼輸入框
                 _buildInputField(
                   controller: _codeController,
-                  hint: '請輸入驗證碼',
+                  hint: s.addEmailHintCode,
                   icon: Icons.lock_outline,
                   trailing: TextButton(
                     onPressed: () {
                       final email = _emailController.text.trim();
                       if (email.isEmpty || !email.contains('@')) {
-                        Fluttertoast.showToast(msg: '請輸入有效郵箱');
+                        Fluttertoast.showToast(msg: s.addEmailToastInvalid);
                         return;
                       }
                       // TODO: 發送驗證碼 API
-                      print('發送驗證碼到: $email');
+                      debugPrint('發送驗證碼到: $email');
                     },
-                    child: const Text('獲取驗證碼', style: TextStyle(color: Colors.red)),
+                    child: Text(s.addEmailGetCode, style: const TextStyle(color: Colors.red)),
                   ),
                 ),
                 const SizedBox(height: 50),
+
                 // 確定按鈕
                 SizedBox(
                   width: double.infinity,
@@ -73,17 +79,17 @@ class _AddEmailAccountPageState extends State<AddEmailAccountPage> {
                   child: ElevatedButton(
                     onPressed: () {
                       final email = _emailController.text.trim();
-                      final code = _codeController.text.trim();
+                      final code  = _codeController.text.trim();
                       if (email.isEmpty || !email.contains('@')) {
-                        Fluttertoast.showToast(msg: '請輸入有效郵箱');
+                        Fluttertoast.showToast(msg: s.addEmailToastInvalid);
                         return;
                       }
                       if (code.isEmpty) {
-                        Fluttertoast.showToast(msg: '請輸入驗證碼');
+                        Fluttertoast.showToast(msg: s.addEmailToastNeedCode);
                         return;
                       }
                       // TODO: 綁定郵箱 API
-                      print('綁定郵箱: $email 驗證碼: $code');
+                      debugPrint('綁定郵箱: $email 驗證碼: $code');
                       Navigator.pop(context, email); // 返回輸入的郵箱
                     },
                     style: ElevatedButton.styleFrom(
@@ -97,10 +103,10 @@ class _AddEmailAccountPageState extends State<AddEmailAccountPage> {
                           colors: [Color(0xFFFFA770), Color(0xFFD247FE)],
                         ),
                       ),
-                      child: const Center(
+                      child: Center(
                         child: Text(
-                          '確定',
-                          style: TextStyle(fontSize: 16, color: Colors.white),
+                          s.addEmailConfirm,
+                          style: const TextStyle(fontSize: 16, color: Colors.white),
                         ),
                       ),
                     ),

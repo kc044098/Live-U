@@ -2,27 +2,28 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:djs_live_stream/features/live/video_repository_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import '../../core/error_handler.dart';
 import '../../core/ws/ws_provider.dart';
 import '../../data/models/gift_item.dart';
 import '../../globals.dart';
+import '../../l10n/l10n.dart';
 import '../../routes/app_routes.dart';
 import '../call/call_abort_provider.dart';
 import '../call/call_repository.dart';
 import '../call/rtc_engine_manager.dart';
 import '../message/chat_message.dart';
 import '../message/chat_providers.dart';
-import '../message/chat_repository.dart';
 import '../message/chat_utils.dart' as cu;
 import '../message/gift/gift_bottom_sheet.dart';
 import '../message/gift/show_insufficient_gold_sheet.dart';
 import '../profile/profile_controller.dart';
+import '../wallet/wallet_repository.dart';
 import 'call_session_provider.dart';
 import 'data_model/call_overlay.dart';
 import 'data_model/call_timer.dart';
@@ -93,7 +94,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
   final Set<String> _warmed = {};
 
   Timer? _remoteGoneTimer;
-  static const int _remoteGoneGraceSec = 5;
+  static const int _remoteGoneGraceSec = 30;
 
   Map<String, dynamic> _dataOf(Map p) =>
       (p['data'] is Map) ? Map<String, dynamic>.from(p['data']) : const {};
@@ -106,6 +107,9 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
   int? _statusOf(Map p) => _asInt(_dataOf(p)['status']);
 
   bool _isThisChannel(Map p) => _ch(p) == roomId;
+
+  int? _lastCountdownExpire;
+  bool _countdownSheetShowing = false;
 
 
   // ---------------------------------------------------------------
@@ -190,7 +194,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     ref.read(callTimerProvider).reset();
     ref.read(callSessionProvider(roomId).notifier).clearAll();
     if (_joined) {
-      Fluttertoast.showToast(msg: '對方已離開聊天室');
+      Fluttertoast.showToast(msg: S.of(context).peerLeftChatroom);
     }
 
     // ✅ 交給全域 manager 做安全離房（會處理 stopPreview/清理狀態）
@@ -339,7 +343,11 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     final needCamera = !_isVoice;
     if (mic != PermissionStatus.granted ||
         (needCamera && cam != PermissionStatus.granted)) {
-      Fluttertoast.showToast(msg: '請先授權麥克風${needCamera ? '與相機' : ''}');
+      Fluttertoast.showToast(
+        msg: needCamera
+            ? S.of(context).pleaseGrantMicAndCamera
+            : S.of(context).pleaseGrantMicOnly,
+      );
       if (mounted) Navigator.of(context).pop();
       return;
     }
@@ -411,7 +419,17 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
     _wsUnsubs.add(ws.on('live_chat', _onWsLiveChat));
     _wsUnsubs.add(ws.on('gift',      _onWsLiveChat));
+    _wsUnsubs.add(ws.on('countdown', (p) {
+      if (!mounted) return;
+      final data = (p['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final expire = (data['expire'] is num) ? (data['expire'] as num).toInt() : int.tryParse('${data['expire'] ?? ''}') ?? 0;
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final remain = (expire - now).clamp(0, 1 << 30);
 
+      final price = (data['price'] is num) ? (data['price'] as num).toInt() : null;
+      final real = (data['real_gold'] is num) ? (data['real_gold'] as num).toInt() : null;
+      _showCountdownSheet(remainSec: remain, price: price, realGold: real);
+    }));
   }
 
   /// 圖片按鈕：不加任何底色，圖片自帶圓底
@@ -472,7 +490,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
       setState(() => _videoOn = next);
     } catch (e) {
       debugPrint('[RTC] toggleVideo error: $e');
-      Fluttertoast.showToast(msg: '切換影像失敗');
+      Fluttertoast.showToast(msg: S.of(context).toggleVideoFailed);
     }
   }
   Future<void> _switchCamera() async {
@@ -486,7 +504,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
       setState(() => _frontCamera = !_frontCamera); // 同步本地預覽鏡像
     } catch (e) {
       debugPrint('[RTC] switchCamera error: $e');
-      Fluttertoast.showToast(msg: '切換鏡頭失敗');
+      Fluttertoast.showToast(msg: S.of(context).switchCameraFailed);
     }
   }
 
@@ -496,30 +514,48 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
       backgroundColor: Colors.transparent,
       builder: (_) => GiftBottomSheet(
         onSelected: (gift) async {
-          final me = ref.read(userProfileProvider);
-          if (_remoteUids.isEmpty) return false;
+          if (_remoteUids.isEmpty) {
+            Fluttertoast.showToast(msg: S.of(context).notConnectedToPeer);
+            return false;
+          }
+
+          final me    = ref.read(userProfileProvider);
           final toUid = _remoteUids.first;
-
-          // 立刻播特效（相對→完整）
-          final effectUrl = cu.joinCdn(me?.cdnUrl, gift.url);
-          _giftFx.enqueue(context, effectUrl);
-          // 發送 payload（帶 gift_url，方便對端解析直接播）
-          final payload = jsonEncode({
-            'type': 'gift',
-            'gift_id': gift.id,
-            'gift_title': gift.title,
-            'gift_gold': gift.gold,
-            'gift_icon': gift.icon,   // 相對路徑
-            'gift_count': 1,
-            'gift_url': gift.url,     // 相對路徑（WS 也會帶給對端）
-          });
-
           final myUid = int.tryParse(me?.uid ?? '0') ?? 0;
           final uuid  = cu.genUuid(myUid);
 
-          // 樂觀加入面板（顯示 icon + 次數）
-          final iconFull = cu.joinCdn(me?.cdnUrl, gift.icon);
-          ref.read(callSessionProvider(roomId).notifier).addOptimistic(
+          // 只送聊天訊息給後端（後端解析扣款）
+          final payload = jsonEncode({
+            'type'      : 'gift',
+            'gift_id'   : gift.id,
+            'gift_title': gift.title,
+            'gift_gold' : gift.gold,
+            'gift_icon' : gift.icon, // 相對路徑
+            'gift_count': 1,
+            'gift_url'  : gift.url,  // 相對路徑
+          });
+
+          final res = await ref.read(chatRepositoryProvider)
+              .sendText(uuid: uuid, toUid: toUid, text: payload, flag: 'gift');
+
+          if (!mounted) return false;
+
+          // 失敗：toast，不顯示、不播特效
+          if (!res.ok) {
+            final msg = AppErrorCatalog.messageFor(res.code ?? -1, serverMessage: res.message);
+            Fluttertoast.showToast(msg: msg);
+            return false;
+          }
+
+          // 成功：顯示在面板 + 播放特效（自己送的）
+          final cdn      = me?.cdnUrl;
+          final iconFull = cu.joinCdn(cdn, gift.icon);
+          final urlFull  = cu.joinCdn(cdn, gift.url);
+
+          // 避免 WS 回來再插一次
+          _liveSeenUuid.add(uuid);
+
+          ref.read(callSessionProvider(roomId).notifier).addIncoming(
             ChatMessage(
               type: MessageType.self,
               contentType: ChatContentType.gift,
@@ -528,27 +564,24 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
               flag: 'gift',
               toUid: toUid,
               data: {
-                'gift_id': gift.id,
+                'gift_id'   : gift.id,
                 'gift_title': gift.title,
-                'gift_icon': iconFull,
-                'gift_gold': gift.gold,
+                'gift_icon' : iconFull,
+                'gift_gold' : gift.gold,
                 'gift_count': 1,
-                'gift_url': gift.url, // 相對
+                'gift_url'  : urlFull,
               },
-              sendState: SendState.sending,
+              sendState: SendState.sent,
               createAt: cu.nowSec(),
             ),
           );
           _scrollLiveToBottom();
 
-          // 真正發送（旗標用 chat_room）
-          final sendResult = await ref.read(chatRepositoryProvider)
-              .sendText(uuid: uuid, toUid: toUid, text: payload, flag: 'gift');
+          if (urlFull.isNotEmpty) _giftFx.enqueue(context, urlFull); // 這裡才播
 
-          ref.read(callSessionProvider(roomId).notifier)
-              .updateSendState(uuid, sendResult.ok ? SendState.sent : SendState.failed);
-          _toastInsufficientIfAny(sendResult);
-          return sendResult.ok;
+          // 刷新餘額（保險；GiftBottomSheet 會再關面板）
+          ref.refresh(walletBalanceProvider);
+          return true;
         },
       ),
     );
@@ -563,7 +596,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     _cancelJoinTimeout();
     _joinTimeout = Timer(const Duration(seconds: 10), () async {
       if (!mounted || _joined || _closing) return;
-      Fluttertoast.showToast(msg: '通話連線接通失敗');
+      Fluttertoast.showToast(msg: S.of(context).callConnectFailed);
       _closing = true;
 
       await _rtc.safeLeave(); // ✅ 不要 release，全交給 manager
@@ -786,7 +819,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
               child: IconButton(
                 icon: Image.asset('assets/zoom.png', width: 20, height: 20, color: _isVoice? Color(0xFF8E8895) : Colors.white),
                 onPressed: _goMini,
-                tooltip: '縮小畫面',
+                tooltip: S.of(context).tooltipMinimize,
                 splashRadius: 22,
               ),
             ),
@@ -820,7 +853,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        '免費時長',
+                        S.of(context).freeTimeLabel,
                         style: TextStyle(
                           color: fg,
                           fontSize: 14,
@@ -848,8 +881,8 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
                               end: Alignment.bottomCenter,
                             ),
                           ),
-                          child: const Text(
-                            '去充值',
+                          child: Text(
+                            S.of(context).rechargeGo,
                             style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
                           ),
                         ),
@@ -885,7 +918,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
               child: IconButton(
                 icon: Icon(Icons.close, color: fg, size: 22),
                 onPressed: _close,
-                tooltip: '關閉',
+                tooltip: S.of(context).tooltipClose,
                 splashRadius: 22,
               ),
             ),
@@ -949,7 +982,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
               child: LiveChatPanel(
                 messages: ref.watch(callSessionProvider(roomId).select((s) => s.messages)),
                 controller: _liveScroll,
-                myName: mUser?.displayName ?? '用戶 ${_remoteUids.first}',
+                myName: mUser?.displayName ?? ' ${S.of(context).userWithId(_remoteUids.first) }',
                 peerName: title,
               ),
             ),
@@ -1102,6 +1135,18 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     );
   }
 
+  void _openRechargeSheetFromCountdown({int? suggested}) {
+    // 用 root navigator，避免被底層 sheet 的 context 卡住
+    final ctx = rootNavigatorKey.currentContext ?? context;
+
+    showInsufficientGoldSheet(
+      ctx,
+      ref,
+      suggestedAmount: null,
+    );
+  }
+
+
   Map<String, dynamic>? _decodeJsonMap(String? s) {
     if (s == null || s.isEmpty) return null;
     try {
@@ -1246,6 +1291,34 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     }
   }
 
+  void _showCountdownSheet({
+    required int remainSec,
+    int? price,
+    int? realGold,
+  }) {
+    // 這裡你原本就有 showModalBottomSheet
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: false,
+      enableDrag: false,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _CountdownRechargeSheet(
+        remainSec: remainSec,
+        onRecharge: () {
+          // 先關閉倒數提示，再打開充值面板（避免兩個 sheet 疊在一起）
+          Navigator.of(context).pop();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            final suggest = (price != null && realGold != null)
+                ? (price - realGold).clamp(0, 1 << 30)
+                : null;
+            _openRechargeSheetFromCountdown(suggested: suggest);
+          });
+        },
+      ),
+    );
+  }
+
+
   String _mmss(int sec) {
     if (sec < 0) sec = 0;
     final m = (sec ~/ 60).toString().padLeft(2, '0');
@@ -1271,7 +1344,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
         });
         // 免費結束 → 啟動原計時器
         ref.read(callTimerProvider).start();
-        Fluttertoast.showToast(msg: '免費時長已結束，開始計費');
+        Fluttertoast.showToast(msg: S.of(context).freeTimeEndedStartBilling);
       } else {
         setState(() => _freeLeftSec--);
       }
@@ -1289,7 +1362,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
       if (!mounted || _closing) return;
       // 再確認一次確實沒人
       if (_rtc.remoteUids.value.isEmpty) {
-        Fluttertoast.showToast(msg: '對方已離開直播間');
+        Fluttertoast.showToast(msg: S.of(context).peerLeftLivestream);
         await _endBecauseRemoteLeft(); // 已有離房邏輯
       }
     });
@@ -1307,7 +1380,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
     // 對方 uid 從 remoteUids 取（你提的需求）
     if (_remoteUids.isEmpty) {
-      Fluttertoast.showToast(msg: '尚未連線到對方');
+      Fluttertoast.showToast(msg: S.of(context).notConnectedToPeer);
       return;
     }
     final toUid = _remoteUids.first;
@@ -1315,7 +1388,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     final user = ref.read(userProfileProvider);
     final myUid = int.tryParse(user?.uid ?? '');
     if (myUid == null) {
-      Fluttertoast.showToast(msg: '尚未登入');
+      Fluttertoast.showToast(msg: S.of(context).notLoggedIn);
       return;
     }
 
@@ -1352,35 +1425,49 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
   Future<void> _sendQuickGift(GiftItemModel gift) async {
     if (_remoteUids.isEmpty) {
-      Fluttertoast.showToast(msg: '尚未連線到對方');
+      Fluttertoast.showToast(msg: S.of(context).notConnectedToPeer);
       return;
     }
-    final me = ref.read(userProfileProvider);
+
+    final me    = ref.read(userProfileProvider);
     final toUid = _remoteUids.first;
-
-    // 立刻播放本地特效（把相對路徑補成完整 CDN）
-    final effectUrl = cu.joinCdn(me?.cdnUrl, gift.url);
-    if (effectUrl.isNotEmpty) {
-      _giftFx.enqueue(context, effectUrl);
-    }
-
-    // 組裝 payload（與彈窗送禮一致，後端解析扣款）
-    final payload = jsonEncode({
-      'type': 'gift',
-      'gift_id': gift.id,
-      'gift_title': gift.title,
-      'gift_gold': gift.gold,
-      'gift_icon': gift.icon,   // 相對路徑
-      'gift_count': 1,
-      'gift_url': gift.url,     // 相對路徑
-    });
-
     final myUid = int.tryParse(me?.uid ?? '0') ?? 0;
     final uuid  = cu.genUuid(myUid);
-    final iconFull = cu.joinCdn(me?.cdnUrl, gift.icon);
 
-    // 樂觀加入面板
-    ref.read(callSessionProvider(roomId).notifier).addOptimistic(
+    final payload = jsonEncode({
+      'type'      : 'gift',
+      'gift_id'   : gift.id,
+      'gift_title': gift.title,
+      'gift_gold' : gift.gold,
+      'gift_icon' : gift.icon, // 相對
+      'gift_count': 1,
+      'gift_url'  : gift.url,  // 相對
+    });
+
+    final res = await ref.read(chatRepositoryProvider)
+        .sendText(uuid: uuid, toUid: toUid, text: payload, flag: 'gift');
+
+    if (!mounted) return;
+
+    // 失敗就僅提示
+    if (!res.ok) {
+      final msg = AppErrorCatalog.messageFor(res.code ?? -1, serverMessage: res.message);
+      Fluttertoast.showToast(msg: msg);
+      if (res.code == 102) {
+        // 可選：直接開充值面板
+        // _openRechargeSheetFromFreeBadge();
+      }
+      return;
+    }
+
+    // 成功 → 顯示在面板 + 播特效
+    final cdn      = me?.cdnUrl;
+    final iconFull = cu.joinCdn(cdn, gift.icon);
+    final urlFull  = cu.joinCdn(cdn, gift.url);
+
+    _liveSeenUuid.add(uuid); // 防 WS 重複
+
+    ref.read(callSessionProvider(roomId).notifier).addIncoming(
       ChatMessage(
         type: MessageType.self,
         contentType: ChatContentType.gift,
@@ -1389,40 +1476,23 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
         flag: 'gift',
         toUid: toUid,
         data: {
-          'gift_id': gift.id,
+          'gift_id'   : gift.id,
           'gift_title': gift.title,
-          'gift_icon': iconFull,
-          'gift_gold': gift.gold,
+          'gift_icon' : iconFull,
+          'gift_gold' : gift.gold,
           'gift_count': 1,
-          'gift_url': gift.url,
+          'gift_url'  : urlFull,
         },
-        sendState: SendState.sending,
+        sendState: SendState.sent,
         createAt: cu.nowSec(),
       ),
     );
     _scrollLiveToBottom();
 
-    // 真正送出
-    final sendResult = await ref.read(chatRepositoryProvider)
-        .sendText(uuid: uuid, toUid: toUid, text: payload, flag: 'gift');
+    if (urlFull.isNotEmpty) _giftFx.enqueue(context, urlFull);
 
-    if (!mounted) return;
-    ref.read(callSessionProvider(roomId).notifier)
-        .updateSendState(uuid, sendResult.ok ? SendState.sent : SendState.failed);
-
-    if (sendResult.code == 102) {
-      Fluttertoast.showToast(msg: '餘額不足, 請前往充值～');
-    } else if (!sendResult.ok) {
-      Fluttertoast.showToast(msg: '送禮失敗，請稍後重試');
-    }
-  }
-
-  void _toastInsufficientIfAny(SendResult res) {
-    if (res.code == 102) {
-      Fluttertoast.showToast(msg: '餘額不足, 請前往充值～');
-      // 可選：直接打開充值面板
-      // _openRechargeSheetFromFreeBadge();
-    }
+    // 成功後更新餘額
+    ref.refresh(walletBalanceProvider);
   }
 
   void _scrollLiveToBottom() {
@@ -1465,5 +1535,73 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     _callType = (callFlag == 1) ? CallType.video : CallType.voice;
   }
 }
+
+class _CountdownRechargeSheet extends StatelessWidget {
+  const _CountdownRechargeSheet({
+    required this.remainSec,
+    required this.onRecharge,
+  });
+
+  final int remainSec;
+  final VoidCallback onRecharge;
+
+  @override
+  Widget build(BuildContext context) {
+    final sec = remainSec.clamp(0, 1 << 30); // 防負數
+    return SafeArea(
+      top: false,
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 24, 16, 20),
+          color: Colors.white,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.asset('assets/pic_notify.png', width: 56, height: 56),
+              const SizedBox(height: 12),
+              Text(
+                '當前剩餘時間不足 $sec秒 ，請盡快充值。',
+                style: const TextStyle(fontSize: 14, color: Color(0xFFFF3B30)),
+              ),
+              const SizedBox(height: 16),
+
+              // ← 這段是你要取代的按鈕
+              SizedBox(
+                width: double.infinity,
+                height: 44,
+                child: GestureDetector(
+                  onTap: onRecharge,
+                  child: Container(
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(22),
+                      gradient: const LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Color(0xFFFFA770), Color(0xFFD247FE)],
+                      ),
+                    ),
+                    child: const Text(
+                      '去充值',
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 
 enum CallType { video, voice }

@@ -15,7 +15,7 @@ class LoginMethod {
 
   factory LoginMethod.fromJson(Map<String, dynamic> json) {
     return LoginMethod(
-      provider: json['provider'] ?? '',
+      provider: (json['provider'] ?? '').toString().toLowerCase(), // 👈
       identifier: json['identifier'] ?? '',
       isPrimary: json['isPrimary'] ?? false,
       token: json['token'],
@@ -42,5 +42,6 @@ class LoginMethod {
       token: token ?? this.token,
     );
   }
+
 }
 

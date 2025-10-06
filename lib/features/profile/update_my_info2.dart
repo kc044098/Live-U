@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:fluttertoast/fluttertoast.dart';
+import '../../l10n/l10n.dart';
 import 'update_my_info3.dart';
 
 class UpdateMyInfoPage2 extends ConsumerStatefulWidget {
@@ -16,23 +17,21 @@ class _UpdateMyInfoPage2State extends ConsumerState<UpdateMyInfoPage2> {
   final TextEditingController _ageController = TextEditingController();
 
   void _onNext() {
+    final t = S.of(context);
     final ageText = _ageController.text.trim();
     if (ageText.isEmpty) {
-      Fluttertoast.showToast(msg: "請輸入你的年齡");
+      Fluttertoast.showToast(msg: t.setupAgeToastEmpty);
       return;
     }
 
     final age = int.tryParse(ageText);
     if (age == null || age < 18) {
-      Fluttertoast.showToast(msg: "年齡必須大於等於18歲");
+      Fluttertoast.showToast(msg: t.setupAgeToastMin18);
       return;
     }
 
-    // 更新 age 到 extra
-    ref.read(userProfileProvider.notifier)
-        .updateExtraField('age', age);
+    ref.read(userProfileProvider.notifier).updateExtraField('age', age);
 
-    // 進入第三步
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const UpdateMyInfoPage3()),
@@ -68,6 +67,8 @@ class _UpdateMyInfoPage2State extends ConsumerState<UpdateMyInfoPage2> {
 
   @override
   Widget build(BuildContext context) {
+    final t = S.of(context);                                  // ← 新增
+
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
@@ -81,20 +82,20 @@ class _UpdateMyInfoPage2State extends ConsumerState<UpdateMyInfoPage2> {
           children: [
             _buildProgressIndicator(),
             const SizedBox(height: 20),
-            const Text(
-              "請填寫",
-              style: TextStyle(fontSize: 14, color: Colors.black),
-            ),
+
+            // '請填寫'
+            Text(t.setupPleaseFill,                            // ← 改（移除 const）
+                style: const TextStyle(fontSize: 14, color: Colors.black)),
             const SizedBox(height: 8),
-            const Text(
-              "你的年齡",
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
+
+            // '你的年齡'
+            Text(t.setupYourAge,                               // ← 改
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
-            const Text(
-              "年齡需達到18歲以上，才能使用",
-              style: TextStyle(fontSize: 14, color: Colors.grey),
-            ),
+
+            // '年齡需達到18歲以上，才能使用'
+            Text(t.setupAgeRequirement,                        // ← 改
+                style: const TextStyle(fontSize: 14, color: Colors.grey)),
             const SizedBox(height: 30),
 
             // 年齡輸入框
@@ -110,13 +111,14 @@ class _UpdateMyInfoPage2State extends ConsumerState<UpdateMyInfoPage2> {
                     child: TextField(
                       controller: _ageController,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         border: InputBorder.none,
-                        hintText: "請輸入你的年齡",
+                        hintText: t.setupAgePlaceholder,       // ← 改
                       ),
                     ),
                   ),
-                  const Text("歲", style: TextStyle(fontSize: 16)),
+                  Text(t.setupAgeUnitYear,                     // ← 改
+                      style: const TextStyle(fontSize: 16)),
                 ],
               ),
             ),
@@ -135,9 +137,9 @@ class _UpdateMyInfoPage2State extends ConsumerState<UpdateMyInfoPage2> {
                   borderRadius: BorderRadius.circular(22),
                 ),
                 height: 48,
-                child: const Center(
+                child: Center(
                   child: Text(
-                    '下一步',
+                    t.setupNext,
                     style: TextStyle(
                       fontSize: 15,
                       color: Colors.white,
@@ -152,8 +154,8 @@ class _UpdateMyInfoPage2State extends ConsumerState<UpdateMyInfoPage2> {
             Center(
               child: TextButton(
                 onPressed: _onSkip,
-                child: const Text(
-                  "跳過",
+                child: Text(
+                  S.of(context).setupSkip,
                   style: TextStyle(color: Color(0xFFFF4D67), fontSize: 16),
                 ),
               ),

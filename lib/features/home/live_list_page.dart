@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 
 import '../../core/error_handler.dart';
+import '../../l10n/l10n.dart';
 import '../../platform/cached_prefetch.dart';
 import '../../routes/app_routes.dart';
 import '../call/call_repository.dart';
@@ -117,21 +118,22 @@ class _LiveListPageState extends ConsumerState<LiveListPage>
 
   @override
   Widget build(BuildContext context) {
+    final t = S.of(context); // ← 新增
+
     if (!widget.isBroadcaster) {
-      // 只顯示首頁內容
       return Scaffold(
         backgroundColor: Colors.transparent,
         body: SafeArea(top: false, bottom: false, child: _homeVideoTab),
       );
     }
-    // 主播 保持原本兩個 tab 的邏輯
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
         children: [
           _tabController.index == 0
               ? SafeArea(top: false, bottom: false, child: _homeVideoTab)
-              : SafeArea( bottom: false, child: _buildFriendListView()),
+              : SafeArea(bottom: false, child: _buildFriendListView()),
           SafeArea(
             child: Container(
               color: _tabController.index == 0 ? Colors.transparent : Colors.white,
@@ -143,27 +145,24 @@ class _LiveListPageState extends ConsumerState<LiveListPage>
                       controller: _tabController,
                       isScrollable: true,
                       labelColor: _tabController.index == 0 ? Colors.white : Colors.black,
-                      unselectedLabelColor:
-                      _tabController.index == 0 ? Colors.white70 : Colors.grey,
-                      labelStyle:
-                      const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      unselectedLabelColor: _tabController.index == 0 ? Colors.white70 : Colors.grey,
+                      labelStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                       unselectedLabelStyle: const TextStyle(fontSize: 18),
-                      indicatorColor:
-                      _tabController.index == 0 ? Colors.white : Colors.black,
+                      indicatorColor: _tabController.index == 0 ? Colors.white : Colors.black,
                       indicatorWeight: 2,
                       indicatorSize: TabBarIndicatorSize.label,
                       dividerColor: Colors.transparent,
                       labelPadding: const EdgeInsets.only(right: 20),
-                      tabs: const [
-                        Tab(text: '首页'),
-                        Tab(text: '交友'),
+                      // ↓↓↓ 多語化
+                      tabs: [
+                        Tab(text: t.homeTabTitle),
+                        Tab(text: t.friendsTabTitle),
                       ],
                     ),
                   ),
-                  // 右側 发布动态（只有主播顯示）
                   if (widget.isBroadcaster)
                     _PublishButton(
-                      darkBg: _tabController.index == 0, // 首頁是深/透明背景，用白色字
+                      darkBg: _tabController.index == 0,
                     ),
                 ],
               ),
@@ -254,7 +253,7 @@ class _LiveListPageState extends ConsumerState<LiveListPage>
                                     children: [
                                       Expanded(
                                         child: Text(
-                                          user.displayName ?? '用戶',
+                                          user.displayName ?? S.of(context).fallbackUser,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: const TextStyle(
@@ -520,7 +519,7 @@ class _CallButton extends ConsumerWidget {
     final broadcasterId   = item.uid.toString();
     final broadcasterName = (item.nickName?.isNotEmpty == true)
         ? item.nickName!
-        : (item.title.isEmpty ? '主播' : item.title);
+        : (item.title.isEmpty ? S.of(context).fallbackBroadcaster : item.title);
     final broadcasterImage = item.firstAvatar ?? item.coverCandidate ?? 'assets/default.jpg';
 
     // ★ 進入撥打頁前，先把首頁影片關掉
@@ -711,11 +710,12 @@ class _VideoCardState extends ConsumerState<_VideoCard> with WidgetsBindingObser
     final myUid = ref.watch(userProfileProvider)?.uid;
     final url   = widget.item.videoUrl!;
     final cover = widget.item.coverCandidate;
+    final t = S.of(context);
 
     final displayName  = (widget.item.nickName?.isNotEmpty == true)
         ? widget.item.nickName! : (widget.item.title.isEmpty ? ' ' : widget.item.title);
     final displayAvatarRaw = widget.item.firstAvatar ?? (cover ?? '');
-    final displayTags   = widget.item.tags.isNotEmpty ? widget.item.tags : const ['推薦', '新上傳'];
+    final displayTags   = widget.item.tags.isNotEmpty ? widget.item.tags : <String>[t.tagRecommended, t.tagNewUpload];
     final cdn = ref.watch(userProfileProvider)?.cdnUrl ?? '';
     final avatarUrl = joinUrl(cdn, displayAvatarRaw);
     if (avatarUrl.isNotEmpty) {
@@ -758,7 +758,7 @@ class _VideoCardState extends ConsumerState<_VideoCard> with WidgetsBindingObser
             uid: widget.item.uid,
             name: displayName,
             avatarPath: avatarUrl,
-            rateText: '${widget.item.pricePerMinute}金幣/分鐘',
+            rateText: '${widget.item.pricePerMinute}${t.ratePerMinuteUnit}',
             tags: displayTags,
             isLike: widget.item.isLike,
             status: widget.item.onlineStatus,
@@ -797,13 +797,14 @@ class _ImageCardState extends ConsumerState<_ImageCard> with WidgetsBindingObser
 
   @override
   Widget build(BuildContext context) {
+    final t = S.of(context);
     final myUid = ref.watch(userProfileProvider)?.uid;
     final img = widget.item.coverCandidate;
     final displayName = (widget.item.nickName?.isNotEmpty == true)
         ? widget.item.nickName!
         : (widget.item.title.isEmpty ? ' ' : widget.item.title);
     final displayAvatar = widget.item.avatar.first;
-    final displayTags = widget.item.tags.isNotEmpty ? widget.item.tags : const ['圖片'];
+    final displayTags = widget.item.tags.isNotEmpty ? widget.item.tags : <String>[t.tagImage];
 
     return Stack(
       children: [
@@ -830,7 +831,7 @@ class _ImageCardState extends ConsumerState<_ImageCard> with WidgetsBindingObser
             uid: widget.item.uid,
             name: displayName,
             avatarPath: displayAvatar,
-            rateText: '${widget.item.pricePerMinute}金幣/分鐘',
+            rateText: '${widget.item.pricePerMinute}${t.ratePerMinuteUnit}',
             tags: displayTags,
             isLike: widget.item.isLike,
             status: widget.item.onlineStatus,
@@ -867,6 +868,7 @@ class _PublishButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = S.of(context);
     return InkWell(
       onTap: () => Navigator.pushNamed(context, AppRoutes.videoRecorder),
       borderRadius: BorderRadius.circular(18),
@@ -882,9 +884,9 @@ class _PublishButton extends StatelessWidget {
           children: [
             SvgPicture.asset('assets/icon_add.svg'),
             const SizedBox(width: 4),
-            const Text(
-              '发布动态',
-              style: TextStyle(fontSize: 14, color: Colors.white),
+            Text(
+              t.publishDynamic,
+              style: const TextStyle(fontSize: 14, color: Colors.white),
             ),
           ],
         ),

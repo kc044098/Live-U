@@ -9,6 +9,7 @@ import 'package:flutter_svg/svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import '../../data/models/user_model.dart';
 import '../../data/network/avatar_cache.dart';
+import '../../l10n/l10n.dart';
 import '../mine/account_manage_page.dart';
 import '../mine/dnd_mode_page.dart';
 import '../mine/invite_friend_page.dart';
@@ -36,36 +37,20 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.invalidate(walletBalanceProvider);
-      ref.refresh(walletBalanceProvider);
+    // 進頁即拉一次，拿到結果直接寫回 UserModel
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final w = await ref.refresh(walletBalanceProvider.future);
+      ref.read(userProfileProvider.notifier).applyWallet(w);
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final t = S.of(context); // i18n
     final user = ref.watch(userProfileProvider);
-    final wallet = ref.watch(walletBalanceProvider);
-    final coinLatest = wallet.maybeWhen(
-      data: (w) => w.gold,
-      orElse: () => user?.gold ?? 0,
-    );
-    final bottomGap = MediaQuery.of(context).padding.bottom + _tabBarHeight + 16;
 
-    ref.listen<
-        AsyncValue<({int gold, int? vipExpire, int inviteNum, int totalIncome, int cashAmount})>
-    >(
-      walletBalanceProvider,
-          (prev, next) {
-        next.whenData((w) {
-          final u = ref.read(userProfileProvider);
-          if (u != null && (u.gold != w.gold || u.vipExpire != w.vipExpire)) {
-            ref.read(userProfileProvider.notifier).state =
-                u.copyWith(gold: w.gold, vipExpire: w.vipExpire, totalIncome: w.totalIncome, cashAmount: w.cashAmount);
-          }
-        });
-      },
-    );
+    final coinLatest = user?.gold ?? 0;
+    final bottomGap = MediaQuery.of(context).padding.bottom + _tabBarHeight + 16;
 
     if (user == null) {
       return const Scaffold(
@@ -97,16 +82,13 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         // Avatar
-                        GestureDetector(
-                          onTap: () async {},
-                          child: CircleAvatar(
-                            radius: 32,
-                            backgroundImage: buildAvatarProvider(
-                              avatarUrl: user.avatarUrlAbs,
-                              context: context,
-                              logicalSize: 64,
-                            ),
-                          )
+                        CircleAvatar(
+                          radius: 32,
+                          backgroundImage: buildAvatarProvider(
+                            avatarUrl: user.avatarUrlAbs,
+                            context: context,
+                            logicalSize: 64,
+                          ),
                         ),
                         const SizedBox(width: 16),
                         // 名稱 + VIP 標籤 + ID
@@ -127,23 +109,19 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
                                   const SizedBox(width: 6),
 
                                   // ✅ 僅當 user 是 VIP 才顯示 VIP 標籤
-                                  if (user.isVip == true)
+                                  if (user.isVipEffective == true)
                                     Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 8),
+                                      padding: const EdgeInsets.symmetric(horizontal: 8),
                                       decoration: BoxDecoration(
                                         borderRadius: BorderRadius.circular(6),
                                         gradient: const LinearGradient(
                                           begin: Alignment.topCenter,
                                           end: Alignment.bottomCenter,
-                                          colors: [
-                                            Color(0xFFFFA770),
-                                            Color(0xFFD247FE)
-                                          ],
+                                          colors: [Color(0xFFFFA770), Color(0xFFD247FE)],
                                         ),
                                       ),
                                       child: const Text(
-                                        'VIP',
+                                        'VIP', // VIP 標籤保留字樣
                                         style: TextStyle(
                                           fontSize: 12,
                                           color: Colors.white,
@@ -153,30 +131,28 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
                                     ),
 
                                   const SizedBox(width: 4),
-                                  GestureDetector(
-                                    onTap: () {
-                                      Navigator.push(
+                                  IconButton(
+                                    onPressed: () async {
+                                      await Navigator.push(
                                         context,
-                                        MaterialPageRoute(
-                                          builder: (_) => const EditMinePage(),
-                                        ),
+                                        MaterialPageRoute(builder: (_) => const EditMinePage()),
                                       );
                                       if (!mounted) return;
-                                      ref.invalidate(walletBalanceProvider);
-                                      ref.refresh(walletBalanceProvider);
+                                      final w = await ref.refresh(walletBalanceProvider.future);
+                                      ref.read(userProfileProvider.notifier).applyWallet(w);
                                     },
-                                    child: SvgPicture.asset(
-                                      'assets/icon_edit1.svg',
-                                      width: 24,
-                                      height: 24,
-                                    ),
-                                  ),
+                                    icon: SvgPicture.asset('assets/icon_edit1.svg', width: 24, height: 24),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                                    splashRadius: 22,
+                                  )
                                 ],
                               ),
                               const SizedBox(height: 4),
-                              Text('ID:    ${user.uid ?? '未知'}',
-                                  style: const TextStyle(
-                                      fontSize: 12, color: Colors.grey)),
+                              Text(
+                                t.idLabel(user.uid ?? t.unknown), // i18n
+                                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
                             ],
                           ),
                         ),
@@ -193,10 +169,9 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
                           child: GestureDetector(
                             onTap: () {
                               Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const VipPrivilegePage(),
-                                  ));
+                                context,
+                                MaterialPageRoute(builder: (_) => const VipPrivilegePage()),
+                              );
                             },
                             child: Stack(
                               clipBehavior: Clip.none,
@@ -210,63 +185,7 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
                                     fit: BoxFit.cover,
                                   ),
                                 ),
-                                // 內容區塊
-                                Positioned.fill(
-                                  child: IgnorePointer(
-                                    ignoring: false, // 允許內部按鈕點擊
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          const SizedBox(height: 8),
-                                          const Text('VIP特权',
-                                              style: TextStyle(
-                                                  fontSize: 18,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Color(0xFF836810))),
-                                          const SizedBox(height: 8),
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              '开通专属特权',
-                                              style: const TextStyle(fontSize: 12, color: Color(0xFFD1B765)),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis, // 超出以…顯示
-                                              softWrap: false,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 4),
-                                          OutlinedButton(
-                                            onPressed: () async {
-                                              await Navigator.push(
-                                                context,
-                                                MaterialPageRoute(builder: (_) => const VipPrivilegePage()),
-                                              );
-                                              setState(() {});
-                                            },
-                                            style: OutlinedButton.styleFrom(
-                                              side: const BorderSide(color: Color(0xFF836810), width: 1),
-                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                                              minimumSize: Size.zero,
-                                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                              visualDensity: VisualDensity.compact,
-                                            ),
-                                            child: Text(
-                                              user.isVip == true ? '已开通' : '立即开通',
-                                              style: const TextStyle(fontSize: 12, color: Color(0xFF836810)),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
+
                                 // 裝飾圖（右上）
                                 Positioned(
                                   top: -10,
@@ -277,6 +196,65 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
                                     height: 54,
                                   ),
                                 ),
+                                // 內容區塊
+                                Positioned.fill(
+                                  child: IgnorePointer(
+                                    ignoring: false,
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            t.vipPrivilegeTitle, // i18n
+                                            style: const TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                              color: Color(0xFF836810),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  t.vipPrivilegeSubtitle, // i18n
+                                                  style: const TextStyle(fontSize: 12, color: Color(0xFFD1B765)),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  softWrap: false,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 4),
+                                              OutlinedButton(
+                                                onPressed: () async {
+                                                  await Navigator.push(
+                                                    context,
+                                                    MaterialPageRoute(builder: (_) => const VipPrivilegePage()),
+                                                  );
+                                                  setState(() {});
+                                                },
+                                                style: OutlinedButton.styleFrom(
+                                                  side: const BorderSide(color: Color(0xFF836810), width: 1),
+                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                                                  minimumSize: Size.zero,
+                                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                                  visualDensity: VisualDensity.compact,
+                                                ),
+                                                child: Text(
+                                                  user.isVipEffective == true ? t.vipOpened : t.vipOpenNow, // i18n
+                                                  style: const TextStyle(fontSize: 12, color: Color(0xFF836810)),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -284,14 +262,13 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
 
                         const SizedBox(width: 12),
 
-                        // 右側卡片（未變動）
+                        // 右側卡片（邀請好友）
                         Expanded(
                           child: GestureDetector(
                             onTap: () {
                               Navigator.push(
                                 context,
-                                MaterialPageRoute(
-                                    builder: (_) => const InviteFriendPage()),
+                                MaterialPageRoute(builder: (_) => const InviteFriendPage()),
                               );
                             },
                             child: Stack(
@@ -309,13 +286,12 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
                                   child: Padding(
                                     padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
                                     child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         const SizedBox(height: 8),
-                                        const Text(
-                                          '邀请好友',
-                                          style: TextStyle(
+                                        Text(
+                                          t.inviteFriends, // i18n
+                                          style: const TextStyle(
                                             fontSize: 18,
                                             fontWeight: FontWeight.bold,
                                             color: Color(0xFFFF4D67),
@@ -323,45 +299,28 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
                                         ),
                                         const SizedBox(height: 8),
                                         Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                           children: [
-                                            const Text(
-                                              '赚取永久佣金',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: Color(0xFFFF92A2),
-                                              ),
+                                            Text(
+                                              t.earnCommission, // i18n
+                                              style: const TextStyle(fontSize: 12, color: Color(0xFFFF92A2)),
                                             ),
                                             IgnorePointer(
                                               child: OutlinedButton(
                                                 onPressed: () {},
                                                 style: OutlinedButton.styleFrom(
-                                                  side: const BorderSide(
-                                                      color: Color(0xFFFF4D67),
-                                                      width: 1),
+                                                  side: const BorderSide(color: Color(0xFFFF4D67), width: 1),
                                                   shape: RoundedRectangleBorder(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            20),
+                                                    borderRadius: BorderRadius.circular(20),
                                                   ),
-                                                  padding: const EdgeInsets
-                                                      .symmetric(
-                                                      horizontal: 10,
-                                                      vertical: 12),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
                                                   minimumSize: Size.zero,
-                                                  tapTargetSize:
-                                                      MaterialTapTargetSize
-                                                          .shrinkWrap,
-                                                  visualDensity:
-                                                      VisualDensity.compact,
+                                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                                  visualDensity: VisualDensity.compact,
                                                 ),
-                                                child: const Text(
-                                                  '立即邀请',
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    color: Color(0xFFFF4D67),
-                                                  ),
+                                                child: Text(
+                                                  t.inviteNow, // i18n
+                                                  style: const TextStyle(fontSize: 12, color: Color(0xFFFF4D67)),
                                                 ),
                                               ),
                                             ),
@@ -378,16 +337,15 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
                       ],
                     ),
                   ),
+
                   // 我的錢包
                   Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 20),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
                     child: InkWell(
                       onTap: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(
-                              builder: (context) => const MyWalletPage()),
+                          MaterialPageRoute(builder: (context) => const MyWalletPage()),
                         );
                         if (!mounted) return;
                         ref.invalidate(walletBalanceProvider);
@@ -400,7 +358,7 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
                           borderRadius: BorderRadius.circular(8),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.05), // 非常淡的陰影
+                              color: Colors.black.withOpacity(0.05),
                               blurRadius: 10,
                               offset: const Offset(0, 2),
                             ),
@@ -408,33 +366,28 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
                         ),
                         child: Row(
                           children: [
-                            SvgPicture.asset(
-                              'assets/icon_mine_wallet.svg',
-                              width: 24,
-                              height: 24,
-                            ),
+                            SvgPicture.asset('assets/icon_mine_wallet.svg', width: 24, height: 24),
                             const SizedBox(width: 8),
-                            const Text('我的钱包', style: TextStyle(fontSize: 16)),
+                            Text(t.myWallet, style: const TextStyle(fontSize: 16)), // i18n
                             const Spacer(),
-                            Text('$coinLatest 金币', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                            const SizedBox(width: 12),
+                            Text(
+                              '$coinLatest ${t.coinsUnit}', // i18n
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                            const SizedBox(width: 10),
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 4),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(10),
                                 gradient: const LinearGradient(
                                   begin: Alignment.topCenter,
                                   end: Alignment.bottomCenter,
-                                  colors: [
-                                    Color(0xFFFFA770),
-                                    Color(0xFFD247FE)
-                                  ],
+                                  colors: [Color(0xFFFFA770), Color(0xFFD247FE)],
                                 ),
                               ),
-                              child: const Text(
-                                '充值',
-                                style: TextStyle(
+                              child: Text(
+                                t.recharge, // i18n
+                                style: const TextStyle(
                                   fontSize: 14,
                                   color: Colors.white,
                                   fontWeight: FontWeight.w500,
@@ -462,55 +415,45 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
   }
 
   Widget _buildFunctionList(BuildContext context, UserModel user) {
-    final isBroadcaster = user.isBroadcaster; // 主播判斷
+    final t = S.of(context); // i18n
+    final isBroadcaster = user.isBroadcaster;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
         children: [
           if (isBroadcaster) ...[
-            // 主播的兩段列表
             _buildFunctionCard([
-              _buildMenuItem('assets/icon_mine_ticket.svg', '价格设置', () {
+              _buildMenuItem('assets/icon_mine_ticket.svg', t.priceSetting, () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => PriceSettingPage(),
-                  ),
+                  MaterialPageRoute(builder: (_) => PriceSettingPage()),
                 );
               }),
-              /*
-              _buildMenuItem('assets/icon_mine_beauty.svg', '美颜设置', () {
-                Fluttertoast.showToast(msg: "尚未實現美顏功能");
-              }),*/
+              // 若未使用就先保留註解
+              // _buildMenuItem('assets/icon_mine_beauty.svg', t.beautySetting, () { ... });
             ]),
             const SizedBox(height: 12),
             _buildFunctionCard([
-              _buildMenuItem('assets/icon_mine_people.svg', '谁喜欢我', () async {
+              _buildMenuItem('assets/icon_mine_people.svg', t.whoLikesMe, () async {
                 final result = await Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => const WhoLikesMePage(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const WhoLikesMePage()),
                 );
               }),
-              _buildMenuItem('assets/icon_mine_like.svg', '我喜欢的', () {
+              _buildMenuItem('assets/icon_mine_like.svg', t.iLiked, () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => const LikedUsersPage(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const LikedUsersPage()),
                 );
               }),
-              _buildMenuItem('assets/icon_mine_filter.svg', '账号管理', () {
+              _buildMenuItem('assets/icon_mine_filter.svg', t.accountManage, () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => const AccountManagePage(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const AccountManagePage()),
                 );
               }),
-              _buildMenuItem('assets/icon_mine_logout.svg', '退出登陆', () {
+              _buildMenuItem('assets/icon_mine_logout.svg', t.logout, () {
                 showDialog(
                   context: context,
                   barrierDismissible: false,
@@ -519,48 +462,37 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
               }),
             ]),
           ] else
-            // 普通用戶列表
             _buildFunctionCard([
-              /*
-              _buildMenuItem('assets/icon_mine_beauty.svg', '美颜设置', () {
-                Fluttertoast.showToast(msg: "尚未實現美顏功能");
-              }),*/
-              _buildMenuItem('assets/icon_mine_people.svg', '谁喜欢我', () async {
+              // 若未使用就先保留註解
+              // _buildMenuItem('assets/icon_mine_beauty.svg', t.beautySetting, () { ... });
+              _buildMenuItem('assets/icon_mine_people.svg', t.whoLikesMe, () async {
                 final result = await Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => const WhoLikesMePage(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const WhoLikesMePage()),
                 );
                 if (result == true) {
                   setState(() {});
                 }
               }),
-              _buildMenuItem('assets/icon_mine_like.svg', '我喜欢的', () {
+              _buildMenuItem('assets/icon_mine_like.svg', t.iLiked, () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => const LikedUsersPage(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const LikedUsersPage()),
                 );
               }),
-              _buildMenuItem('assets/icon_mine_filter.svg', '账号管理', () {
+              _buildMenuItem('assets/icon_mine_filter.svg', t.accountManage, () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => const AccountManagePage(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const AccountManagePage()),
                 );
               }),
-              _buildMenuItem('assets/notify_mode.svg', '勿扰模式', () {
+              _buildMenuItem('assets/notify_mode.svg', t.dndMode, () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => const DndModePage(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const DndModePage()),
                 );
               }),
-              _buildMenuItem('assets/icon_mine_logout.svg', '退出登陆', () {
+              _buildMenuItem('assets/icon_mine_logout.svg', t.logout, () {
                 showDialog(
                   context: context,
                   barrierDismissible: false,
@@ -589,14 +521,14 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
       child: Column(
         children: List.generate(
           items.length * 2 - 1,
-          (index) => index.isEven
+              (index) => index.isEven
               ? items[index ~/ 2]
               : const Divider(
-                  height: 1,
-                  indent: 20,
-                  endIndent: 20,
-                  color: Color(0xFFD8D8D8),
-                ),
+            height: 1,
+            indent: 20,
+            endIndent: 20,
+            color: Color(0xFFD8D8D8),
+          ),
         ),
       ),
     );
@@ -604,10 +536,7 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
 
   Widget _buildMenuItem(String icon, String title, VoidCallback onTap) {
     return ListTile(
-      leading: SvgPicture.asset(
-        icon,
-        fit: BoxFit.fitWidth,
-      ),
+      leading: SvgPicture.asset(icon, fit: BoxFit.fitWidth),
       title: Text(title),
       trailing: const Icon(Icons.chevron_right, color: Colors.black26),
       onTap: onTap,
@@ -621,12 +550,10 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
+  Future<void> didChangeAppLifecycleState(AppLifecycleState state) async {
     if (state == AppLifecycleState.resumed) {
-      // 回到前景時再取一次最新餘額
-      ref.invalidate(walletBalanceProvider);
-      ref.refresh(walletBalanceProvider);
+      final w = await ref.refresh(walletBalanceProvider.future);
+      ref.read(userProfileProvider.notifier).applyWallet(w);
     }
   }
-
 }

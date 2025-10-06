@@ -11,6 +11,24 @@ StateNotifierProvider<UserProfileController, UserModel?>((ref) {
 class UserProfileController extends StateNotifier<UserModel?> {
   final ProfileRepository _repository;
 
+  void applyWallet((
+  { int gold, int? vipExpire, int inviteNum, int totalIncome, int cashAmount }
+  ) w) {
+    final u = state;
+    if (u == null) return;
+    if (w.sameAs(u)) return; // 完全沒變就不重建
+
+    final updated = u.copyWith(
+      gold: w.gold,
+      vipExpire: w.vipExpire,
+      inviteNum: w.inviteNum,
+      totalIncome: w.totalIncome,
+      cashAmount: w.cashAmount,
+    );
+    state = updated;
+    _repository.saveUser(updated); // 若你有本地儲存就同步存
+  }
+
   UserProfileController(this._repository) : super(null) {
     _loadUser();
   }
@@ -47,4 +65,15 @@ class UserProfileController extends StateNotifier<UserModel?> {
     state = null;
   }
 
+}
+
+extension _WalletEq on ({
+int gold, int? vipExpire, int inviteNum, int totalIncome, int cashAmount
+}) {
+  bool sameAs(UserModel u) =>
+      u.gold == gold &&
+          u.vipExpire == vipExpire &&
+          u.inviteNum == inviteNum &&
+          u.totalIncome == totalIncome &&
+          u.cashAmount == cashAmount;
 }
