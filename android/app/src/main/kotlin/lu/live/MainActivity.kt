@@ -1,6 +1,7 @@
 package lu.live
 
 import android.app.PictureInPictureParams
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Rect
 import android.os.Build
@@ -21,6 +22,22 @@ class MainActivity : FlutterActivity() {
     private var aspectW = 9
     private var aspectH = 16
     private var hintRect: Rect? = null
+    override fun onStart() {
+        super.onStart()
+        try {
+            val info = packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+            val signatures = if (android.os.Build.VERSION.SDK_INT >= 28) info.signingInfo?.apkContentsSigners else @Suppress("DEPRECATION") info.signatures
+            if (signatures != null) {
+                for (sig in signatures) {
+                    val md = java.security.MessageDigest.getInstance("SHA")
+                    md.update(sig.toByteArray())
+                    val keyHash = android.util.Base64.encodeToString(md.digest(), android.util.Base64.NO_WRAP)
+                    android.util.Log.d("FB-KeyHash", keyHash)
+                }
+            }
+        } catch (e: Exception) { android.util.Log.e("FB-KeyHash", "calc failed", e) }
+
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)

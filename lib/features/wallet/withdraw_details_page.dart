@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pull_to_refresh_flutter3/pull_to_refresh_flutter3.dart';
 
+import '../../l10n/l10n.dart';
 import 'model/withdraw_list_controller.dart';
 import 'model/withdraw_record.dart';
-
 
 class WithdrawDetailsPage extends ConsumerStatefulWidget {
   const WithdrawDetailsPage({super.key});
@@ -21,8 +21,6 @@ class _WithdrawDetailsPageState extends ConsumerState<WithdrawDetailsPage> {
   @override
   void initState() {
     super.initState();
-    // 首次進頁時就載入（若你 provider 已在建立時 loadFirstPage，也可省略）
-    // ref.read(withdrawListProvider.notifier).loadFirstPage();
   }
 
   @override
@@ -31,14 +29,15 @@ class _WithdrawDetailsPageState extends ConsumerState<WithdrawDetailsPage> {
     super.dispose();
   }
 
-  String _methodText(WithdrawRecord r) {
+  String _methodText(BuildContext context, WithdrawRecord r) {
+    final t = S.of(context);
     switch (r.bankCode.toLowerCase()) {
       case 'paypal':
-        return 'Paypal';
+        return 'PayPal'; // 品牌名保持英文大小寫
       case 'visa':
         return 'Visa';
       default:
-        return r.bankCode.isEmpty ? '未知方式' : r.bankCode;
+        return r.bankCode.isEmpty ? t.unknownMethod : r.bankCode;
     }
   }
 
@@ -58,14 +57,12 @@ class _WithdrawDetailsPageState extends ConsumerState<WithdrawDetailsPage> {
       _refreshCtrl.refreshFailed();
     } else {
       _refreshCtrl.refreshCompleted();
-      // 重整後允許再次上拉
       _refreshCtrl.resetNoData();
     }
   }
 
   Future<void> _onLoading() async {
     final ctrl = ref.read(withdrawListProvider.notifier);
-    // 若沒有更多就直接結束
     if (!ref.read(withdrawListProvider).hasMore) {
       _refreshCtrl.loadNoData();
       return;
@@ -83,11 +80,12 @@ class _WithdrawDetailsPageState extends ConsumerState<WithdrawDetailsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final t = S.of(context);
     final state = ref.watch(withdrawListProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('提現明細', style: TextStyle(fontSize: 16, color: Colors.black)),
+        title: Text(t.withdrawDetailsTitle, style: const TextStyle(fontSize: 16, color: Colors.black)),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.white,
@@ -99,15 +97,12 @@ class _WithdrawDetailsPageState extends ConsumerState<WithdrawDetailsPage> {
       backgroundColor: Colors.white,
       body: Builder(
         builder: (_) {
-          // 初次載入中
           if (state.items.isEmpty && state.isLoading) {
             return const Center(child: CircularProgressIndicator());
           }
-          // 初次失敗
           if (state.items.isEmpty && state.error != null) {
-            return Center(child: Text('載入失敗：${state.error}'));
+            return Center(child: Text('${t.loadFailedPrefix}${state.error}'));
           }
-          // 無資料
           if (state.items.isEmpty) {
             return SmartRefresher(
               controller: _refreshCtrl,
@@ -115,13 +110,11 @@ class _WithdrawDetailsPageState extends ConsumerState<WithdrawDetailsPage> {
               enablePullUp: false,
               onRefresh: _onRefresh,
               header: const ClassicHeader(),
-              child: const Center(child: Text('目前沒有提現紀錄')),
+              child: Center(child: Text(t.withdrawNoRecords)),
             );
           }
 
-          // 有資料 -> SmartRefresher 包 ListView.separated
-          return SmartRefresher
-            (
+          return SmartRefresher(
             controller: _refreshCtrl,
             enablePullDown: true,
             enablePullUp: true,
@@ -131,14 +124,15 @@ class _WithdrawDetailsPageState extends ConsumerState<WithdrawDetailsPage> {
             footer: CustomFooter(
               builder: (context, mode) {
                 Widget body;
+                final tt = S.of(context);
                 if (mode == LoadStatus.loading) {
                   body = const SizedBox(
                     width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 2),
                   );
                 } else if (mode == LoadStatus.noMore) {
-                  body = const Text('— 沒有更多 —', style: TextStyle(color: Colors.grey));
+                  body = Text('— ${tt.noMoreData} —', style: const TextStyle(color: Colors.grey));
                 } else if (mode == LoadStatus.failed) {
-                  body = const Text('載入失敗，點擊重試', style: TextStyle(color: Colors.grey));
+                  body = Text(tt.loadFailedTapRetry, style: const TextStyle(color: Colors.grey));
                 } else {
                   body = const SizedBox.shrink();
                 }
@@ -150,56 +144,45 @@ class _WithdrawDetailsPageState extends ConsumerState<WithdrawDetailsPage> {
             ),
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              itemCount: state.items.length, // ⚠️ 不再多加一個 loading row，交給 footer
+              itemCount: state.items.length,
               separatorBuilder: (_, __) => const Divider(
-                height: 36,
-                thickness: 1,
-                color: Color(0xFFEDEDED),
+                height: 36, thickness: 1, color: Color(0xFFEDEDED),
               ),
-                itemBuilder: (context, index) {
-                  if (index >= state.items.length) {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      child: Center(
-                        child: state.isLoading
-                            ? const SizedBox(width: 28, height: 28, child: CircularProgressIndicator())
-                            : const Text('— 没有更多 —', style: TextStyle(color: Colors.grey)),
+              itemBuilder: (context, index) {
+                final r = state.items[index];
+                return InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => WithdrawInfoPage(record: r),
                       ),
                     );
-                  }
-
-                  final r = state.items[index];
-
-                  return InkWell(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => WithdrawInfoPage(record: r),
+                  },
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              t.withdrawToMethod(_methodText(context, r)),
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _formatDate(r.createAt),
+                              style: const TextStyle(fontSize: 14, color: Color(0xFF999999)),
+                            ),
+                          ],
                         ),
-                      );
-                    },
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // (保持你原本左側/右側 UI 完全一致)
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('提现到${_methodText(r)}',
-                                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-                              const SizedBox(height: 4),
-                              Text(_formatDate(r.createAt),
-                                  style: const TextStyle(fontSize: 14, color: Color(0xFF999999))),
-                            ],
-                          ),
-                        ),
-                        Text(_formatAmount(r.amount), style: const TextStyle(fontSize: 18)),
-                      ],
-                    ),
-                  );
-                }
+                      ),
+                      Text(_formatAmount(r.amount), style: const TextStyle(fontSize: 18)),
+                    ],
+                  ),
+                );
+              },
             ),
           );
         },

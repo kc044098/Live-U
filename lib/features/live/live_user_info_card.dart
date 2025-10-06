@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../l10n/l10n.dart';
 import '../profile/profile_controller.dart';
 import '../profile/view_profile_page.dart';
 import 'data_model/feed_item.dart';
@@ -76,21 +77,22 @@ class _LiveUserInfoCardState extends ConsumerState<LiveUserInfoCard> {
   @override
   Widget build(BuildContext context) {
     final myUid = ref.watch(userProfileProvider)?.uid;
+    final t = S.of(context);
 
     Color dotColor;
     String statusText;
     switch (widget.status) {
       case OnlineStatus.online:
         dotColor = Colors.greenAccent;
-        statusText = '在線';
+        statusText = t.onlineStatusLabel;
         break;
       case OnlineStatus.busy:
         dotColor = Colors.orange;
-        statusText = '忙線中';
+        statusText = t.busyStatusLabel;
         break;
       case OnlineStatus.offline:
         dotColor = Colors.grey;
-        statusText = '離線';
+        statusText = t.offlineStatusLabel;
         break;
       case OnlineStatus.unknown:
       default:

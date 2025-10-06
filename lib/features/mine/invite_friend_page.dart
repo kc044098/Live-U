@@ -3,6 +3,7 @@ import 'package:flutter_svg/svg.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../l10n/l10n.dart';
 import 'invite_dialog.dart';
 import 'mine_invite_page.dart';
 
@@ -11,10 +12,16 @@ class InviteFriendPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
+
+    const percent = '10%'; // 若未來要做動態，改這裡即可
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('邀请好友',
-            style: TextStyle(color: Colors.black, fontSize: 16)),
+        title: Text(
+          s.inviteFriends, // 复用既有 key
+          style: const TextStyle(color: Colors.black, fontSize: 16),
+        ),
         centerTitle: true,
         backgroundColor: Colors.white,
         elevation: 0,
@@ -31,24 +38,24 @@ class InviteFriendPage extends StatelessWidget {
           ),
 
           Positioned(
-            left: 60,
-            top: 20,
-            child: const Text(
-              '邀请好友',
-              style: TextStyle(
-                fontSize: 50,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFFEC716C),
-              ),
-            ),
-          ),
-
-          Positioned(
             right: 36,
             top: 30,
             child: Image.asset(
               'assets/invite_pic1.png',
               fit: BoxFit.contain,
+            ),
+          ),
+
+          Positioned(
+            left: 60,
+            top: 20,
+            child: Text(
+              s.inviteFriends, // '邀请好友'
+              style: const TextStyle(
+                fontSize: 50,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFFEC716C),
+              ),
             ),
           ),
 
@@ -64,9 +71,9 @@ class InviteFriendPage extends StatelessWidget {
           Positioned(
             right: 40,
             top: 100,
-            child: const Text(
-              '赚现金',
-              style: TextStyle(
+            child: Text(
+              s.inviteEarnCashShort, // '赚现金'
+              style: const TextStyle(
                 fontSize: 60,
                 fontWeight: FontWeight.bold,
                 color: Color(0xFFEC716C),
@@ -77,9 +84,9 @@ class InviteFriendPage extends StatelessWidget {
           Positioned(
             left: 80,
             top: 190,
-            child: const Text(
-              '- 邀请一次，享终身收益 -',
-              style: TextStyle(
+            child: Text(
+              s.inviteOnceLifetime, // '- 邀请一次，享终身收益 -'
+              style: const TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
                 color: Color(0xFFEC716C),
@@ -117,11 +124,10 @@ class InviteFriendPage extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Padding(
-                        padding:  const EdgeInsets.fromLTRB(12, 24, 12, 0),
+                        padding: const EdgeInsets.fromLTRB(12, 24, 12, 0),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-
                             // 紅色 + 白色文案區塊
                             Row(
                               children: [
@@ -129,16 +135,16 @@ class InviteFriendPage extends StatelessWidget {
                                   height: 70,
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 18, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFF8888),
-                                    borderRadius: const BorderRadius.only(
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFFF8888),
+                                    borderRadius: BorderRadius.only(
                                       topLeft: Radius.circular(8),
                                       bottomLeft: Radius.circular(8),
                                     ),
                                   ),
-                                  child: const Text(
-                                    '10%',
-                                    style: TextStyle(
+                                  child: Text(
+                                    percent, // 左側大字百分比
+                                    style: const TextStyle(
                                       fontSize: 36,
                                       fontWeight: FontWeight.bold,
                                       color: Colors.white,
@@ -153,38 +159,22 @@ class InviteFriendPage extends StatelessWidget {
                                     decoration: BoxDecoration(
                                       color: Colors.white,
                                       border: Border.all(
-                                          color: Color(0xFFFF8888), width: 1),
+                                          color: const Color(0xFFFF8888), width: 1),
                                       borderRadius: const BorderRadius.only(
                                         topRight: Radius.circular(8),
                                         bottomRight: Radius.circular(8),
                                       ),
                                     ),
                                     child: Center(
-                                      child: const Text.rich(
+                                      child: Text.rich(
                                         TextSpan(
                                           children: [
                                             TextSpan(
-                                              text: '好友每次充值余额，即可享受好友充值总金额',
-                                              style: TextStyle(
+                                              text: s.inviteCommissionDesc(percent),
+                                              style: const TextStyle(
                                                 fontSize: 12,
                                                 color: Color(0xFF535353),
-                                                height: 0.8,
-                                              ),
-                                            ),
-                                            TextSpan(
-                                              text: '10%',
-                                              style: TextStyle(
-                                                fontSize: 18,
-                                                color: Color(0xFFFF4D67),
-                                                height: 1.4,
-                                              ),
-                                            ),
-                                            TextSpan(
-                                              text: '的提成',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: Color(0xFF535353),
-                                                height: 1.4,
+                                                height: 1.2,
                                               ),
                                             ),
                                           ],
@@ -214,20 +204,19 @@ class InviteFriendPage extends StatelessWidget {
                                     showDialog(
                                       context: context,
                                       barrierDismissible: true,
-                                      builder: (_) => InviteDialog(),
+                                      builder: (_) => const InviteDialog(),
                                     );
                                   },
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFFFF8888),
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 14),
+                                    padding: const EdgeInsets.symmetric(vertical: 14),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                   ),
-                                  child: const Text(
-                                    '立即邀请',
-                                    style: TextStyle(
+                                  child: Text(
+                                    s.inviteNow, // 复用既有 key
+                                    style: const TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold,
                                       color: Colors.white,
@@ -253,15 +242,14 @@ class InviteFriendPage extends StatelessWidget {
                                   style: OutlinedButton.styleFrom(
                                     side: const BorderSide(
                                         color: Color(0xFFFF8888), width: 1),
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 14),
+                                    padding: const EdgeInsets.symmetric(vertical: 14),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                   ),
-                                  child: const Text(
-                                    '我的邀请',
-                                    style: TextStyle(
+                                  child: Text(
+                                    s.myInvites, // 新增 key
+                                    style: const TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold,
                                       color: Color(0xFFFF4D67),
@@ -289,9 +277,9 @@ class InviteFriendPage extends StatelessWidget {
                             'assets/bg_invite_title.svg',
                             height: 28,
                           ),
-                          const Text(
-                            '·轻松趟赚·',
-                            style: TextStyle(
+                          Text(
+                            s.inviteEasyEarn,
+                            style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
                               color: Colors.white,

@@ -7,6 +7,8 @@ import 'package:flutter_svg/svg.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
+import '../../l10n/l10n.dart';
+
 class WithdrawPage extends ConsumerStatefulWidget {
   const WithdrawPage({super.key});
 
@@ -32,37 +34,35 @@ class _WithdrawPageState extends ConsumerState<WithdrawPage> {
   double get _availableAmount {
     final u = ref.watch(currentUserWithWalletProvider);
     final cash = (u?.cashAmount ?? 0);
-    return cash.toDouble(); // 後端以分/元請依實際調整
+    return cash.toDouble();
   }
 
   Future<void> _submit(BuildContext context) async {
+    final t = S.of(context);
+
     final inputText = _amountController.text.trim();
     final amountDouble = double.tryParse(inputText);
-    final account = _accountController.text.trim(); // 提現帳戶 (email/卡號等)
-    final name = _nameController.text.trim();       // 提現戶名 (此處當作 card_name 傳)
+    final account = _accountController.text.trim();
+    final name = _nameController.text.trim();
 
     // === 前端驗證 ===
     if (account.isEmpty || name.isEmpty) {
-      Fluttertoast.showToast(msg: '提現帳戶與提現戶名不可為空');
+      Fluttertoast.showToast(msg: t.withdrawEmptyAccountOrName);
       return;
     }
     if (amountDouble == null || amountDouble < 1) {
-      Fluttertoast.showToast(msg: '提現金額最低為1元');
+      Fluttertoast.showToast(msg: t.withdrawMinAmount1);
       return;
     }
     if (amountDouble > _availableAmount) {
-      Fluttertoast.showToast(msg: '提現金額大於可提現金額');
+      Fluttertoast.showToast(msg: t.withdrawExceedsAvailable);
       return;
     }
 
-    // 後端參數需要整數 amount（你的範例是 10）
     final amountInt = amountDouble.floor();
-
-    // 目前 UI 先固定「PayPal」，實際可做選單帶不同 bankCode
     const bankCode = 'paypal';
 
     setState(() => _submitting = true);
-    // 簡單 loading（也可改成 showDialog loading）
     try {
       final repo = ref.read(walletRepositoryProvider);
 
@@ -70,13 +70,11 @@ class _WithdrawPageState extends ConsumerState<WithdrawPage> {
         account: account,
         amount: amountInt,
         bankCode: bankCode,
-        cardName: name, // 後端欄位 card_name：目前用戶名填入；若後端要卡號請改對應輸入框
+        cardName: name,
       );
 
-      // 刷新錢包餘額，讓「可提現金額」即時更新
       await ref.refresh(walletBalanceProvider.future);
 
-      // 成功提示 + 清空欄位
       if (mounted) _showWithdrawSuccessDialog(context);
     } catch (e) {
       Fluttertoast.showToast(msg: e.toString().replaceFirst('Exception: ', ''));
@@ -87,10 +85,12 @@ class _WithdrawPageState extends ConsumerState<WithdrawPage> {
 
   @override
   Widget build(BuildContext context) {
+    final t = S.of(context);
+
     return Scaffold(
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
-        title: const Text('提現', style: TextStyle(fontSize: 16, color: Colors.black)),
+        title: Text(t.withdraw, style: const TextStyle(fontSize: 16, color: Colors.black)),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.white,
@@ -106,7 +106,7 @@ class _WithdrawPageState extends ConsumerState<WithdrawPage> {
                 MaterialPageRoute(builder: (context) => const WithdrawDetailsPage()),
               );
             },
-            child: const Text('明細', style: TextStyle(fontSize: 14, color: Color(0xFFFF4D67))),
+            child: Text(t.walletDetails, style: const TextStyle(fontSize: 14, color: Color(0xFFFF4D67))),
           ),
         ],
       ),
@@ -117,7 +117,7 @@ class _WithdrawPageState extends ConsumerState<WithdrawPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('提現金額', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              Text(t.withdrawAmountLabel, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -134,9 +134,9 @@ class _WithdrawPageState extends ConsumerState<WithdrawPage> {
                         controller: _amountController,
                         textAlignVertical: TextAlignVertical.center,
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(
-                          hintText: '請輸入提現金額',
-                          hintStyle: TextStyle(color: Color(0xFFCCCCCC)),
+                        decoration: InputDecoration(
+                          hintText: t.withdrawAmountHint,
+                          hintStyle: const TextStyle(color: Color(0xFFCCCCCC)),
                           border: InputBorder.none,
                           isDense: true,
                         ),
@@ -150,16 +150,18 @@ class _WithdrawPageState extends ConsumerState<WithdrawPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text.rich(
+                  Text.rich(
                     TextSpan(
-                      text: '手續費：',
-                      style: TextStyle(fontSize: 12, color: Color(0xFF999999)),
-                      children: [TextSpan(text: '\$1.00', style: TextStyle(color: Colors.black))],
+                      text: t.feeLabel,
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF999999)),
+                      children: const [
+                        TextSpan(text: '\$1.00', style: TextStyle(color: Colors.black)),
+                      ],
                     ),
                   ),
                   Text.rich(
                     TextSpan(
-                      text: '可提現金額：',
+                      text: t.withdrawAvailableLabel,
                       style: const TextStyle(fontSize: 12, color: Color(0xFF999999)),
                       children: [
                         TextSpan(
@@ -176,23 +178,23 @@ class _WithdrawPageState extends ConsumerState<WithdrawPage> {
                 children: [
                   _buildWithdrawSection(
                     iconPath: 'assets/icon_withdraw1.svg',
-                    label: '帳戶類型',
-                    value: 'PayPal', // 先固定；之後做選擇表單可改為狀態變數
+                    label: t.withdrawAccountTypeLabel,
+                    value: 'PayPal', // 品牌名不做翻譯
                     onTap: () {},
                   ),
                   _buildWithdrawSection(
                     iconPath: 'assets/icon_withdraw2.svg',
-                    label: '提現帳戶',
+                    label: t.withdrawAccountLabel,      // 已在 WithdrawInfoPage 新增過
                     isInput: true,
-                    hintText: '請輸入提現帳戶（如 PayPal Email）',
+                    hintText: t.withdrawAccountHint,
                     controller: _accountController,
-                    onChanged: (text) {}, // 不需要回寫 controller（避免游標跳動）
+                    onChanged: (text) {},
                   ),
                   _buildWithdrawSection(
                     iconPath: 'assets/icon_withdraw3.svg',
-                    label: '提現戶名',
+                    label: t.withdrawAccountNameLabel,  // 已在 WithdrawInfoPage 新增過
                     isInput: true,
-                    hintText: '請輸入提現戶名',
+                    hintText: t.withdrawAccountNameHint,
                     controller: _nameController,
                     onChanged: (text) {},
                   ),
@@ -225,14 +227,16 @@ class _WithdrawPageState extends ConsumerState<WithdrawPage> {
                 gradient: const LinearGradient(colors: [Color(0xFFFFA770), Color(0xFFD247FE)]),
                 borderRadius: BorderRadius.circular(24),
               ),
-              child: Container(
-                alignment: Alignment.center,
+              child: Center(
                 child: _submitting
                     ? const SizedBox(
-                    width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Text(
-                  '確定',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+                    : Text(
+                  t.commonConfirm,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                 ),
               ),
             ),
@@ -303,6 +307,8 @@ class _WithdrawPageState extends ConsumerState<WithdrawPage> {
   }
 
   void _showWithdrawSuccessDialog(BuildContext context) {
+    final t = S.of(context);
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -317,13 +323,16 @@ class _WithdrawPageState extends ConsumerState<WithdrawPage> {
               children: [
                 SvgPicture.asset('assets/pic_apply_withdraw.svg', width: 160, height: 160),
                 const SizedBox(height: 24),
-                const Text(
-                  '提現申請已提交',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFFFF4D67)),
+                Text(
+                  t.withdrawSubmitSuccessTitle,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFFFF4D67)),
                 ),
                 const SizedBox(height: 12),
-                const Text('我們將在三個工作日進行審核，請耐心等待',
-                    style: TextStyle(fontSize: 14, color: Color(0xFF666666)), textAlign: TextAlign.center),
+                Text(
+                  t.withdrawSubmitSuccessDesc,
+                  style: const TextStyle(fontSize: 14, color: Color(0xFF666666)),
+                  textAlign: TextAlign.center,
+                ),
                 const SizedBox(height: 24),
                 SizedBox(
                   width: 300,
@@ -346,9 +355,11 @@ class _WithdrawPageState extends ConsumerState<WithdrawPage> {
                         gradient: const LinearGradient(colors: [Color(0xFFFFA770), Color(0xFFD247FE)]),
                         borderRadius: BorderRadius.circular(22),
                       ),
-                      child: const Center(
-                        child: Text('確定',
-                            style: TextStyle(fontSize: 15, color: Colors.white, fontWeight: FontWeight.bold)),
+                      child: Center(
+                        child: Text(
+                          t.commonConfirm,
+                          style: const TextStyle(fontSize: 15, color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
                       ),
                     ),
                   ),

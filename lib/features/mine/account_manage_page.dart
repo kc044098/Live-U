@@ -1,29 +1,35 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
-
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../data/models/user_model.dart';
+import '../../l10n/l10n.dart';
 import '../auth/LoginMethod.dart';
 import '../profile/profile_controller.dart';
 import 'add_email_account_page.dart';
 import 'account_info_page.dart';
-
 class AccountManagePage extends ConsumerWidget {
   const AccountManagePage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final s = S.of(context);
     final user = ref.watch(userProfileProvider);
 
-    final googleStatus = _getBindStatus(user, 'google');
-    final facebookStatus = _getBindStatus(user, 'facebook');
-    final appleStatus = _getBindStatus(user, 'apple');
+    final googleStatus = _getBindStatus(context, user, 'google');
+    final facebookStatus = _getBindStatus(context, user, 'facebook');
+    final appleStatus = _getBindStatus(context, user, 'apple');
+
+    final emailRaw = _getBindStatus(context, user, 'email');
+    final emailBound = emailRaw != null;
+    final displayEmail = emailBound ? _ellipsis15(emailRaw, max: 15) : s.statusToBind;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('賬號管理', style: TextStyle(fontSize: 16, color: Colors.black)),
+        title: Text(s.accountManageTitle, style: const TextStyle(fontSize: 16, color: Colors.black)),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.white,
@@ -44,29 +50,30 @@ class AccountManagePage extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: ListTile(
-                leading: SvgPicture.asset('assets/icon_account.svg',
-                    width: 24, height: 24),
-                title: const Text('賬號'),
+                leading: SvgPicture.asset('assets/icon_account.svg', width: 24, height: 24),
+                title: Text(s.accountLabel),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      user?.displayName ?? '',
-                      style:
-                          const TextStyle(fontSize: 14, color: Colors.black54),
+                      displayEmail,
+                      style: TextStyle(
+                        color: emailBound ? Colors.black54 : Colors.red,
+                        fontSize: 14,
+                      ),
                     ),
-                    const Icon(Icons.chevron_right,
-                        color: Colors.black38, size: 20),
+                    const Icon(Icons.chevron_right, color: Colors.black38, size: 20),
                   ],
                 ),
                 onTap: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                        builder: (_) => AccountInfoPage(
-                          avatarImage: user!.avatarImage,
-                              modifyType: 'account',
-                            )),
+                      builder: (_) => AccountInfoPage(
+                        avatarImage: user!.avatarImage,
+                        modifyType: 'account',
+                      ),
+                    ),
                   );
                 },
               ),
@@ -87,9 +94,9 @@ class AccountManagePage extends ConsumerWidget {
                     color: Colors.red.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Text(
-                    '綁定郵箱，隨時接收有趣的活動、新功能升級、推薦獎勵等信息',
-                    style: TextStyle(fontSize: 12, color: Colors.red),
+                  child: Text(
+                    s.emailBindHint,
+                    style: const TextStyle(fontSize: 12, color: Colors.red),
                   ),
                 ),
               ),
@@ -100,17 +107,18 @@ class AccountManagePage extends ConsumerWidget {
                 ),
                 child: ListTile(
                   leading: SvgPicture.asset('assets/icon_email.svg', width: 24, height: 24),
-                  title: const Text('郵箱'),
+                  title: Text(s.emailLabel),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        _getBindStatus(user, 'email') ?? '待綁定',
+                        displayEmail,
                         style: TextStyle(
-                          color: _getBindStatus(user, 'email') == null ? Colors.red : Colors.black54,
+                          color: emailBound ? Colors.black54 : Colors.red,
                           fontSize: 14,
                         ),
                       ),
+                      const SizedBox(width: 6),
                       const Icon(Icons.chevron_right, color: Colors.black38, size: 20),
                     ],
                   ),
@@ -138,7 +146,12 @@ class AccountManagePage extends ConsumerWidget {
                     } else {
                       await Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => AccountInfoPage(avatarImage: user!.avatarImage, modifyType: 'email')),
+                        MaterialPageRoute(
+                          builder: (_) => AccountInfoPage(
+                            avatarImage: user!.avatarImage,
+                            modifyType: 'email',
+                          ),
+                        ),
                       );
                     }
                   },
@@ -159,17 +172,55 @@ class AccountManagePage extends ConsumerWidget {
     );
   }
 
-  String? _getBindStatus(UserModel? user, String provider) {
+  String? _emailFromJwt(String? token) {
+    if (token == null || token.isEmpty) return null;
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+      String norm(String s) => s
+          .replaceAll('-', '+')
+          .replaceAll('_', '/')
+          .padRight(s.length + (4 - s.length % 4) % 4, '=');
+      final payloadJson = utf8.decode(base64Url.decode(norm(parts[1])));
+      final payload = jsonDecode(payloadJson);
+      final email = payload['email']?.toString();
+      return (email != null && _looksLikeEmail(email)) ? email : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String? _getBindStatus(BuildContext context, UserModel? user, String provider) {
     if (user == null) return null;
+    final p = provider.toLowerCase();
+
     final login = user.logins.firstWhere(
-          (e) => e.provider.toLowerCase() == provider,
+          (e) => e.provider.toLowerCase() == p,
       orElse: () => LoginMethod(provider: '', identifier: ''),
     );
     if (login.provider.isEmpty) return null;
-    return login.identifier.isNotEmpty ? login.identifier : null;
+
+    // 1) email provider：identifier 本來就是 email
+    if (p == 'email') {
+      final id = login.identifier.trim();
+      return id.isNotEmpty ? id : null;
+    }
+
+    // 2) 其他第三方：若 identifier 本身像 email → 直接用
+    final id = login.identifier.trim();
+    if (_looksLikeEmail(id)) return id;
+
+    // 3) 再嘗試從 token (JWT id_token) 把 email 解出來
+    final email = _emailFromJwt(login.token);
+    if (email != null) return email;
+
+    // 4) 都拿不到就顯示「已綁定」（多語言）
+    return S.of(context).statusBound;
   }
 
   Widget _buildAccountCard(String icon, String title, {String? status}) {
+    final display = (status == null || status.isEmpty) ? null : _ellipsis15(status, max: 15);
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -178,13 +229,28 @@ class AccountManagePage extends ConsumerWidget {
       child: ListTile(
         leading: SvgPicture.asset(icon, width: 24, height: 24),
         title: Text(title, style: const TextStyle(fontSize: 14, color: Colors.black54)),
-        trailing: (status != null && status.isNotEmpty)
-            ? Text(status, style: const TextStyle(fontSize: 14, color: Colors.black54))
-            : const Icon(Icons.chevron_right, color: Colors.black38),
-        onTap: () {
-          // TODO: 跳轉對應綁定邏輯
-        },
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (display != null) ...[
+              Text(display, style: const TextStyle(fontSize: 14, color: Colors.black54)),
+              const SizedBox(width: 6),
+            ],
+            const Icon(Icons.chevron_right, color: Colors.black38, size: 20),
+          ],
+        ),
+        onTap: () { /* TODO */ },
       ),
     );
+  }
+
+  bool _looksLikeEmail(String s) =>
+      RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(s);
+
+  String _ellipsis15(String? s, {int max = 15}) {
+    if (s == null || s.isEmpty) return s ?? '';
+    final chars = s.characters;
+    if (chars.length <= max) return s;
+    return chars.take(max).toString() + '...';
   }
 }

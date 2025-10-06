@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 
 import '../../data/models/gift_item.dart';
+import '../../l10n/l10n.dart';
 import '../widgets/cached_network_image.dart';
 import 'emoji/emoji_pack.dart';
 import 'emoji/emoji_text.dart';
@@ -37,12 +38,14 @@ class InboxMessageBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     const subtitleStyle = TextStyle(color: Colors.black54, fontSize: 12);
 
     // 先得到「核心預覽」(不含前綴)
     final Widget corePreview =
         (previewContent != null && previewContent!.isNotEmpty)
             ? _buildPreviewFromContent(
+                context: context,
                 content: previewContent!,
                 cdn: cdnBase ?? '',
                 gifts: gifts,
@@ -59,7 +62,7 @@ class InboxMessageBanner extends StatelessWidget {
     // ✅ 統一加上「私信了你：」前綴
     final Widget prefixedPreview = Row(
       children: [
-        const Text('私信了你：', style: subtitleStyle),
+        Text(s.dmPrefix, style: subtitleStyle),
         const SizedBox(width: 2),
         Expanded(child: corePreview),
       ],
@@ -133,12 +136,12 @@ class InboxMessageBanner extends StatelessWidget {
                             debugPrint('📬[Banner] reply tapped');
                             onReply();
                           },
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
                                 horizontal: 14, vertical: 8),
                             child: Text(
-                              '回覆',
-                              style: TextStyle(
+                              s.replyAction,
+                              style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w600,
                                 fontSize: 13,
@@ -161,12 +164,14 @@ class InboxMessageBanner extends StatelessWidget {
 
   // === 樣式化預覽：禮物 / 圖片 / 語音 / 文字 ===
   static Widget _buildPreviewFromContent({
+    required BuildContext context,
     required String content,
     required String cdn,
     required List<GiftItemModel> gifts,
     required TextStyle style,
     Future<EmojiPack>? emojiPackFuture,
   }) {
+    final s = S.of(context);
     Map<String, dynamic>? _json(String? s) {
       if (s == null || s.isEmpty) return null;
       try {
@@ -215,7 +220,7 @@ class InboxMessageBanner extends StatelessWidget {
           const SizedBox(width: 4),
           Flexible(
             child: Text(
-              title.isNotEmpty ? '禮物 · $title' : '禮物',
+              title.isNotEmpty ? '${s.giftShort} · $title' : s.giftShort,
               style: style,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -230,7 +235,7 @@ class InboxMessageBanner extends StatelessWidget {
             ),
           ],
           const SizedBox(width: 6),
-          Text('x$count', style: style),
+          Text(s.xCount(count), style: style),
         ],
       );
     }
@@ -243,32 +248,33 @@ class InboxMessageBanner extends StatelessWidget {
           const Icon(Icons.image, size: 14, color: Colors.black45),
           const SizedBox(width: 4),
           Flexible(
-              child: Text('圖片', style: style, overflow: TextOverflow.ellipsis)),
+            child: Text(s.imageShort, style: style, overflow: TextOverflow.ellipsis),
+          ),
         ],
       );
     }
 
     // 語音
     if (voice.isNotEmpty) {
+      final label = (durSec > 0) ? s.voiceWithSeconds(durSec) : s.voiceShort;
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           const Icon(Icons.mic, size: 14, color: Colors.black45),
           const SizedBox(width: 4),
           Flexible(
-            child: Text(durSec > 0 ? '語音 ${durSec}s' : '語音',
-                style: style, overflow: TextOverflow.ellipsis),
+            child: Text(label, style: style, overflow: TextOverflow.ellipsis),
           ),
         ],
       );
     }
 
     // 文字
-    final text = (chatTxt.isNotEmpty ? chatTxt : content).trim();
+    final raw = (chatTxt.isNotEmpty ? chatTxt : content).trim();
+    final fallback = s.incomingGenericMessage;
     if (emojiPackFuture == null) {
-      // 沒給包就純文字
       return Text(
-        text.isNotEmpty ? text : '發來一條消息',
+        raw.isNotEmpty ? raw : fallback,
         style: style,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
@@ -277,17 +283,17 @@ class InboxMessageBanner extends StatelessWidget {
     return FutureBuilder<EmojiPack>(
       future: emojiPackFuture,
       builder: (context, snap) {
+        final text = raw.isNotEmpty ? raw : fallback;
         if (snap.connectionState != ConnectionState.done || snap.data == null) {
-          // 還在載入：先顯示純文字
           return Text(
-            text.isNotEmpty ? text : '發來一條消息',
+            text,
             style: style,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           );
         }
         return EmojiText(
-          text.isNotEmpty ? text : '發來一條消息',
+          text,
           pack: snap.data!,
           style: style,
           emojiSize: 16,

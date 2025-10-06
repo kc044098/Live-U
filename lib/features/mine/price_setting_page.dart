@@ -6,7 +6,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
-import '../profile/profile_controller.dart';
+import '../../l10n/l10n.dart';
+
 class PriceSettingPage extends ConsumerStatefulWidget {
   const PriceSettingPage({super.key});
   @override
@@ -48,19 +49,18 @@ class _PriceSettingPageState extends ConsumerState<PriceSettingPage> {
     } catch (e) {
       debugPrint('[Price] load error: $e');
       setState(() => _loadingInit = false);
-      // 讀取失敗時保留預設 100/100
-      Fluttertoast.showToast(msg: '讀取價格失敗，已使用預設值');
+      // i18n
+      Fluttertoast.showToast(msg: S.of(context).loadPriceFailedUsingDefaults);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // 若需要，也可以用使用者本地資料預先顯示（可選）
-    // final user = ref.watch(userProfileProvider);
+    final s = S.of(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('价格设置', style: TextStyle(color: Colors.black, fontSize: 16)),
+        title: Text(s.priceSetting, style: const TextStyle(color: Colors.black, fontSize: 16)),
         centerTitle: true,
         backgroundColor: Colors.white,
         elevation: 0,
@@ -69,7 +69,7 @@ class _PriceSettingPageState extends ConsumerState<PriceSettingPage> {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadingInit ? null : _loadPrices,
-            tooltip: '重新讀取',
+            tooltip: s.refresh, // 使用既有的「重新整理 / Refresh」
           )
         ],
       ),
@@ -81,14 +81,15 @@ class _PriceSettingPageState extends ConsumerState<PriceSettingPage> {
           // 視頻價格
           _buildItem(
             iconPath: 'assets/icon_set_price_2.svg',
-            label: '视频价格设置',
+            label: s.videoPriceSettings,
             trailing: _buildPriceButton(
+              context: context,
               amount: _videoPrice,
               loading: _savingVideo,
               onPressed: _savingVideo
                   ? null
                   : () => _showEditPriceDialog(
-                title: '视频价格设置',
+                title: s.videoPriceSettings,
                 initial: _videoPrice,
                 onSaved: (v) => _applyPrice(isVideo: true, value: v),
               ),
@@ -98,14 +99,15 @@ class _PriceSettingPageState extends ConsumerState<PriceSettingPage> {
           // 語音價格
           _buildItem(
             iconPath: 'assets/icon_set_price_4.svg',
-            label: '语音价格设置',
+            label: s.voicePriceSettings,
             trailing: _buildPriceButton(
+              context: context,
               amount: _voicePrice,
               loading: _savingVoice,
               onPressed: _savingVoice
                   ? null
                   : () => _showEditPriceDialog(
-                title: '语音价格设置',
+                title: s.voicePriceSettings,
                 initial: _voicePrice,
                 onSaved: (v) => _applyPrice(isVideo: false, value: v),
               ),
@@ -116,11 +118,14 @@ class _PriceSettingPageState extends ConsumerState<PriceSettingPage> {
     );
   }
 
+  // + 加上 context 以便取多語系
   Widget _buildPriceButton({
+    required BuildContext context,
     required int amount,
     required VoidCallback? onPressed,
     bool loading = false,
   }) {
+    final s = S.of(context);
     return SizedBox(
       height: 36,
       child: ElevatedButton(
@@ -138,17 +143,15 @@ class _PriceSettingPageState extends ConsumerState<PriceSettingPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (loading) ...[
-              const SizedBox(
-                width: 16, height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
+              const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
               const SizedBox(width: 8),
             ] else ...[
               Image.asset('assets/icon_gold1.png', width: 18, height: 18),
               const SizedBox(width: 6),
             ],
             Text(
-              '$amount币 / 分钟',
+              // 例：100 金幣 / 分鐘 ； English：100 coins / min
+              '$amount${s.coinsUnit} / ${s.minuteUnit}',
               style: const TextStyle(fontSize: 14, color: Colors.black),
             ),
           ],
@@ -175,7 +178,6 @@ class _PriceSettingPageState extends ConsumerState<PriceSettingPage> {
     );
   }
 
-  /// 編輯價格彈窗
   Future<void> _showEditPriceDialog({
     required String title,
     required int initial,
@@ -185,6 +187,7 @@ class _PriceSettingPageState extends ConsumerState<PriceSettingPage> {
     final result = await showDialog<int>(
       context: context,
       builder: (ctx) {
+        final s = S.of(ctx);
         return AlertDialog(
           title: Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16)),
           contentPadding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
@@ -200,10 +203,10 @@ class _PriceSettingPageState extends ConsumerState<PriceSettingPage> {
                       FilteringTextInputFormatter.digitsOnly,
                       LengthLimitingTextInputFormatter(4),
                     ],
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       isDense: true,
-                      border: OutlineInputBorder(),
-                      hintText: '請輸入 100 ~ 1000',
+                      border: const OutlineInputBorder(),
+                      hintText: s.enterPriceRangeHint(kMinPrice, kMaxPrice),
                     ),
                   ),
                 ),
@@ -211,24 +214,24 @@ class _PriceSettingPageState extends ConsumerState<PriceSettingPage> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.commonCancel)),
             TextButton(
               onPressed: () {
                 final text = controller.text.trim();
                 final v = int.tryParse(text);
                 if (v == null) {
                   ScaffoldMessenger.of(ctx).showSnackBar(
-                    const SnackBar(content: Text('請輸入有效數字')),
+                    SnackBar(content: Text(s.pleaseEnterValidNumber)),
                   );
                   return;
                 }
                 if (v < kMinPrice || v > kMaxPrice) {
-                  Fluttertoast.showToast(msg: '價格需介於 $kMinPrice ~ $kMaxPrice');
+                  Fluttertoast.showToast(msg: s.priceMustBeBetween(kMinPrice, kMaxPrice));
                   return;
                 }
                 Navigator.pop(ctx, v);
               },
-              child: const Text('保存'),
+              child: Text(s.commonSave),
             ),
           ],
         );
@@ -242,16 +245,16 @@ class _PriceSettingPageState extends ConsumerState<PriceSettingPage> {
     required bool isVideo,
     required int value,
   }) async {
+    final s = S.of(context);
     if (value < kMinPrice || value > kMaxPrice) {
-      Fluttertoast.showToast(msg: '價格需介於 $kMinPrice ~ $kMaxPrice');
+      Fluttertoast.showToast(msg: s.priceMustBeBetween(kMinPrice, kMaxPrice));
       return;
     }
-    if (_silentBusy) return; // 防重複提交
+    if (_silentBusy) return;
     _silentBusy = true;
 
     final prev = isVideo ? _videoPrice : _voicePrice;
 
-    // 樂觀更新 + 顯示按鈕 loading
     setState(() {
       if (isVideo) {
         _videoPrice = value;
@@ -264,9 +267,8 @@ class _PriceSettingPageState extends ConsumerState<PriceSettingPage> {
 
     try {
       await ref.read(userRepositoryProvider).setPrice(isVideo: isVideo, price: value);
-      Fluttertoast.showToast(msg: '保存成功');
+      Fluttertoast.showToast(msg: s.saveSuccess);
     } catch (_) {
-      // 失敗還原
       setState(() {
         if (isVideo) {
           _videoPrice = prev;
@@ -274,7 +276,7 @@ class _PriceSettingPageState extends ConsumerState<PriceSettingPage> {
           _voicePrice = prev;
         }
       });
-      Fluttertoast.showToast(msg: '保存失敗，請稍後再試');
+      Fluttertoast.showToast(msg: s.saveFailedTryLater);
     } finally {
       setState(() {
         _savingVideo = false;
@@ -284,3 +286,4 @@ class _PriceSettingPageState extends ConsumerState<PriceSettingPage> {
     }
   }
 }
+

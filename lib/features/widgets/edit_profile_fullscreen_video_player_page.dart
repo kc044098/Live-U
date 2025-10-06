@@ -7,6 +7,7 @@ import 'package:video_player/video_player.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/member_video_model.dart';
+import '../../l10n/l10n.dart';
 import '../../routes/app_routes.dart';
 import '../live/video_repository_provider.dart';
 import '../profile/profile_controller.dart';
@@ -27,17 +28,16 @@ class FullscreenVideoPlayerPage extends ConsumerStatefulWidget {
 
 class _FullscreenVideoPlayerPageState
     extends ConsumerState<FullscreenVideoPlayerPage>
-    with RouteAware, WidgetsBindingObserver { // ⬅ 加入 WidgetsBindingObserver
+    with RouteAware, WidgetsBindingObserver {
   late VideoPlayerController _controller;
 
-  // 與圖片頁一致：標題 + 分類（精選/日常） + 樂觀上傳
+  // 與圖片頁一致：標題 + 分類（多語）
   late String _selectedCategory;
   final TextEditingController _textController = TextEditingController();
   late final String _origTitle;
   late final int _origIsTop;
   bool _isBroadcaster = false;
 
-  // ===== 新增：Spinner 與續播輔助 =====
   bool _showSpinner = false;
   void _videoValueListener() {
     final v = _controller.value;
@@ -47,7 +47,7 @@ class _FullscreenVideoPlayerPageState
     }
   }
   void _resumeVideo() {
-    _videoValueListener(); // 先校正一次 spinner
+    _videoValueListener();
     if (!_controller.value.isInitialized) {
       _controller.initialize().then((_) {
         if (!mounted) return;
@@ -56,29 +56,33 @@ class _FullscreenVideoPlayerPageState
         _controller.play();
       });
     } else {
-      // 某些機型恢復後需要延一個 microtask 才能正確播放
       Future.microtask(() => _controller.play());
     }
   }
-  // ==================================
 
-  String _isTopToCategory(int isTop) => isTop == 1 ? '精選' : '日常';
-  int _categoryToIsTop(String cat) => cat == '精選' ? 1 : 2;
+  // ===== 多語：分類 ↔ isTop 對應 =====
+  String _isTopToCategory(BuildContext context, int isTop) {
+    final l = S.of(context);
+    return isTop == 1 ? l.categoryFeatured : l.categoryDaily;
+  }
+  int _categoryToIsTop(BuildContext context, String cat) {
+    final l = S.of(context);
+    return cat == l.categoryFeatured ? 1 : 2;
+  }
   static const int _kMaxTitleLen = 300;
 
   bool get _hasChanges {
     final t = _textController.text.trim();
-    final isTop = _categoryToIsTop(_selectedCategory);
+    final isTop = _categoryToIsTop(context, _selectedCategory);
     return (t != _origTitle) || (isTop != _origIsTop);
   }
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this); // ⬅ 監聽前/後景
+    WidgetsBinding.instance.addObserver(this);
 
     // 初始化 UI 狀態
-    _selectedCategory = _isTopToCategory(widget.item.isTop);
     _textController.text = widget.item.title;
     _origTitle = widget.item.title;
     _origIsTop = widget.item.isTop;
@@ -97,14 +101,12 @@ class _FullscreenVideoPlayerPageState
       _controller = VideoPlayerController.asset(p);
     }
 
-    _controller.addListener(_videoValueListener); // ⬅ 監聽 value 變化
+    _controller.addListener(_videoValueListener);
 
     await _controller.initialize();
     await _controller.setLooping(true);
     await _controller.play();
     if (mounted) setState(() {});
-
-    // 初始化後立刻校正一次 spinner 狀態
     WidgetsBinding.instance.addPostFrameCallback((_) => _videoValueListener());
   }
 
@@ -112,24 +114,20 @@ class _FullscreenVideoPlayerPageState
   void didChangeDependencies() {
     super.didChangeDependencies();
     final route = ModalRoute.of(context);
-    if (route != null) routeObserver.subscribe(this, route); // ⬅ RouteAware
+    if (route != null) routeObserver.subscribe(this, route);
   }
 
-  // ====== RouteAware：被其它頁蓋住/返回本頁 ======
   @override
   void didPushNext() {
     if (_controller.value.isInitialized) {
       _controller.pause();
     }
   }
-
   @override
   void didPopNext() {
     _resumeVideo();
   }
-  // =====================================
 
-  // ====== App lifecycle：切到背景/回前景 ======
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!_controller.value.isInitialized) return;
@@ -146,19 +144,17 @@ class _FullscreenVideoPlayerPageState
         break;
     }
   }
-  // =====================================
 
   @override
   void dispose() {
     routeObserver.unsubscribe(this);
-    WidgetsBinding.instance.removeObserver(this); // ⬅ 移除 observer
-    _controller.removeListener(_videoValueListener); // ⬅ 移除 listener
+    WidgetsBinding.instance.removeObserver(this);
+    _controller.removeListener(_videoValueListener);
     _controller.dispose();
     _textController.dispose();
     super.dispose();
   }
 
-  // 與圖片頁相同的樂觀上傳
   void _saveChangesOptimistically() {
     if (!_hasChanges) {
       Navigator.pop(context, {'updated': false});
@@ -170,7 +166,7 @@ class _FullscreenVideoPlayerPageState
     final title = raw.length > _kMaxTitleLen
         ? raw.substring(0, _kMaxTitleLen)
         : raw;
-    final isTop = _categoryToIsTop(_selectedCategory);
+    final isTop = _categoryToIsTop(context, _selectedCategory); // ← 多語
 
     Navigator.pop(context, {
       'updated': true,
@@ -188,8 +184,10 @@ class _FullscreenVideoPlayerPageState
 
   @override
   Widget build(BuildContext context) {
+    final l = S.of(context);
     final user = ref.watch(userProfileProvider);
     _isBroadcaster = user?.isBroadcaster == true;
+    _selectedCategory = _isTopToCategory(context, widget.item.isTop);
 
     return WillPopScope(
       onWillPop: () async {
@@ -219,7 +217,6 @@ class _FullscreenVideoPlayerPageState
         ),
         body: Stack(
           children: [
-            // 全螢幕影片
             if (_controller.value.isInitialized)
               SizedBox.expand(
                 child: FittedBox(
@@ -234,7 +231,6 @@ class _FullscreenVideoPlayerPageState
             else
               const Center(child: CircularProgressIndicator()),
 
-            // 🔽 緩衝/讀取時的轉圈圈覆蓋層（與另一頁一致）
             IgnorePointer(
               ignoring: true,
               child: AnimatedOpacity(
@@ -244,7 +240,6 @@ class _FullscreenVideoPlayerPageState
               ),
             ),
 
-            // 左下角資訊 + 編輯區
             Positioned(
               left: 16,
               right: 16,
@@ -274,7 +269,7 @@ class _FullscreenVideoPlayerPageState
                                   ),
                                 ),
                                 child: const Text(
-                                  'VIP',
+                                  'VIP', // 此處維持原設計字樣
                                   style: TextStyle(
                                       fontSize: 12,
                                       color: Colors.white,
@@ -289,25 +284,22 @@ class _FullscreenVideoPlayerPageState
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // ⬇️ 文字框填滿剩餘寬度，與畫面最右邊距離固定 10
                       Expanded(
                         child: AutoGrowTextField(
                           controller: _textController,
                           style: const TextStyle(color: Colors.white, fontSize: 14),
                           inputFormatters: [ LengthLimitingTextInputFormatter(_kMaxTitleLen) ],
                           maxLength: _kMaxTitleLen,
-                          multiline: true,                // ⬅️ 開啟多行自動換行
-                          // 可保留預設 padding，也可稍微加高：
+                          multiline: true,
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         ),
                       ),
 
-                      // 右側分類按鈕（保留）
                       if (_isBroadcaster) ...[
                         const SizedBox(width: 8),
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: _selectedCategory == '精選'
+                            backgroundColor: _selectedCategory == l.categoryFeatured
                                 ? const Color(0xFFFF4D67)
                                 : const Color(0xFF3A9EFF),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -337,6 +329,7 @@ class _FullscreenVideoPlayerPageState
   }
 
   void _showCategoryBottomSheet(BuildContext context) {
+    final l = S.of(context);
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
@@ -348,28 +341,34 @@ class _FullscreenVideoPlayerPageState
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('選擇分類',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              Text(l.selectCategory,  // ← 多語
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
               ListTile(
-                title: Text('精選',
-                    style: TextStyle(
-                        color: _selectedCategory == '精選'
-                            ? const Color(0xFFFF4D67)
-                            : Colors.black)),
+                title: Text(
+                  l.categoryFeatured, // ← 多語
+                  style: TextStyle(
+                    color: _selectedCategory == l.categoryFeatured
+                        ? const Color(0xFFFF4D67)
+                        : Colors.black,
+                  ),
+                ),
                 onTap: () {
-                  setState(() => _selectedCategory = '精選');
+                  setState(() => _selectedCategory = l.categoryFeatured);
                   Navigator.pop(context);
                 },
               ),
               ListTile(
-                title: Text('日常',
-                    style: TextStyle(
-                        color: _selectedCategory == '日常'
-                            ? const Color(0xFF3A9EFF)
-                            : Colors.black)),
+                title: Text(
+                  l.categoryDaily, // ← 多語
+                  style: TextStyle(
+                    color: _selectedCategory == l.categoryDaily
+                        ? const Color(0xFF3A9EFF)
+                        : Colors.black,
+                  ),
+                ),
                 onTap: () {
-                  setState(() => _selectedCategory = '日常');
+                  setState(() => _selectedCategory = l.categoryDaily);
                   Navigator.pop(context);
                 },
               ),

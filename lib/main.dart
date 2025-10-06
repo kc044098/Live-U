@@ -65,6 +65,13 @@ class MyApp extends ConsumerWidget {
         highlightColor: Colors.transparent,
       ),
       locale: locale,
+      localeResolutionCallback: (Locale? device, Iterable<Locale> supported) {
+        if (device == null) return const Locale('en');
+        if (device.languageCode.toLowerCase() == 'zh') {
+          return const Locale('zh');
+        }
+        return const Locale('en');
+      },
       localizationsDelegates: const [
         S.delegate,
         GlobalMaterialLocalizations.delegate,

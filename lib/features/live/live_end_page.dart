@@ -4,6 +4,7 @@ import 'package:djs_live_stream/features/live/video_repository_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../l10n/l10n.dart';
 import '../../routes/app_routes.dart';
 import 'data_model/live_end_summary.dart';
 
@@ -50,6 +51,15 @@ class _LiveEndPageState extends ConsumerState<LiveEndPage> {
     if ((_s.liveUnix ?? 0) == 0 && _roomId.isNotEmpty) {
       _startPolling();
     }
+  }
+
+  String _fmtDuration(BuildContext context, int sec) {
+    final t = S.of(context);
+    if (sec <= 0) return t.durationZeroSeconds;
+    final m = sec ~/ 60;
+    final s = sec % 60;
+    // 與原本「m分鐘s秒 / s秒」的樣式一致，只把單位交給語系字串
+    return m > 0 ? '$m${t.minuteUnit}$s${t.secondUnit}' : '$s${t.secondUnit}';
   }
 
   void _startPolling() {
@@ -117,21 +127,15 @@ class _LiveEndPageState extends ConsumerState<LiveEndPage> {
     super.dispose();
   }
 
-  String _fmtDuration(int sec) {
-    if (sec <= 0) return '0秒';
-    final m = sec ~/ 60;
-    final s = sec % 60;
-    return m > 0 ? '${m}分钟${s}秒' : '${s}秒';
-  }
-
   @override
   Widget build(BuildContext context) {
+    final t = S.of(context); // 取本地化資源
     final stillCalculating = (_s.liveUnix ?? 0) == 0;
 
     // 視頻/語音收入與對應標籤
     final bool isVideoIncome = (_s.videoGold ?? 0) > 0;
     final int callGold = isVideoIncome ? (_s.videoGold ?? 0) : (_s.voiceGold ?? 0);
-    final String callLabel = isVideoIncome ? '视频收入' : '语音收入';
+    final String callLabel = isVideoIncome ? t.videoIncome : t.voiceIncome;
     final int totalGold = callGold + (_s.giftGold ?? 0);
 
     return WillPopScope(
@@ -142,7 +146,7 @@ class _LiveEndPageState extends ConsumerState<LiveEndPage> {
       child: Scaffold(
         backgroundColor: Colors.white,
         appBar: AppBar(
-          title: const Text('聊天结束', style: TextStyle(fontSize: 16, color: Colors.black)),
+          title: Text(t.chatEndedTitle, style: const TextStyle(fontSize: 16, color: Colors.black)),
           centerTitle: true,
           elevation: 0,
           backgroundColor: Colors.white,
@@ -153,7 +157,7 @@ class _LiveEndPageState extends ConsumerState<LiveEndPage> {
           actions: [
             if (stillCalculating && _roomId.isNotEmpty)
               IconButton(
-                tooltip: '重新整理',
+                tooltip: t.refresh,
                 icon: const Icon(Icons.refresh, color: Colors.black),
                 onPressed: _startPolling,
               ),
@@ -182,14 +186,14 @@ class _LiveEndPageState extends ConsumerState<LiveEndPage> {
             // 標題/副標
             Center(
               child: Text(
-                stillCalculating ? '结算中，请稍候…' : '太棒了，努力就会有收获！',
+                stillCalculating ? t.settlingPleaseWait : t.greatJobKeepItUp,
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
             ),
             const SizedBox(height: 4),
             Center(
               child: Text(
-                '视频时长：${_fmtDuration(_s.liveUnix ?? 0)}',
+                '${t.videoDurationPrefix}${_fmtDuration(context, _s.liveUnix ?? 0)}',
                 style: const TextStyle(fontSize: 12, color: Color(0xFF9A9A9A)),
               ),
             ),
@@ -209,9 +213,9 @@ class _LiveEndPageState extends ConsumerState<LiveEndPage> {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        _Metric(value: '${totalGold}金币', label: '总收入'),
+                        _Metric(value: '$totalGold${t.coinUnit}', label: t.totalIncome),
                         const SizedBox(height: 16),
-                        _Metric(value: '${_s.giftNum ?? 0}次', label: '送礼次数'),
+                        _Metric(value: '${_s.giftNum ?? 0}${t.timesUnit}', label: t.giftsCountLabel),
                       ],
                     ),
                   ),
@@ -220,9 +224,9 @@ class _LiveEndPageState extends ConsumerState<LiveEndPage> {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        _Metric(value: '${callGold}金币', label: callLabel),
+                        _Metric(value: '$callGold${t.coinUnit}', label: callLabel),
                         const SizedBox(height: 16),
-                        _Metric(value: '${_s.giftGold ?? 0}金币', label: '礼物收入'),
+                        _Metric(value: '${_s.giftGold ?? 0}${t.coinUnit}', label: t.giftIncome),
                       ],
                     ),
                   ),
@@ -235,7 +239,7 @@ class _LiveEndPageState extends ConsumerState<LiveEndPage> {
                 child: TextButton.icon(
                   onPressed: _startPolling,
                   icon: const Icon(Icons.refresh),
-                  label: const Text('仍未结算？点此重试'),
+                  label: Text(t.stillNotSettledTapRetry),
                 ),
               ),
           ],

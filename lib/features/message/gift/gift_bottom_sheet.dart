@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/models/gift_item.dart';
+import '../../../l10n/l10n.dart';
 import '../../live/gift_providers.dart';
 import '../../profile/profile_controller.dart';
 import '../../wallet/wallet_repository.dart';
@@ -79,6 +80,7 @@ class _GiftBottomSheetState extends ConsumerState<GiftBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     final giftsAsync = ref.watch(normalGiftListProvider);
     final cdnBase = ref.watch(userProfileProvider)?.cdnUrl ?? '';
     final walletAsync = ref.watch(walletBalanceProvider);
@@ -119,7 +121,7 @@ class _GiftBottomSheetState extends ConsumerState<GiftBottomSheet> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text('載入禮物失敗：$e',
+                            Text( s.loadFailedPrefix(e),
                                 style: const TextStyle(color: Colors.redAccent)),
                             const SizedBox(height: 8),
                             OutlinedButton(
@@ -128,15 +130,15 @@ class _GiftBottomSheetState extends ConsumerState<GiftBottomSheet> {
                                 side: const BorderSide(color: Colors.white24),
                               ),
                               onPressed: () => ref.read(giftListProvider.notifier).refresh(),
-                              child: const Text('重試'),
+                              child: Text(s.retry),
                             ),
                           ],
                         ),
                       ),
                       data: (gifts) {
                         if (gifts.isEmpty) {
-                          return const Center(
-                            child: Text('暫無禮物', style: TextStyle(color: Colors.white70)),
+                          return Center(
+                            child: Text(s.noGifts, style: const TextStyle(color: Colors.white70)),
                           );
                         }
                         return Scrollbar(
@@ -329,6 +331,7 @@ class _RechargeButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasGold = (gold ?? 0) > 0;
+    final s = S.of(context);
 
     return InkWell(
       borderRadius: BorderRadius.circular(22),
@@ -349,7 +352,7 @@ class _RechargeButton extends StatelessWidget {
             ),
             const SizedBox(width: 6),
             Text(
-              hasGold ? _compact(context, gold!) : '儲值',
+              hasGold ? _compact(context, gold!) : s.recharge,
               style: const TextStyle(color: Colors.white, fontSize: 16),
             ),
             if (!hasGold)

@@ -18,6 +18,7 @@ import 'package:video_thumbnail/video_thumbnail.dart';
 import '../../core/location_helper.dart';
 import '../../core/user_local_storage.dart';
 import '../../data/models/user_model.dart';
+import '../../l10n/l10n.dart';
 import '../../routes/app_routes.dart';
 import '../live/member_video_feed_state.dart';
 import '../profile/profile_controller.dart';
@@ -165,12 +166,13 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
   }
 
   Widget buildMyProfileTab(UserModel? user) {
-    // 從 user.extra 中讀取擴展資料（假設後端返回了身高、體重等資訊）
-    final height = user?.extra?['height'] ?? '未知';
-    final weight = user?.extra?['weight'] ?? '未知';
-    final body = user?.extra?['body'] ?? '未知';
-    final city = user?.extra?['city'] ?? currentCity;
-    final job = user?.extra?['job'] ?? '未知';
+    final s = S.of(context);
+
+    final height = user?.extra?['height'] ?? s.commonUnknown;
+    final weight = user?.extra?['weight'] ?? s.commonUnknown;
+    final body   = user?.extra?['body']   ?? s.commonUnknown;
+    final city   = user?.extra?['city']   ?? currentCity;
+    final job    = user?.extra?['job']    ?? s.commonUnknown;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -178,7 +180,7 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 12),
-          const Text('關於我', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          Text(s.profileAboutMe, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)), // '關於我'
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.all(12),
@@ -190,21 +192,21 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
               children: [
                 Row(
                   children: [
-                    Expanded(child: _InfoRow(label: '身高', value: height)),
-                    Expanded(child: _InfoRow(label: '體重', value: weight)),
+                    Expanded(flex:3, child: _InfoRow(label: s.profileLabelHeight, value: height)),
+                    Expanded(flex:2, child: _InfoRow(label: s.profileLabelWeight, value: weight)),
                   ],
                 ),
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    Expanded(child: _InfoRow(label: '三圍', value: body)),
-                    Expanded(child: _InfoRow(label: '城市', value: city)),
+                    Expanded(flex:3, child: _InfoRow(label: s.profileLabelMeasurements, value: body)),
+                    Expanded(flex:2, child: _InfoRow(label: s.profileLabelCity, value: city)),
                   ],
                 ),
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    Expanded(child: _InfoRow(label: '工作', value: job)),
+                    Expanded(child: _InfoRow(label: s.profileLabelJob, value: job)),
                     const Expanded(child: SizedBox()),
                   ],
                 ),
@@ -214,7 +216,7 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
           const SizedBox(height: 16),
           if ((user?.tags ?? []).isNotEmpty) ...[
             const SizedBox(height: 16),
-            const Text('我的標籤', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text(s.profileMyTags, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)), // '我的標籤'
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -230,9 +232,7 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
               child: OutlinedButton(
                 style: OutlinedButton.styleFrom(
                   side: const BorderSide(color: Color(0xFFFF4D67), width: 1),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                 ),
                 onPressed: () async {
                   await Navigator.push(
@@ -240,25 +240,21 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
                     MaterialPageRoute(builder: (_) => const EditProfilePage()),
                   );
                   if (!mounted) return;
-                  _currentIndexNotifier.value = 0; // 回到第一張，避免越界
-                  setState(() {});                 // 觸發重建（用最新 photoURLAbs）
+                  _currentIndexNotifier.value = 0;
+                  setState(() {});
                 },
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     SvgPicture.asset(
                       'assets/icon_edit.svg',
-                      width: 20,
-                      height: 20,
-                      colorFilter: const ColorFilter.mode(
-                        Color(0xFFFF4D67),
-                        BlendMode.srcIn,
-                      ),
+                      width: 20, height: 20,
+                      colorFilter: const ColorFilter.mode(Color(0xFFFF4D67), BlendMode.srcIn),
                     ),
                     const SizedBox(width: 8),
-                    const Text(
-                      '編輯',
-                      style: TextStyle(
+                    Text(
+                      s.commonEdit, // '編輯'
+                      style: const TextStyle(
                         color: Color(0xFFFF4D67),
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
@@ -276,17 +272,16 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
   }
 
   Widget buildMyVideoTab(UserModel? user) {
+    final s = S.of(context);
     final feed = ref.watch(memberFeedProvider);
     final notifier = ref.read(memberFeedProvider.notifier);
 
     final hasItems = feed.items.isNotEmpty;
-    final isLoadingMore = hasItems && feed.isLoading; // 只在有資料時顯示底部 spinner
+    final isLoadingMore = hasItems && feed.isLoading;
     final isEmpty = feed.items.isEmpty;
 
     return RefreshIndicator(
-      onRefresh: () async {
-        await notifier.loadFirstPage();
-      },
+      onRefresh: () async => notifier.loadFirstPage(int.parse(ref.watch(userProfileProvider)!.uid)),
       child: CustomScrollView(
         controller: _videoScrollController,
         cacheExtent: 3000,
@@ -302,13 +297,12 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
                   children: [
                     const Icon(Icons.photo_library_outlined, size: 48, color: Colors.grey),
                     const SizedBox(height: 8),
-                    Text('還沒有內容', style: TextStyle(color: Colors.grey[600])),
+                    Text(s.commonNoContentYet, style: TextStyle(color: Colors.grey[600])), // '還沒有內容'
                     const SizedBox(height: 120),
                     GestureDetector(
                       onTap: () => Navigator.pushNamed(context, AppRoutes.videoRecorder),
                       child: Container(
-                        width: 288,
-                        height: 48,
+                        width: 288, height: 48,
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(colors: [Color(0xFFFFB56B), Color(0xFFDF65F8)]),
                           borderRadius: BorderRadius.circular(30),
@@ -319,7 +313,8 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
                             children: [
                               SvgPicture.asset('assets/icon_start_video.svg', width: 24, height: 24),
                               const SizedBox(width: 6),
-                              const Text('發佈動態', style: TextStyle(color: Colors.white, fontSize: 16)),
+                              Text(s.commonPublishMoment, // '發佈動態'
+                                  style: const TextStyle(color: Colors.white, fontSize: 16)),
                             ],
                           ),
                         ),
@@ -448,7 +443,7 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                       decoration: BoxDecoration(color: Colors.pink, borderRadius: BorderRadius.circular(4)),
-                                      child: const Text('精選', style: TextStyle(color: Colors.white, fontSize: 10)),
+                                      child: Text(s.commonFeatured, style: TextStyle(color: Colors.white, fontSize: 10)),
                                     ),
                                   ),
                               ],
@@ -456,7 +451,9 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            item.title.isEmpty ? (item.isVideo ? '影片' : (isImage ? '圖片' : '內容')) : item.title,
+                            item.title.isEmpty
+                                ? (item.isVideo ? s.commonVideo : (isImage ? s.commonImage : s.commonContent))
+                                : item.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontSize: 13),
@@ -490,7 +487,7 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
                         children: [
                           SvgPicture.asset('assets/icon_start_video.svg', width: 24, height: 24),
                           const SizedBox(width: 6),
-                          const Text('發佈動態', style: TextStyle(color: Colors.white, fontSize: 16)),
+                          Text(s.commonPublishMoment, style: TextStyle(color: Colors.white, fontSize: 16)),
                         ],
                       ),
                     ),
@@ -554,7 +551,7 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
           ? updatedUser
           : updatedUser.copyWith(gold: prev.gold, vipExpire: prev.vipExpire);
       ref.read(userProfileProvider.notifier).setUser(merged);
-      ref.read(memberFeedProvider.notifier).loadFirstPage();
+      ref.read(memberFeedProvider.notifier).loadFirstPage(int.parse(ref.watch(userProfileProvider)!.uid));
     });
     _getCurrentCityFromGPS();
 
@@ -572,6 +569,7 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(userProfileProvider);
+    final s = S.of(context);
 
     return DefaultTabController(
       length: 2,
@@ -581,10 +579,10 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           title: Text(
-            user?.displayName ?? '個人資料',
+            user?.displayName ?? s.commonMyProfile, // '個人資料'
             style: const TextStyle(color: Colors.white),
           ),
-          centerTitle:true,
+          centerTitle: true,
           leading: const BackButton(color: Colors.white),
         ),
         body: Column(
@@ -592,20 +590,19 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
           children: [
             _buildProfileHeader(user),
             const SizedBox(height: 8),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 15),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 15),
               child: TabBar(
-                labelColor: Color(0xFFFF4D67),
+                labelColor: const Color(0xFFFF4D67),
                 unselectedLabelColor: Colors.grey,
-                labelStyle:
-                TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                unselectedLabelStyle: TextStyle(fontSize: 16),
-                indicatorColor: Color(0xFFFF4D67),
+                labelStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                unselectedLabelStyle: const TextStyle(fontSize: 16),
+                indicatorColor: const Color(0xFFFF4D67),
                 indicatorWeight: 2,
                 dividerColor: Colors.transparent,
                 tabs: [
-                  Tab(text: '我的資料'),
-                  Tab(text: '個人動態'),
+                  Tab(text: s.profileTabInfo),    // '我的資料'
+                  Tab(text: s.profileTabMoments), // '個人動態'
                 ],
               ),
             ),
@@ -670,9 +667,8 @@ class _InfoRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           Text('$label：', style: const TextStyle(color: Colors.grey, fontSize: 14)),
-          const SizedBox(width: 4),
           Text(value, style: const TextStyle(color: Colors.black, fontSize: 14)),
         ],
       ),

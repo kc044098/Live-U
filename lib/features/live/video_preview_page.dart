@@ -4,6 +4,7 @@ import 'package:video_player/video_player.dart';
 import 'package:audioplayers/audioplayers.dart' as ap;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../l10n/l10n.dart';
 import '../profile/profile_controller.dart';
 import 'video_details_page.dart';
 
@@ -244,9 +245,9 @@ class _VideoPreviewPageState extends ConsumerState<VideoPreviewPage>
                       ),
                       borderRadius: BorderRadius.circular(30),
                     ),
-                    child: const Center(
+                    child: Center(
                       child: Text(
-                        '下一步',
+                        S.of(context).nextStep,
                         style: TextStyle(color: Colors.white, fontSize: 16),
                       ),
                     ),

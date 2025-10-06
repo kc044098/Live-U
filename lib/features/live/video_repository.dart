@@ -1,4 +1,4 @@
-import 'dart:convert';
+import 'dart:ui' as ui;
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,6 +19,21 @@ class VideoRepository {
   final Ref _ref;
 
   VideoRepository(this._api, this._config, this._ref);
+
+  String _langCode() {
+    try {
+      // Flutter 3 推薦從 platformDispatcher 取用
+      return ui.PlatformDispatcher.instance.locale.languageCode.toLowerCase();
+    } catch (_) {
+      return 'en';
+    }
+  }
+
+  String _tOfficialLibrary() {
+    final lc = _langCode();
+    // 目前只區分 zh / 其它語言（英文）；之後想擴可再細分 zh-Hant、zh-Hans
+    return (lc == 'zh') ? '官方曲庫' : 'Official library';
+  }
 
   bool _looksNoData(Object e) {
     // 盡量不依賴型別，但優先處理 ApiException
@@ -106,14 +121,16 @@ class VideoRepository {
         '🧓🏻','🙋🏼‍♀️','👩🏻‍💼','🧑🏻‍🎤','🧑🏽‍🦱','🧒🏻','🧑','👩','👨',
         '🧒','👶','🧓','🧔','🧑‍🦰','🧑‍🦱','🧑‍🦳','🧑‍🦲','🧑‍💼','🧑‍💻','🧑‍🎓','🧑‍⚕️',
       ];
-
+      final officialArtist = _tOfficialLibrary();
       return rawList.asMap().entries.map((entry) {
         final i = entry.key;
         final m = Map<String, dynamic>.from(entry.value as Map);
         return MusicTrack(
           id: (m['id'] ?? '').toString(),
           title: (m['title'] ?? '') as String,
-          artist: '官方曲庫',
+          artist: (m['artist'] is String && (m['artist'] as String).isNotEmpty)
+              ? m['artist'] as String
+              : officialArtist,
           duration: Duration(seconds: (m['duration'] is num) ? (m['duration'] as num).toInt() : 0),
           coverEmoji: coverEmojis[i % coverEmojis.length],
           path: (m['url'] ?? '') as String,

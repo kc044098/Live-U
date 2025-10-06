@@ -2,10 +2,10 @@ enum FeedKind { video, image }
 enum OnlineStatus { offline, online, busy, unknown }
 
 class FeedItem {
-  final int id;                // 影片 ID
-  final int uid;               // 影片擁有者的用戶 ID
-  final String? videoUrl;      // 絕對 URL
-  final List<String> images;   // 絕對 URL
+  final int id;
+  final int uid;
+  final String? videoUrl;
+  final List<String> images;
   final String title;
 
   final String? nickName;

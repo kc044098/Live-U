@@ -21,6 +21,8 @@ class LoginScreen extends ConsumerStatefulWidget {
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
+enum LegalDoc { terms, anchor, privacy }
+
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final GoogleAuthService _googleAuthService = GoogleAuthService();
   final AppleAuthService _appleAuthService = AppleAuthService();
@@ -36,10 +38,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   void initState() {
     super.initState();
     _loadVersion();
-
-    _termsTap.onTap   = () => _openDoc('使用条款');
-    _anchorTap.onTap  = () => _openDoc('主播协议');
-    _privacyTap.onTap = () => _openDoc('隐私政策');
   }
 
   @override
@@ -50,8 +48,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
-  void _openDoc(String title) {
-    const url = 'https://www.liveu.live/privacy_policy.html';
+  void _openDoc(LegalDoc doc) {
+    final t = S.of(context);
+
+    late final String title;
+    late final String url;
+
+    switch (doc) {
+      case LegalDoc.terms:
+        title = t.termsOfUse;
+        url = 'https://www.liveu.live/teams_of_liveu.html';
+        break;
+      case LegalDoc.anchor:
+        title = t.anchorAgreement;
+        url = 'https://www.liveu.live/refund_policy.html';
+        break;
+      case LegalDoc.privacy:
+        title = t.privacyPolicy;
+        url = 'https://www.liveu.live/privacy_policy.html';
+        break;
+    }
+
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => WebDocPage(title: title, url: url)),
@@ -61,7 +78,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _handleGoogleLogin() async {
 
     if (Firebase.apps.isEmpty) {
-      Fluttertoast.showToast(msg: '初始化中，請稍後再試');
+      Fluttertoast.showToast(msg: S.of(context).initializingWait);
       return;
     }
 
@@ -74,30 +91,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (user != null) {
       Navigator.pushReplacementNamed(context, '/home');
     } else {
-      Fluttertoast.showToast(msg: 'Google 登入失敗');
+      Fluttertoast.showToast(msg: S.of(context).signInFailedGoogle);
     }
   }
 
   Future<void> _handleAppleLogin() async {
     if (Firebase.apps.isEmpty) {
-      Fluttertoast.showToast(msg: '初始化中，請稍後再試');
+      Fluttertoast.showToast(msg: S.of(context).initializingWait);
       return;
     }
     setState(() => _isLoading = true);
-    final user = await AppleAuthService().signInWithAppleViaFirebase(ref);
+    final user = await _appleAuthService.signInWithAppleViaFirebase(ref);
     if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (user != null) {
       Navigator.pushReplacementNamed(context, '/home');
     } else {
-      Fluttertoast.showToast(msg: 'Apple 登入失敗');
+      Fluttertoast.showToast(msg: S.of(context).signInFailedApple);
     }
   }
 
   Future<void> _handleFacebookLogin() async {
     if (Firebase.apps.isEmpty) {
-      Fluttertoast.showToast(msg: '初始化中，請稍後再試');
+      Fluttertoast.showToast(msg: S.of(context).initializingWait);
       return;
     }
     try {
@@ -109,17 +126,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (user != null) {
         Navigator.pushReplacementNamed(context, '/home');
       } else {
-        Fluttertoast.showToast(msg: 'Facebook 登入失敗');
+        Fluttertoast.showToast(msg: S.of(context).signInFailedFacebook);
       }
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
       debugPrint('Facebook 登入失敗 e: $e ');
-      Fluttertoast.showToast(msg: 'Facebook 登入失敗');
+      Fluttertoast.showToast(msg: S.of(context).signInFailedFacebook);
     }
-  }
-
-  void _fakeLogin() {
-    Navigator.pushReplacementNamed(context, '/home');
   }
 
   Widget _buildLoginButton({
@@ -179,6 +192,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = S.of(context);
+
+    _termsTap.onTap   = () => _openDoc(LegalDoc.terms);
+    _anchorTap.onTap  = () => _openDoc(LegalDoc.anchor);
+    _privacyTap.onTap = () => _openDoc(LegalDoc.privacy);
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -201,27 +220,29 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         const SizedBox(height: 64),
                         SvgPicture.asset('assets/logo_placeholder.svg', height: 80),
                         const SizedBox(height: 28),
-                        const Text('欢迎您的登录',
-                            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                        Text(
+                          t.loginWelcomeTitle,
+                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                        ),
                         const SizedBox(height: 64),
 
                         _buildLoginButton(
-                          label: '通过 Facebook 登录',
+                          label: t.loginWithFacebook,
                           iconPath: 'assets/icon_facebook.svg',
                           onPressed: _handleFacebookLogin,
                         ),
                         _buildLoginButton(
-                          label: '通过 Google 登录',
+                          label:  t.loginWithGoogle,
                           iconPath: 'assets/icon_google.svg',
                           onPressed: _handleGoogleLogin,
                         ),
                         _buildLoginButton(
-                          label: '通过 Apple 登录',
+                          label: t.loginWithApple,
                           iconPath: 'assets/icon_apple.svg',
                           onPressed: _handleAppleLogin,
                         ),
                         _buildLoginButton(
-                          label: '通过邮箱登录',
+                          label: t.loginWithEmail,
                           iconPath: 'assets/icon_email.svg',
                           onPressed: () {
                             Navigator.push(context,
@@ -229,7 +250,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           },
                         ),
                         _buildLoginButton(
-                          label: '通过账号密码登录',
+                          label: t.loginWithAccount,
                           iconPath: 'assets/icon_user.svg',
                           onPressed: () {
                             Navigator.push(context,
@@ -240,22 +261,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                         Text.rich(
                           TextSpan(
-                            text: '登录及代表您确认已满18岁，并同意我们的 ',
+                            text: t.consentLoginPrefix,
                             children: [
                               TextSpan(
-                                text: '《使用条款》',
+                                text: t.termsOfUse,
                                 style: const TextStyle(color: Color(0xFFFF4D67)),
                                 recognizer: _termsTap,
                               ),
-                              const TextSpan(text: ' 和 '),
+                              TextSpan(text: t.andWord),
                               TextSpan(
-                                text: '《主播协议》',
+                                text: t.anchorAgreement,
                                 style: const TextStyle(color: Color(0xFFFF4D67)),
                                 recognizer: _anchorTap,
                               ),
-                              const TextSpan(text: ' 与 '),
+                              TextSpan(text: t.andWord),
                               TextSpan(
-                                text: '《隐私政策》',
+                                text: t.privacyPolicy,
                                 style: const TextStyle(color: Color(0xFFFF4D67)),
                                 recognizer: _privacyTap,
                               ),
@@ -272,7 +293,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 );
               },
             ),
-
 
             // 右下角版本號
             Positioned(

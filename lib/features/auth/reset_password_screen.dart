@@ -7,6 +7,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
 import '../../core/error_handler.dart';
+import '../../l10n/l10n.dart';
 import 'auth_repository.dart';
 
 class ResetPasswordScreen extends ConsumerStatefulWidget {
@@ -22,17 +23,17 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
   final TextEditingController _newPasswordController = TextEditingController();
 
   bool _isLoading = false;
-
   bool _obscurePassword = true;
 
   Timer? _codeTimer;
   int _secondsLeft = 0;
 
   Future<void> _onSendCode() async {
+    final t = S.of(context);
     if (_secondsLeft > 0) return;  // 倒數中禁止重複點
     final email = _emailController.text.trim();
     if (email.isEmpty) {
-      Fluttertoast.showToast(msg: '請輸入郵箱');
+      Fluttertoast.showToast(msg: t.pleaseEnterEmail);
       return;
     }
 
@@ -40,51 +41,44 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
     try {
       final authRepo = ref.read(authRepositoryProvider);
       await authRepo.sendEmailCode(email);
-      Fluttertoast.showToast(msg: '驗證碼已發送');
+      Fluttertoast.showToast(msg: t.codeSent);
       _startCodeCountdown(60);     // ← 啟動 60 秒倒數
     } on EmailFormatException {
-      Fluttertoast.showToast(msg: 'Email 格式錯誤');
+      Fluttertoast.showToast(msg: t.emailFormatError);
     } catch (e) {
-      AppErrorToast.show(e); // 其它（ApiException/Dio/未知）→ 字典轉中文 Toast
+      AppErrorToast.show(e); // 其它（ApiException/Dio/未知）→ 字典轉中文/英文 Toast
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-
   Future<void> _onConfirm() async {
+    final t = S.of(context);
     final email = _emailController.text.trim();
     final code = _codeController.text.trim();
     final newPassword = _newPasswordController.text.trim();
 
-    // 郵箱是否輸入
     if (email.isEmpty) {
-      Fluttertoast.showToast(msg: '請輸入郵箱');
+      Fluttertoast.showToast(msg: t.pleaseEnterEmail);
       return;
     }
-
-    // 郵箱格式檢查
     if (!email.contains('@')) {
-      Fluttertoast.showToast(msg: '郵箱格式錯誤');
+      Fluttertoast.showToast(msg: t.emailFormatError);
       return;
     }
-
-    // 驗證碼是否輸入
     if (code.isEmpty) {
-      Fluttertoast.showToast(msg: '請輸入驗證碼');
+      Fluttertoast.showToast(msg: t.pleaseEnterCode);
       return;
     }
-
-    // 新密碼是否輸入
     if (newPassword.isEmpty) {
-      Fluttertoast.showToast(msg: '請輸入新密碼');
+      Fluttertoast.showToast(msg: t.pleaseEnterNewPassword);
       return;
     }
 
     // 密碼長度與格式檢查（6-16位且允許特殊字符）
     final passwordRegex = RegExp(r'^[A-Za-z0-9!@#\$%^&*(),.?":{}|<>]{6,16}$');
     if (!passwordRegex.hasMatch(newPassword)) {
-      Fluttertoast.showToast(msg: '密碼需為6-16位且只包含數字、字母或特殊字符');
+      Fluttertoast.showToast(msg: t.passwordFormatError);
       return;
     }
 
@@ -96,7 +90,8 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
         code: code,
         newPassword: newPassword,
       );
-      Fluttertoast.showToast(msg: '密碼已重置');
+      Fluttertoast.showToast(msg: t.passwordResetSuccess);
+      if (!mounted) return;
       Navigator.pop(context);
     } catch (e) {
       AppErrorToast.show(e);
@@ -105,9 +100,9 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
+    final t = S.of(context);
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: _isLoading
@@ -132,9 +127,9 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    '忘记密码',
-                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                  Text(
+                    t.resetTitle,
+                    style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 48),
                   // 郵箱
@@ -145,7 +140,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                         padding: const EdgeInsets.all(12),
                         child: SvgPicture.asset('assets/icon_email2.svg'),
                       ),
-                      hintText: '请输入邮箱账号',
+                      hintText: t.emailHint,
                       filled: true,
                       fillColor: const Color(0xFFFAFAFA),
                       border: OutlineInputBorder(
@@ -164,22 +159,22 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                         padding: const EdgeInsets.all(12),
                         child: SvgPicture.asset('assets/icon_password.svg'),
                       ),
-
-                      // 讓 suffix 區域有固定寬度，位置不會跳
+                      // 固定寬度，確保文字長短不影響位置
                       suffixIconConstraints: const BoxConstraints(minWidth: 100, minHeight: 48),
-
                       suffixIcon: Padding(
                         padding: const EdgeInsets.only(right: 8.0),
                         child: SizedBox(
-                          width: 92, // 固定寬度，避免文字長短造成位移
+                          width: 92,
                           child: TextButton(
-                            // 倒數中禁用按鈕（保持在原位置）
                             onPressed: _secondsLeft > 0 ? null : _onSendCode,
                             child: Text(
-                              _secondsLeft > 0 ? '${_secondsLeft}s' : '获取验证码',
+                              _secondsLeft > 0
+                                  ? '$_secondsLeft${t.secondsSuffix}'
+                                  : t.getCode,
                               style: TextStyle(
-                                // 顏色跟你原本一致；禁用時灰色
-                                color: _secondsLeft > 0 ? const Color(0xFFBBBBBB) : const Color(0xFFFF4D67),
+                                color: _secondsLeft > 0
+                                    ? const Color(0xFFBBBBBB)
+                                    : const Color(0xFFFF4D67),
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -187,8 +182,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                           ),
                         ),
                       ),
-
-                      hintText: '请输入验证码',
+                      hintText: t.codeHint,
                       filled: true,
                       fillColor: const Color(0xFFFAFAFA),
                       border: OutlineInputBorder(
@@ -216,9 +210,9 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                         ),
                         onPressed: () =>
                             setState(() => _obscurePassword = !_obscurePassword),
-                        tooltip: _obscurePassword ? '顯示密碼' : '隱藏密碼',
+                        tooltip: _obscurePassword ? t.showPassword : t.hidePassword,
                       ),
-                      hintText: '请输入新密码',
+                      hintText: t.newPasswordHint,
                       filled: true,
                       fillColor: const Color(0xFFFAFAFA),
                       border: OutlineInputBorder(
@@ -229,9 +223,9 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                   ),
                   const SizedBox(height: 12),
 
-                  const Text(
-                    '密码6-16字符，只能包括数字、字母或者特殊字符',
-                    style: TextStyle(fontSize: 14, color: Color(0xFF999999)),
+                  Text(
+                    t.passwordRuleTip,
+                    style: const TextStyle(fontSize: 14, color: Color(0xFF999999)),
                   ),
                   const SizedBox(height: 48),
 
@@ -246,10 +240,10 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                         ),
                         borderRadius: BorderRadius.circular(30),
                       ),
-                      child: const Center(
+                      child: Center(
                         child: Text(
-                          '确定',
-                          style: TextStyle(color: Colors.white, fontSize: 16),
+                          t.confirm,
+                          style: const TextStyle(color: Colors.white, fontSize: 16),
                         ),
                       ),
                     ),
@@ -258,6 +252,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
               ),
             ),
           ),
+
           // Loading 遮罩
           if (_isLoading)
             Container(
@@ -296,5 +291,5 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
     _newPasswordController.dispose();
     super.dispose();
   }
-
 }
+

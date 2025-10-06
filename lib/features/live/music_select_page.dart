@@ -2,7 +2,7 @@ import 'package:djs_live_stream/features/live/video_repository_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audioplayers/audioplayers.dart';
-import 'package:fluttertoast/fluttertoast.dart';
+import '../../l10n/l10n.dart';
 import '../profile/profile_controller.dart';
 import 'data_model/music_track.dart';
 
@@ -80,6 +80,7 @@ class _MusicSelectPageState extends ConsumerState<MusicSelectPage>
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     final top = MediaQuery.of(context).padding.top;
     final asyncTracks = ref.watch(musicListProvider);
 
@@ -113,8 +114,8 @@ class _MusicSelectPageState extends ConsumerState<MusicSelectPage>
                     Expanded(
                       child: TextField(
                         controller: _search,
-                        decoration: const InputDecoration(
-                          hintText: '搜索歌名',
+                        decoration: InputDecoration(
+                          hintText: s.musicSearchHint,
                           isCollapsed: true,
                           border: InputBorder.none,
                         ),
@@ -135,7 +136,7 @@ class _MusicSelectPageState extends ConsumerState<MusicSelectPage>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text('載入失敗', style: TextStyle(color: Colors.grey)),
+                      Text(s.musicLoadFailedTitle, style: TextStyle(color: Colors.grey)),
                       const SizedBox(height: 8),
                       Text(
                         '$err',
@@ -145,7 +146,7 @@ class _MusicSelectPageState extends ConsumerState<MusicSelectPage>
                       const SizedBox(height: 12),
                       TextButton(
                         onPressed: () => ref.refresh(musicListProvider),
-                        child: const Text('重試'),
+                        child: Text(s.retry),
                       ),
                     ],
                   ),
@@ -155,8 +156,8 @@ class _MusicSelectPageState extends ConsumerState<MusicSelectPage>
                   children: List.generate(3, (index) {
                     final items = _filtered(all, index);
                     if (items.isEmpty) {
-                      return const Center(
-                        child: Text('暂无内容', style: TextStyle(color: Colors.grey)),
+                      return Center(
+                        child: Text(s.musicNoContent,  style: const TextStyle(color: Colors.grey)),
                       );
                     }
                     return ListView.separated(
@@ -212,6 +213,7 @@ class _MusicTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     return TabBar(
       dividerColor: Colors.transparent,
       controller: controller,
@@ -219,10 +221,10 @@ class _MusicTabs extends StatelessWidget {
       unselectedLabelColor: const Color(0xFF8E8895),
       indicatorColor: const Color(0xFFFB4C61),
       indicatorWeight: 2,
-      tabs: const [
-        Tab(text: '推荐'),
-        Tab(text: '收藏'),
-        Tab(text: '用过'),
+      tabs: [
+        Tab(text: s.musicTabRecommend), // ✅ '推荐'
+        Tab(text: s.musicTabFavorites), // ✅ '收藏'
+        Tab(text: s.musicTabUsed),      // ✅ '用过'
       ],
     );
   }
@@ -249,6 +251,7 @@ class _MusicCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     final titleStyle = TextStyle(
       fontSize: 15,
       color: Colors.black87,
@@ -353,6 +356,7 @@ class _UseButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     final bg = emphasized ? const Color(0xFFFB4C61) : const Color(0xFFF2F3F5);
     final fg = emphasized ? Colors.white : const Color(0xFF8E8895);
     return Opacity(
@@ -366,7 +370,7 @@ class _UseButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(18),
           ),
           child: Text(
-            '使用',
+            s.useAction,
             style:
                 TextStyle(color: fg, fontSize: 13, fontWeight: FontWeight.w600),
           ),
@@ -383,6 +387,7 @@ class _AppBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     return SizedBox(
       height: 44,
       child: Row(
@@ -392,9 +397,9 @@ class _AppBar extends StatelessWidget {
                 size: 20, color: Colors.black87),
             onPressed: onBack,
           ),
-          const Expanded(
+          Expanded(
             child: Text(
-              '添加音乐',
+              s.musicAddTitle,
               textAlign: TextAlign.center,
               style: TextStyle(
                   fontSize: 18,

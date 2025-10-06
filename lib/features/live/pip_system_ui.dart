@@ -6,9 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'data_model/call_timer.dart';
 
-// 這個 provider 就用你現成的 callTimerProvider
-// final callTimerProvider = ...;
-
 class PipSystemUi {
   PipSystemUi._();
   static final _ch = const MethodChannel('pip');

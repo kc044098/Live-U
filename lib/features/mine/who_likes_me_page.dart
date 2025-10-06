@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 
 import '../../data/network/background_api_service.dart';
+import '../../l10n/l10n.dart';
 import '../call/call_request_page.dart';
 import '../profile/profile_controller.dart';
 import '../profile/view_profile_page.dart';
@@ -20,15 +21,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-// 你的 import 視實際專案調整
-// import 'xxx/member_fans_provider.dart';
-// import 'xxx/user_repository_provider.dart';
-// import 'xxx/user_profile_provider.dart';
-// import 'xxx/view_profile_page.dart';
-// import 'xxx/payment_method_page.dart';
-// import 'xxx/models.dart';
-// import 'xxx/utils.dart';
 
 class WhoLikesMePage extends ConsumerStatefulWidget {
   const WhoLikesMePage({super.key});
@@ -119,22 +111,21 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
 
   @override
   Widget build(BuildContext context) {
+    final t = S.of(context); // ← 新增
     final fans = ref.watch(memberFansProvider);
     final me = ref.watch(userProfileProvider);
     final cdn = me?.cdnUrl ?? '';
+    final showBlockLayer =
+        (me != null) && !(me.isVipEffective || me.isBroadcaster);
 
-    // 只有「非 VIP 且 非主播」才顯示遮罩
-    final showBlockLayer = (me != null) && !(me.isVipEffective || me.isBroadcaster);
-
-    // 若要擋，且方案尚未載入，主動抓一次
     if (showBlockLayer && !_plansLoading && _plans.isEmpty) {
-      // 用 microtask 避免在 build 期間 setState
       Future.microtask(_loadPlansIfNeeded);
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('谁喜欢我', style: TextStyle(color: Colors.black, fontSize: 16)),
+        title: Text(t.whoLikesMeTitle,
+            style: const TextStyle(color: Colors.black, fontSize: 16)),
         centerTitle: true,
         backgroundColor: Colors.white,
         elevation: 0,
@@ -171,7 +162,7 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
           ),
 
           // 只有非 VIP 且非主播才顯示購買 VIP 的遮罩
-          if (showBlockLayer) _buildOverlayLayer(),
+          if (showBlockLayer) _buildOverlayLayer(t),
         ],
       ),
     );
@@ -179,7 +170,8 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
 
   Widget _buildLikedCardFromApi(MemberFanUser user, String cdnBase) {
     // 封面：相對路徑才拼 CDN，取第一張非空
-    final coverRaw = user.avatars.firstWhere((e) => e.isNotEmpty, orElse: () => '');
+    final coverRaw =
+        user.avatars.firstWhere((e) => e.isNotEmpty, orElse: () => '');
     final coverUrl = joinCdnIfNeeded(coverRaw, cdnBase);
 
     final image = (coverUrl.isNotEmpty && coverUrl.startsWith('http'))
@@ -201,7 +193,8 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
               right: 0,
               bottom: 0,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.bottomCenter,
@@ -213,14 +206,18 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
                   children: [
                     Expanded(
                       child: Text(
-                        user.name.isNotEmpty ? user.name : '用戶',
+                        user.name.isNotEmpty
+                            ? user.name
+                            : S.of(context).userFallback,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          shadows: [Shadow(blurRadius: 2, color: Colors.black45)],
+                          shadows: [
+                            Shadow(blurRadius: 2, color: Colors.black45)
+                          ],
                         ),
                       ),
                     ),
@@ -244,10 +241,12 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
     );
   }
 
-  void _handleCallRequest(BuildContext context, MemberFanUser user, String cdnBase) {
+  void _handleCallRequest(
+      BuildContext context, MemberFanUser user, String cdnBase) {
     final broadcasterId = user.id.toString();
     final broadcasterName = user.name;
-    final firstAvatar = user.avatars.firstWhere((e) => e.isNotEmpty, orElse: () => '');
+    final firstAvatar =
+        user.avatars.firstWhere((e) => e.isNotEmpty, orElse: () => '');
     final broadcasterImage = firstAvatar.isNotEmpty
         ? joinCdnIfNeeded(firstAvatar, cdnBase)
         : 'assets/my_icon_defult.jpeg';
@@ -264,15 +263,13 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
     );
   }
 
-  Widget _buildOverlayLayer() {
+  Widget _buildOverlayLayer(S t) {
     return Stack(
       children: [
-        // 霧化背景
         BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(color: Colors.black.withOpacity(0.6)),
         ),
-
         Align(
           alignment: Alignment.center,
           child: Container(
@@ -287,26 +284,27 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.15),
-                  blurRadius: 12,
-                  offset: const Offset(0, 6),
-                ),
+                    color: Colors.black.withOpacity(0.15),
+                    blurRadius: 12,
+                    offset: Offset(0, 6))
               ],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('誰喜歡我',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                Text(t.whoLikesMeTitle,
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold)), // ← 改
                 const SizedBox(height: 16),
-                const Text(
-                  '查看對你心動的Ta，立即聯繫不再等待',
+                Text(
+                  t.whoLikesMeSubtitle, // ← 改
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14, color: Color(0xfffb5d5d)),
+                  style:
+                      const TextStyle(fontSize: 14, color: Color(0xfffb5d5d)),
                 ),
                 const SizedBox(height: 20),
 
-                _plansSection(),
+                _plansSection(t), // ← 傳入 t
 
                 const SizedBox(height: 20),
                 SizedBox(
@@ -315,25 +313,25 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.pink,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
+                          borderRadius: BorderRadius.circular(20)),
                     ),
                     onPressed: (_plansLoading || _plans.isEmpty)
                         ? null
                         : () async {
-                      final amt = _plans[_selectedPlanIndex].payPrice;
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => PaymentMethodPage(amount: amt),
-                        ),
-                      );
-                      Navigator.pop(context, true);
-                    },
+                            final amt = _plans[_selectedPlanIndex].payPrice;
+                            await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) =>
+                                        PaymentMethodPage(amount: amt)));
+                            Navigator.pop(context, true);
+                          },
                     child: Text(
                       _plansLoading || _plans.isEmpty
-                          ? '載入中...'
-                          : '購買VIP（${_fmtMoney(_plans[_selectedPlanIndex].payPrice)}）',
+                          ? t.loadingEllipsis // ← 改
+                          : t.buyVipWithPrice(
+                              _fmtMoney(_plans[_selectedPlanIndex].payPrice)),
+                      // ← 改
                       style: const TextStyle(color: Colors.white),
                     ),
                   ),
@@ -347,9 +345,8 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
   }
 
   String _fmtMoney(double v) => '\$ ${v.toStringAsFixed(2)}';
-  String _fmtPerMonth(VipPlan p) => '${_fmtMoney(p.perMonth)} / 月';
 
-  Widget _plansSection() {
+  Widget _plansSection(S t) {
     if (_plansLoading) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 20),
@@ -357,29 +354,29 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
       );
     }
     if (_plansError != null) {
-      // 不要在畫面上丟紅字錯誤，改成小提示 + 重試鈕
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('方案載入失敗', style: TextStyle(fontSize: 13, color: Colors.white)),
+          Text(t.planLoadFailed,
+              style: const TextStyle(fontSize: 13, color: Colors.white)),
+          // ← 改
           const SizedBox(height: 8),
-          OutlinedButton(
-            onPressed: _loadPlansIfNeeded,
-            child: const Text('重試'),
-          ),
+          OutlinedButton(onPressed: _loadPlansIfNeeded, child: Text(t.retry)),
+          // ← 改
         ],
       );
     }
     if (_plans.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 12),
-        child: Text('目前沒有可用方案', style: TextStyle(fontSize: 13, color: Colors.white)),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Text(t.noAvailablePlans,
+            style: const TextStyle(fontSize: 13, color: Colors.white)), // ← 改
       );
     }
-    return _plansGrid();
+    return _plansGrid(t); // ← 傳入 t
   }
 
-  Widget _plansGrid() {
+  Widget _plansGrid(S t) {
     return LayoutBuilder(
       builder: (context, cons) {
         const cols = 3;
@@ -423,12 +420,12 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
                       ),
                       boxShadow: selected
                           ? [
-                        BoxShadow(
-                          color: Colors.pink.withOpacity(0.15),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        )
-                      ]
+                              BoxShadow(
+                                color: Colors.pink.withOpacity(0.15),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              )
+                            ]
                           : null,
                     ),
                     child: Column(
@@ -448,7 +445,7 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
                             style: const TextStyle(
                                 fontSize: 16, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 2),
-                        Text('原价 ${_fmtMoney(p.price)}',
+                        Text(t.vipOriginalPrice(_fmtMoney(p.price)),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -457,15 +454,14 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
                               decoration: TextDecoration.lineThrough,
                             )),
                         const SizedBox(height: 2),
-                        Text(_fmtPerMonth(p),
+                        Text(t.vipPerMonth(_fmtMoney(p.perMonth)),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style:
-                            const TextStyle(fontSize: 12, color: Colors.grey)),
+                            style: const TextStyle(
+                                fontSize: 12, color: Colors.grey)),
                       ],
                     ),
                   ),
-
                   if (index == _bestIndex)
                     Positioned(
                       top: -8,
@@ -473,7 +469,7 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
                       child: Container(
                         width: 60,
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
+                            horizontal: 2, vertical: 2),
                         decoration: const BoxDecoration(
                           color: Color(0xFFFF4D67),
                           borderRadius: BorderRadius.only(
@@ -482,10 +478,9 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
                             bottomRight: Radius.circular(8),
                           ),
                         ),
-                        child: const Text('最佳选择',
+                        child: Text(t.vipBestChoice,
                             textAlign: TextAlign.center,
-                            style:
-                            TextStyle(fontSize: 10, color: Colors.white)),
+                            style: TextStyle(fontSize: 10, color: Colors.white)),
                       ),
                     ),
                 ],

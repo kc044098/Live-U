@@ -12,6 +12,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/user_local_storage.dart';
+import '../../l10n/l10n.dart';
 import '../profile/profile_controller.dart';
 
 class EditProfilePage extends ConsumerStatefulWidget {
@@ -41,7 +42,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
 
     final ext = file.path.split('.').last.toLowerCase();
     if (!['jpg', 'jpeg', 'png'].contains(ext)) {
-      Fluttertoast.showToast(msg: "只允許上傳 JPG / JPEG / PNG 圖片");
+      Fluttertoast.showToast(msg: S.of(context).toastInvalidImageType);
       return;
     }
 
@@ -166,23 +167,24 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     final user = ref.watch(userProfileProvider);
     final extra = ref.watch(userProfileProvider)?.extra ?? {};
     final photos = _photosShadow ?? _normalizeSlots(user?.photoURL ?? []);
 
     String displayHeight = extra['height']?.toString() ?? '';
-    if (displayHeight.isNotEmpty && !displayHeight.contains('cm')) {
-      displayHeight += 'cm';
+    if (displayHeight.isNotEmpty && !displayHeight.contains(s.unitCentimeter)) {
+      displayHeight += s.unitCentimeter;      // 'cm'
     }
 
     String displayWeight = extra['weight']?.toString() ?? '';
-    if (displayWeight.isNotEmpty && !displayWeight.contains('磅')) {
-      displayWeight += '磅';
+    if (displayWeight.isNotEmpty && !displayWeight.contains(s.unitPound)) {
+      displayWeight += s.unitPound;           // '磅' / 'lb'
     }
 
     String displayAge = extra['age']?.toString() ?? '';
-    if (displayAge.isNotEmpty && !displayAge.contains('岁')) {
-      displayAge += '岁';
+    if (displayAge.isNotEmpty && !displayAge.contains(s.unitYearShort)) {
+      displayAge += s.unitYearShort;          // '歲' / 'yrs'
     }
 
     String displayBody = '';
@@ -193,34 +195,30 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
       }
     }
     final profileItems = [
-      {'label': '昵称', 'value': (ref.watch(userProfileProvider)?.displayName ?? '').toString()},
+      {'label': s.fieldNickname, 'value': (ref.watch(userProfileProvider)?.displayName ?? '').toString()},
       {
-        'label': '性别',
+        'label': s.fieldGender,
         'value': (() {
           final sex = ref.watch(userProfileProvider)?.sex;
           switch (sex) {
-            case 1:
-              return '男';
-            case 2:
-              return '女';
-            case 3:
-              return '保密';
-            default:
-              return '未知';
+            case 1: return s.genderMale;
+            case 2: return s.genderFemale;
+            case 3: return s.genderSecret;
+            default: return s.commonUnknown;
           }
         })(),
       },
-      {'label': '生日', 'value': displayAge},
-      {'label': '身高', 'value': displayHeight},
-      {'label': '体重', 'value': displayWeight},
-      {'label': '三围', 'value': displayBody.isNotEmpty ? displayBody : '胸围 0 腰围 0 臀围 0'},
-      {'label': '城市', 'value': (extra['city'] ?? '未知').toString()},
-      {'label': '工作', 'value': (extra['job'] ?? '未知').toString()},
+      {'label': s.fieldBirthday,     'value': displayAge},
+      {'label': s.fieldHeight,       'value': displayHeight},
+      {'label': s.fieldWeight,       'value': displayWeight},
+      {'label': s.fieldMeasurements, 'value': displayBody.isNotEmpty ? displayBody : '${s.bodyBust} 0 ${s.bodyWaist} 0 ${s.bodyHip} 0'},
+      {'label': s.fieldCity,         'value': (extra['city'] ?? s.commonUnknown).toString()},
+      {'label': s.fieldJob,          'value': (extra['job'] ?? s.commonUnknown).toString()},
       {
-        'label': '个人标签',
+        'label': s.fieldTags,
         'value': (() {
           final tags = ref.watch(userProfileProvider)?.tags;
-          if (tags == null || tags.isEmpty) return '立即添加';
+          if (tags == null || tags.isEmpty) return s.tagsAddNow;
           return tags.join(', ');
         })(),
       },
@@ -229,7 +227,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     final cdn = user?.cdnUrl ?? '';
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Edit profile'),
+        title: Text(s.editProfileTitle),
         centerTitle: true,
         leading: const BackButton(),
         backgroundColor: Colors.white,
@@ -340,28 +338,22 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                   ],
                 ),
                 onTap: () {
-                  switch (item['label']) {
-                    case '昵称':
-                      _showNicknameSheet();
-                      break;
-                    case '身高':
-                      _showHeightSheet();
-                      break;
-                    case '体重':
-                      _showWeightSheet();
-                      break;
-                    case '生日':
-                      _showBirthdayPicker();
-                      break;
-                    case '三围':
-                      _showBodySheet();
-                      break;
-                    case '工作':
-                      _showJobSheet();
-                      break;
-                    case '个人标签':
-                      _showTagsSheet();
-                      break;
+                  final lbl = item['label'];
+                  final s = S.of(context);
+                  if (lbl == s.fieldNickname) {
+                    _showNicknameSheet();
+                  } else if (lbl == s.fieldHeight) {
+                    _showHeightSheet();
+                  } else if (lbl == s.fieldWeight) {
+                    _showWeightSheet();
+                  } else if (lbl == s.fieldBirthday) {
+                    _showBirthdayPicker();
+                  } else if (lbl == s.fieldMeasurements) {
+                    _showBodySheet();
+                  } else if (lbl == s.fieldJob) {
+                    _showJobSheet();
+                  } else if (lbl == s.fieldTags) {
+                    _showTagsSheet();
                   }
                 },
               ),
@@ -375,6 +367,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   }
 
   void _showNicknameSheet() {
+    final s = S.of(context);
     final user = ref.read(userProfileProvider);
     final controller = TextEditingController(text: user?.displayName ?? "");
 
@@ -399,11 +392,8 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                 Stack(
                   alignment: Alignment.center,
                   children: [
-                    const Center(
-                      child: Text(
-                        '填写昵称',
-                        style: TextStyle(fontSize: 20),
-                      ),
+                    Center(
+                      child: Text(S.of(context).sheetTitleEnterNickname, style: const TextStyle(fontSize: 20)),
                     ),
                     Positioned(
                       right: 0,
@@ -428,7 +418,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                       LengthLimitingTextInputFormatter(16),
                     ],
                     decoration: InputDecoration(
-                      hintText: '请输入昵称',
+                      hintText: S.of(context).sheetHintEnterNickname,
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(30),
                         borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
@@ -456,11 +446,11 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                     onPressed: () async {
                       final nickname = controller.text.trim();
                       if (nickname.isEmpty) {
-                        Fluttertoast.showToast(msg: '請輸入暱稱');
+                        Fluttertoast.showToast(msg: s.toastEnterNickname);
                         return;
                       }
                       if (nickname.length > 16) {
-                        Fluttertoast.showToast(msg: '暱稱長度過長, 請重新輸入');
+                        Fluttertoast.showToast(msg: s.toastNicknameTooLong);
                         return;
                       }
                       showDialog(
@@ -482,16 +472,16 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                           await UserLocalStorage.saveUser(updatedUser);
                         }
 
-                        Fluttertoast.showToast(msg: '暱稱更新成功');
+                        Fluttertoast.showToast(msg: s.toastNicknameUpdateSuccess);
                       } catch (e) {
-                        Fluttertoast.showToast(msg: '暱稱更新失敗：$e');
+                        Fluttertoast.showToast(msg: s.toastNicknameUpdateFailed(e));
                       } finally {
                         Navigator.of(context).pop(); // ✅ 關閉 loading dialog
                         Navigator.of(context).pop(); // ✅ 關閉 bottom sheet
                       }
                     },
-                    child: const Text(
-                      '确定',
+                    child: Text(
+                      s.commonConfirm,
                       style: TextStyle(
                         color: Color(0xFFFF4D67),
                         fontWeight: FontWeight.bold,
@@ -508,6 +498,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   }
 
   void _showHeightSheet() {
+    final s = S.of(context);
     final extra = ref.read(userProfileProvider)?.extra ?? {};
     final controller = TextEditingController(
       text: (extra['height'] ?? '').replaceAll('cm', ''),
@@ -533,11 +524,8 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                 Stack(
                   alignment: Alignment.center,
                   children: [
-                    const Center(
-                      child: Text(
-                        '填写身高',
-                        style: TextStyle(fontSize: 20),
-                      ),
+                    Center(
+                      child: Text(s.sheetTitleEnterHeight, style: const TextStyle(fontSize: 20)),
                     ),
                     Positioned(
                       right: 0,
@@ -563,7 +551,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                       LengthLimitingTextInputFormatter(3),
                     ],
                     decoration: InputDecoration(
-                      suffixText: 'cm',
+                      suffixText: S.of(context).unitCentimeter,
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(30),
                         borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
@@ -592,11 +580,11 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                     onPressed: () async {
                       final heightValue = int.tryParse(controller.text);
                       if (heightValue == null || heightValue <= 0) {
-                        Fluttertoast.showToast(msg: '請輸入正確的身高');
+                        Fluttertoast.showToast(msg: s.toastEnterValidHeight);
                         return;
                       }
                       if (heightValue == null || heightValue <= 0 || heightValue > 999) {
-                        Fluttertoast.showToast(msg: '請輸入 1–999 的身高');
+                        Fluttertoast.showToast(msg: s.toastEnterHeightRange);
                         return;
                       }
                       showDialog(
@@ -624,19 +612,19 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                           await UserLocalStorage.saveUser(updatedUser);
                         }
 
-                        final height = '${int.tryParse(controller.text) ?? 0}cm';
+                        final height = '${int.tryParse(controller.text) ?? 0}${s.unitCentimeter}';
                         _updateExtra('height', height);
 
-                        Fluttertoast.showToast(msg: '身高更新成功');
+                        Fluttertoast.showToast(msg: s.toastHeightUpdateSuccess);
                       } catch (e) {
-                        Fluttertoast.showToast(msg: '身高更新失敗：$e');
+                        Fluttertoast.showToast(msg: s.toastHeightUpdateFailed(e));
                       } finally {
                         Navigator.of(context).pop(); // ✅ 關閉 loading dialog
                         Navigator.of(context).pop(); // ✅ 關閉 bottom sheet
                       }
                     },
-                    child: const Text(
-                      '确定',
+                    child: Text(
+                      s.commonConfirm,
                       style: TextStyle(
                         color: Color(0xFFFF4D67),
                         fontWeight: FontWeight.bold,
@@ -653,6 +641,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   }
 
   void _showWeightSheet() {
+    final s = S.of(context);
     final extra = ref.read(userProfileProvider)?.extra ?? {};
     final controller = TextEditingController(text: (extra['weight'] ?? '').replaceAll('磅', ''),);
     showModalBottomSheet(
@@ -675,9 +664,9 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                 Stack(
                   alignment: Alignment.center,
                   children: [
-                    const Center(
+                    Center(
                       child: Text(
-                        '填写体重',
+                        s.sheetTitleEnterWeight,
                         style:
                         TextStyle(fontSize: 20),
                       ),
@@ -705,7 +694,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                       LengthLimitingTextInputFormatter(3),
                     ],
                     decoration: InputDecoration(
-                      suffixText: '磅',
+                      suffixText: S.of(context).unitPound,
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(30),
                         borderSide: const BorderSide(color: Color(0xFFE0E0E0)), // 外框顏色
@@ -732,11 +721,11 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                     onPressed: () async {
                       final weightValue = int.tryParse(controller.text);
                       if (weightValue == null || weightValue <= 0) {
-                        Fluttertoast.showToast(msg: '請輸入正確的體重');
+                        Fluttertoast.showToast(msg: s.toastEnterValidWeight);
                         return;
                       }
                       if (weightValue == null || weightValue <= 0 || weightValue > 999) {
-                        Fluttertoast.showToast(msg: '請輸入 1–999 的體重');
+                        Fluttertoast.showToast(msg: s.toastEnterWeightRange);
                         return;
                       }
                       showDialog(
@@ -757,25 +746,25 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                         final currentUser = ref.read(userProfileProvider);
                         if (currentUser != null) {
                           final updatedExtra = Map<String, dynamic>.from(currentUser.extra ?? {});
-                          updatedExtra['weight'] = '$weightValue磅';
+                          updatedExtra['weight'] = '$weightValue${s.unitPound}';
 
                           final updatedUser = currentUser.copyWith(extra: updatedExtra);
                           ref.read(userProfileProvider.notifier).setUser(updatedUser);
                           await UserLocalStorage.saveUser(updatedUser);
                         }
 
-                        final weight = '${int.tryParse(controller.text) ?? 0}磅';
+                        final weight = '${int.tryParse(controller.text) ?? 0}${S.of(context).unitPound}';
                         _updateExtra('weight', weight);
-                        Fluttertoast.showToast(msg: '體重更新成功');
+                        Fluttertoast.showToast(msg: s.toastWeightUpdateSuccess);
                       } catch (e) {
-                        Fluttertoast.showToast(msg: '體重更新失敗：$e');
+                        Fluttertoast.showToast(msg: s.toastWeightUpdateFailed(e));
                       } finally {
                         Navigator.of(context).pop(); // ✅ 關閉 loading dialog
                         Navigator.of(context).pop(); // ✅ 關閉 bottom sheet
                       }
                     },
-                    child: const Text(
-                      '保存',
+                    child: Text(
+                      s.commonSave,
                       style: TextStyle(
                         color: Color(0xFFFF4D67),
                         fontWeight: FontWeight.bold,
@@ -792,6 +781,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   }
 
   void _showBirthdayPicker() {
+    final s = S.of(context);
     const int kMinAge = 18;
     final now = DateTime.now();
     // 這一天（含當天）之前出生 → 已滿 18
@@ -830,9 +820,9 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     selectedDay   = min(selectedDay, visibleDaysFor(selectedYear, selectedMonth));
     int maxDays   = visibleDaysFor(selectedYear, selectedMonth);
 
-    final months = const [
-      "January","February","March","April","May","June",
-      "July","August","September","October","November","December"
+    final months = [
+      s.monthJanuary, s.monthFebruary, s.monthMarch, s.monthApril, s.monthMay, s.monthJune,
+      s.monthJuly, s.monthAugust, s.monthSeptember, s.monthOctober, s.monthNovember, s.monthDecember,
     ];
 
     showModalBottomSheet(
@@ -854,7 +844,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                       children: [
                         GestureDetector(
                           onTap: () => Navigator.pop(context),
-                          child: const Text('Cancel',
+                          child: Text(s.commonCancel,
                               style: TextStyle(color: Colors.black54, fontSize: 16)),
                         ),
                         GestureDetector(
@@ -863,7 +853,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
 
                             // 雙保險：若仍晚於 cutoff（理論上不會），擋掉
                             if (picked.isAfter(cutoff)) {
-                              Fluttertoast.showToast(msg: '需年滿 18 歲');
+                              Fluttertoast.showToast(msg: s.toastAgeMustBe18);
                               return;
                             }
 
@@ -890,8 +880,8 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                               final currentUser = ref.read(userProfileProvider);
                               if (currentUser != null) {
                                 final updatedExtra = Map<String, dynamic>.from(currentUser.extra ?? {});
-                                updatedExtra['age'] = '$age岁';
-                                _updateExtra('age', '$age岁');
+                                updatedExtra['age'] = '$age${s.unitYearShort}';
+                                _updateExtra('age', '$age${s.unitYearShort}');
 
                                 final updatedUser = currentUser.copyWith(extra: updatedExtra);
                                 ref.read(userProfileProvider.notifier).setUser(updatedUser);
@@ -899,14 +889,14 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                               }
 
                               _selectedDate = picked;
-                              Fluttertoast.showToast(msg: '年齡已更新');
+                              Fluttertoast.showToast(msg: s.toastAgeUpdateSuccess);
                             } catch (e) {
-                              Fluttertoast.showToast(msg: '年齡更新失敗：$e');
+                              Fluttertoast.showToast(msg: s.toastAgeUpdateFailed(e));
                             }
                             Navigator.of(context).pop(); // 關 loading
                             Navigator.of(context).pop(); // 關 bottom sheet
                           },
-                          child: const Text('Done',
+                          child: Text(s.commonDone,
                               style: TextStyle(color: Color(0xFFFF4D67), fontSize: 16)),
                         ),
                       ],
@@ -1061,6 +1051,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   }
 
   void _showBodySheet() {
+    final s = S.of(context);
     final extra = ref.read(userProfileProvider)?.extra ?? {};
     List<String> parts = ['','',''];
     if (extra['body'] != null && extra['body']!.toString().contains('-')) {
@@ -1094,11 +1085,8 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                 Stack(
                   alignment: Alignment.center,
                   children: [
-                    const Center(
-                      child: Text(
-                        '填写三围',
-                        style: TextStyle(fontSize: 20),
-                      ),
+                    Center(
+                      child: Text(s.sheetTitleEnterMeasurements, style: const TextStyle(fontSize: 20)),
                     ),
                     Positioned(
                       right: 0,
@@ -1113,15 +1101,15 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                 const SizedBox(height: 30),
 
                 // 胸圍
-                _buildBodyTextField('胸围', bustController),
+                _buildBodyTextField(s.bodyBust, bustController),
                 const SizedBox(height: 20),
 
                 // 腰圍
-                _buildBodyTextField('腰围', waistController),
+                _buildBodyTextField(s.bodyWaist, waistController),
                 const SizedBox(height: 20),
 
                 // 臀圍
-                _buildBodyTextField('臀围', hipController),
+                _buildBodyTextField(s.bodyHip, hipController),
                 const SizedBox(height: 30),
 
                 // 確定按鈕
@@ -1144,7 +1132,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                       bool invalid(num? v) => v == null || v <= 0 || v > 999;
 
                       if (invalid(int.tryParse(bustController.text)) || invalid(int.tryParse(waistController.text)) || invalid(int.tryParse(hipController.text))) {
-                        Fluttertoast.showToast(msg: '三圍每一項請輸入 1–999 的數值');
+                        Fluttertoast.showToast(msg: s.toastMeasurementsEachRange);
                         return;
                       }
 
@@ -1153,7 +1141,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                       _updateExtra('waist', waist);
                       _updateExtra('hip', hip);
 
-                      final bodySummary = '$bust-$waist-$hip'.replaceAll('cm', '');
+                      final bodySummary = '$bust-$waist-$hip'.replaceAll(s.unitCentimeter, '');
 
                       showDialog(
                         context: context,
@@ -1184,16 +1172,16 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                         }
 
                         // 提示成功
-                        Fluttertoast.showToast(msg: '三围已更新');
+                        Fluttertoast.showToast(msg: s.toastMeasurementsUpdated);
                       } catch (e) {
-                        Fluttertoast.showToast(msg: '更新失敗：$e');
+                        Fluttertoast.showToast(msg: s.toastMeasurementsUpdateFailed(e));
                       } finally {
                         Navigator.of(context).pop(); // ✅ 關閉 loading dialog
                         Navigator.of(context).pop(); // ✅ 關閉 bottom sheet
                       }
                     },
-                    child: const Text(
-                      '确定',
+                    child: Text(
+                      s.commonConfirm,
                       style: TextStyle(
                         color: Color(0xFFFF4D67),
                         fontWeight: FontWeight.bold,
@@ -1210,6 +1198,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   }
 
   void _showJobSheet() {
+    final s = S.of(context);
     final extra = ref.read(userProfileProvider)?.extra ?? {};
     final controller = TextEditingController(text: extra['job'] ?? '');
 
@@ -1234,11 +1223,8 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                 Stack(
                   alignment: Alignment.center,
                   children: [
-                    const Center(
-                      child: Text(
-                        '填写职业',
-                        style: TextStyle(fontSize: 20),
-                      ),
+                    Center(
+                      child: Text(s.sheetTitleEnterJob, style: const TextStyle(fontSize: 20)),
                     ),
                     Positioned(
                       right: 0,
@@ -1263,7 +1249,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                       LengthLimitingTextInputFormatter(12),
                     ],
                     decoration: InputDecoration(
-                      hintText: '请输入职业',
+                      hintText: S.of(context).sheetHintEnterJob,
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(30),
                         borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
@@ -1292,7 +1278,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                     onPressed: () async {
                       final job = controller.text.trim();
                       if (job.length > 12) {
-                        Fluttertoast.showToast(msg: '職業最多輸入 12 個字元');
+                        Fluttertoast.showToast(msg: s.toastJobMax12);
                         return;
                       }
 
@@ -1328,16 +1314,16 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                         }
 
 
-                        Fluttertoast.showToast(msg: '職業已更新');
+                        Fluttertoast.showToast(msg: s.toastJobUpdated);
                       } catch (e) {
-                        Fluttertoast.showToast(msg: '更新失敗：$e');
+                        Fluttertoast.showToast(msg: s.toastJobUpdateFailed(e));
                       } finally {
                         Navigator.of(context).pop(); // ✅ 關閉 loading dialog
                         Navigator.of(context).pop(); // ✅ 關閉 bottom sheet
                       }
                     },
-                    child: const Text(
-                      '确定',
+                    child: Text(
+                      s.commonConfirm,
                       style: TextStyle(
                         color: Color(0xFFFF4D67),
                         fontWeight: FontWeight.bold,
@@ -1368,7 +1354,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
               LengthLimitingTextInputFormatter(3),
             ],
             decoration: InputDecoration(
-              suffixText: 'cm',
+              suffixText: S.of(context).unitCentimeter,
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(30),
                 borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
@@ -1387,7 +1373,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
 
 
   Future<void> _showTagsSheet() async {
-
+    final s = S.of(context);
     final user = ref.read(userProfileProvider);
     final selectedTags = <String>{};
     final existing = user?.tags;
@@ -1421,9 +1407,9 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                     children: [
                       TextButton(
                         onPressed: () => Navigator.pop(context),
-                        child: const Text('Cancel', style: TextStyle(color: Colors.black54)),
+                        child: Text(s.commonCancel, style: TextStyle(color: Colors.black54)),
                       ),
-                      const Text('我的标签', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      Text(s.tagsTitleMyTags, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                       TextButton(
                         onPressed: () async {
                           showDialog(
@@ -1446,15 +1432,15 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                               await UserLocalStorage.saveUser(updatedUser);
                             }
 
-                            Fluttertoast.showToast(msg: '標籤已更新');
+                            Fluttertoast.showToast(msg: s.toastTagsUpdated);
                           } catch (e) {
-                            Fluttertoast.showToast(msg: '更新失敗：$e');
+                            Fluttertoast.showToast(msg: s.toastUpdateFailed(e));
                           } finally {
                             Navigator.of(context).pop(); // ✅ 關閉 loading dialog
                             Navigator.of(context).pop(); // ✅ 關閉 bottom sheet
                           }
                         },
-                        child: const Text('Done', style: TextStyle(color: Color(0xFFFF4D67))),
+                        child: Text(s.commonDone, style: TextStyle(color: Color(0xFFFF4D67))),
                       ),
                     ],
                   ),
@@ -1479,7 +1465,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                                 selectedTags.remove(tag);
                               } else {
                                 if (selectedTags.length >= 5) {
-                                  Fluttertoast.showToast(msg: '最多只能選擇5個標籤');
+                                  Fluttertoast.showToast(msg: s.toastMaxFiveTags);
                                   return;
                                 }
                                 selectedTags.add(tag);
@@ -1536,3 +1522,4 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   }
 
 }
+

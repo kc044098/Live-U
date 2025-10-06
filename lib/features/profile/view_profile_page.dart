@@ -19,6 +19,7 @@ import 'package:video_thumbnail/video_thumbnail.dart';
 
 import '../../data/models/member_video_model.dart';
 import '../../data/models/user_model.dart';
+import '../../l10n/l10n.dart';
 import '../call/call_request_page.dart';
 import '../live/data_model/feed_item.dart';
 import '../live/data_model/home_feed_state.dart';
@@ -53,7 +54,7 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref
           .read(memberFeedByUserProvider(widget.userId).notifier)
-          .loadFirstPage();
+          .loadFirstPage(widget.userId);
     });
 
     // ✅ 監聽滑到底自動載入下一頁
@@ -103,19 +104,19 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
   }
 
   Widget buildMyProfileTab(UserModel? user, bool effectiveIsLike) {
+    final t = S.of(context);
     // 從 user.extra 中讀取擴展資料（假設後端返回了身高、體重等資訊）
-    String height = user?.extra?['height'] ?? '未知';
-    String weight = user?.extra?['weight'] ?? '未知';
-    final body = user?.extra?['body'] ?? '未知';
-    final city = user?.extra?['city'] ?? '未知';
-    final job = user?.extra?['job'] ?? '未知';
+    String height = user?.extra?['height'] ?? t.unknown;
+    String weight = user?.extra?['weight'] ?? t.unknown;
+    final body = user?.extra?['body'] ?? t.unknown;
+    final city = user?.extra?['city'] ?? t.unknown;
+    final job = user?.extra?['job'] ?? t.unknown;
 
-    // 🔹 若數字沒有單位則補上
-    if (height != '未知' && !height.contains('cm')) {
-      height = '$height cm';
+    if (height != t.unknown && !height.contains(t.unitCm)) {
+      height = '$height ${t.unitCm}';
     }
-    if (weight != '未知' && !weight.contains('磅') && !weight.contains('kg')) {
-      weight = '$weight 磅';
+    if (weight != t.unknown && !weight.contains(t.unitLb) && !weight.contains(t.unitKg)) {
+      weight = '$weight ${t.unitLb}';
     }
 
     return SingleChildScrollView(
@@ -125,8 +126,7 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
         children: [
           _buildFeaturedStripIfNeeded(user),
           const SizedBox(height: 12),
-          const Text('關於我',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          Text(t.profileAboutMe, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.all(12),
@@ -138,21 +138,21 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
               children: [
                 Row(
                   children: [
-                    Expanded(child: _InfoRow(label: '身高', value: height)),
-                    Expanded(child: _InfoRow(label: '體重', value: weight)),
+                    Expanded(flex:2, child: _InfoRow(label: t.profileHeight, value: height)),
+                    Expanded(flex:1, child: _InfoRow(label: t.profileWeight, value: weight)),
                   ],
                 ),
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    Expanded(child: _InfoRow(label: '三圍', value: body)),
-                    Expanded(child: _InfoRow(label: '城市', value: city)),
+                    Expanded(flex:2, child: _InfoRow(label: t.profileMeasurements, value: body)),
+                    Expanded(flex:1, child: _InfoRow(label: t.profileCity, value: city)),
                   ],
                 ),
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    Expanded(child: _InfoRow(label: '工作', value: job)),
+                    Expanded(child: _InfoRow(label: t.profileJob, value: job)),
                     const Expanded(child: SizedBox()),
                   ],
                 ),
@@ -162,8 +162,7 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
           const SizedBox(height: 16),
           if ((user?.tags ?? []).isNotEmpty) ...[
             const SizedBox(height: 16),
-            const Text('我的標籤',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text(t.profileMyTags, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -181,6 +180,7 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
   }
 
   Widget buildButtonView(UserModel? u, bool effectiveIsLike) {
+    final t = S.of(context);
     if (u == null) return const SizedBox.shrink();
     final myUid = ref.watch(userProfileProvider)?.uid;
     if (myUid != null && u.uid.toString() == myUid) return const SizedBox(height: 4);
@@ -246,7 +246,7 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
                   ),
                 );
               },
-              child: const FittedBox(child: Text('私信TA', style: TextStyle(color: Colors.pink))),
+              child: FittedBox(child: Text(t.actionMessageTa, style: const TextStyle(color: Colors.pink))),
             ),
           ),
         ),
@@ -269,8 +269,8 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
                   child: TextButton(
                     style: TextButton.styleFrom(padding: EdgeInsets.zero),
                     onPressed: () => _handleCallRequest(u),
-                    child: const FittedBox(
-                      child: Text('发起视频', style: TextStyle(color: Colors.white, fontSize: 14)),
+                    child: FittedBox(
+                      child: FittedBox(child: Text(t.actionStartVideo, style: const TextStyle(color: Colors.white, fontSize: 14))),
                     ),
                   ),
                 ),
@@ -278,12 +278,13 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
               const SizedBox(height: 4),
               if (u.videoPrice != null && u.isBroadcaster)
                 Text(
-                  (u.videoPrice! <= 0) ? '免費' : '${u.videoPrice}金幣/分鐘',
+                  (u.videoPrice != null && u.videoPrice! <= 0)
+                      ? t.free
+                      : t.coinsPerMinute(u.videoPrice!),
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: Colors.grey, fontSize: 10),
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
-                  softWrap: false,
                 ),
 
             ],
@@ -411,7 +412,7 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
   Widget buildMyVideoTab(UserModel u , bool effectiveIsLike) {
     final feed = ref.watch(memberFeedByUserProvider(widget.userId));
     final myCdnBase = ref.watch(userProfileProvider)?.cdnUrl ?? '';
-
+    final t = S.of(context);
     // ✅ 下拉重刷
     Widget bodyByState() {
       // 初次載入中
@@ -434,7 +435,7 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
                 const Icon(Icons.photo_library_outlined,
                     size: 48, color: Colors.grey),
                 const SizedBox(height: 8),
-                Text('還沒有內容', style: TextStyle(color: Colors.grey[600])),
+                Text(t.emptyNoContent, style: TextStyle(color: Colors.grey[600])),
               ],
             ),
           ),
@@ -565,7 +566,7 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
                                     decoration: BoxDecoration(
                                         color: Colors.pink,
                                         borderRadius: BorderRadius.circular(4)),
-                                    child: const Text('精选',
+                                    child: Text(t.categoryFeatured,
                                         style: TextStyle(
                                             color: Colors.white, fontSize: 10)),
                                   ),
@@ -614,7 +615,7 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
       onRefresh: () async {
         await ref
             .read(memberFeedByUserProvider(widget.userId).notifier)
-            .loadFirstPage();
+            .loadFirstPage(widget.userId);
       },
       child: bodyByState(),
     );
@@ -715,12 +716,13 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
       }
     }
 
+    final t = S.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
+        Padding(
           padding: EdgeInsets.only(bottom: 8),
-          child: Text('精選', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          child: Text(t.badgeFeatured, style: const TextStyle(color: Colors.white, fontSize: 10)),
         ),
         SizedBox(
           height: 140,
@@ -774,6 +776,7 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
       }),
     );
 
+    final t = S.of(context);
     return asyncUser.when(
       loading: () => const Scaffold(
         backgroundColor: Colors.black,
@@ -781,13 +784,13 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
       ),
       error: (e, _) => Scaffold(
         appBar: AppBar(),
-        body: Center(child: Text('載入失敗：$e')),
+        body: Center(child: Text(t.loadFailedWith('$e'))),
       ),
       data: (u) {
         final current = u; // ← 用覆寫版
         final displayName = (current.displayName?.isNotEmpty == true)
             ? current.displayName!
-            : '用戶';
+            : t.userGeneric;
         final rawPhotos = current.photoURL;
         final headerPhotos = rawPhotos
             .map((p) => p.trim())
@@ -902,9 +905,7 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
                                 SvgPicture.asset('assets/pic_profile.svg',
                                     width: 16, height: 16),
                                 const SizedBox(width: 4),
-                                Text('$likesDisplay 喜歡',
-                                    style: const TextStyle(
-                                        fontSize: 12, color: Colors.black87)),
+                                Text(t.likesCount(likesDisplay), style: const TextStyle(fontSize: 12, color: Colors.black87)),
                               ],
                             ),
                           ),
@@ -912,20 +913,19 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
                       ],
                     )),
 
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
                   child: TabBar(
-                    labelColor: Color(0xFFFF4D67),
+                    labelColor: const Color(0xFFFF4D67),
                     unselectedLabelColor: Colors.grey,
-                    labelStyle:
-                        TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    unselectedLabelStyle: TextStyle(fontSize: 16),
-                    indicatorColor: Color(0xFFFF4D67),
+                    labelStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    unselectedLabelStyle: const TextStyle(fontSize: 16),
+                    indicatorColor: const Color(0xFFFF4D67),
                     indicatorWeight: 2,
                     dividerColor: Colors.transparent,
                     tabs: [
-                      Tab(text: '我的資料'),
-                      Tab(text: '個人動態'),
+                      Tab(text: t.tabMyInfo),
+                      Tab(text: t.tabPersonalFeed),
                     ],
                   ),
                 ),
@@ -946,9 +946,10 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
   }
 
   String _partnerName(UserModel user) {
+    final t = S.of(context);
     // 先用後端給的暱稱，沒有就 fallback
     if ((user.displayName ?? '').isNotEmpty) return user.displayName!;
-    return '用戶 ${user.uid}';
+    return '${t.userGeneric} ${user.uid}';
   }
 
   // ✅ 安全版：已是絕對網址就直接回傳，避免「重複加前綴」造成 403
@@ -981,16 +982,34 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const labelStyle = TextStyle(color: Colors.grey, fontSize: 14);
+    const valueStyle = TextStyle(color: Colors.black, fontSize: 14);
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          const SizedBox(width: 12),
-          Text('$label：',
-              style: const TextStyle(color: Colors.grey, fontSize: 14)),
-          const SizedBox(width: 4),
-          Text(value,
-              style: const TextStyle(color: Colors.black, fontSize: 14)),
+          // 標籤：不撐開，太長就截斷
+          Flexible(
+            flex: 0,
+            child: Text(
+              '$label：',
+              style: labelStyle,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+
+          Expanded(
+            child: Text(
+              (value.isEmpty ? '—' : value),
+              style: valueStyle,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
     );

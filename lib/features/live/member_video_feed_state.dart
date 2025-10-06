@@ -8,6 +8,8 @@ import 'package:fluttertoast/fluttertoast.dart';
 
 import '../../core/error_handler.dart';
 import '../../data/models/member_video_model.dart';
+import '../../globals.dart';
+import '../../l10n/l10n.dart';
 
 class MemberFeedState {
   final List<MemberVideoModel> items;
@@ -49,6 +51,14 @@ class MemberFeedState {
 class MemberFeedNotifier extends AutoDisposeNotifier<MemberFeedState> {
   late final VideoRepository _repo;
 
+  String _t(String Function(S) pick, String fallback) {
+    final ctx = rootNavigatorKey.currentContext;
+    if (ctx != null) {
+      try { return pick(S.of(ctx)); } catch (_) {}
+    }
+    return fallback;
+  }
+
   @override
   MemberFeedState build() {
     final link = ref.keepAlive();
@@ -57,7 +67,7 @@ class MemberFeedNotifier extends AutoDisposeNotifier<MemberFeedState> {
     return MemberFeedState.initial();
   }
 
-  Future<void> loadFirstPage({int? uid}) async {
+  Future<void> loadFirstPage(int? uid) async {
     if (state.isLoading) return;
     state = state.copyWith(isLoading: true);
     try {
@@ -71,10 +81,11 @@ class MemberFeedNotifier extends AutoDisposeNotifier<MemberFeedState> {
     } catch (e, st) {
       state = state.copyWith(isLoading: false);
 
-      // ↓↓↓ 新增錯誤分類 ↓↓↓
       if (_isNetworkIssue(e)) {
-        Fluttertoast.showToast(msg: '資料獲取失敗，網路連接異常');
-        return; // 吞掉，不往上拋
+        Fluttertoast.showToast(
+          msg: _t((s) => s.networkFetchError, '資料獲取失敗，網路連接異常'),
+        );
+        return;
       }
       if (_isNoData(e)) {
         state = MemberFeedState(
@@ -83,7 +94,7 @@ class MemberFeedNotifier extends AutoDisposeNotifier<MemberFeedState> {
           totalCount: 0,
           isLoading: false,
         );
-        return; // 吞掉，不往上拋
+        return;
       }
 
       print('loadFirstPage error: $e\n$st');
@@ -107,13 +118,14 @@ class MemberFeedNotifier extends AutoDisposeNotifier<MemberFeedState> {
       state = state.copyWith(isLoading: false);
 
       if (_isNetworkIssue(e)) {
-        Fluttertoast.showToast(msg: '資料獲取失敗，網路連接異常');
-        return; // 吞掉，不往上拋
+        Fluttertoast.showToast(
+          msg: _t((s) => s.networkFetchError, '資料獲取失敗，網路連接異常'),
+        );
+        return;
       }
       if (_isNoData(e)) {
-        // 視為「無更多」
         state = state.copyWith(totalCount: state.items.length);
-        return; // 吞掉，不往上拋
+        return;
       }
 
       print('loadNextPage error: $e\n$st');
@@ -222,6 +234,14 @@ class MemberFeedByUserNotifier extends AutoDisposeFamilyNotifier<MemberFeedState
   late final VideoRepository _repo;
   late final int _uid;
 
+  String _t(String Function(S) pick, String fallback) {
+    final ctx = rootNavigatorKey.currentContext;
+    if (ctx != null) {
+      try { return pick(S.of(ctx)); } catch (_) {}
+    }
+    return fallback;
+  }
+
   @override
   MemberFeedState build(int uid) {
     // ✅ 防止被自動回收（例如 Tab 切換短暫無監聽時）
@@ -236,7 +256,7 @@ class MemberFeedByUserNotifier extends AutoDisposeFamilyNotifier<MemberFeedState
     return MemberFeedState.initial();
   }
 
-  Future<void> loadFirstPage({int? uid}) async {
+  Future<void> loadFirstPage(int? uid) async {
     if (state.isLoading) return;
     state = state.copyWith(isLoading: true);
     try {
@@ -251,7 +271,9 @@ class MemberFeedByUserNotifier extends AutoDisposeFamilyNotifier<MemberFeedState
       state = state.copyWith(isLoading: false);
 
       if (_isNetworkIssue(e)) {
-        Fluttertoast.showToast(msg: '資料獲取失敗，網路連接異常');
+        Fluttertoast.showToast(
+          msg: _t((s) => s.networkFetchError, '資料獲取失敗，網路連接異常'),
+        );
         return;
       }
       if (_isNoData(e)) {
@@ -283,10 +305,11 @@ class MemberFeedByUserNotifier extends AutoDisposeFamilyNotifier<MemberFeedState
     } catch (e, st) {
       state = state.copyWith(isLoading: false);
 
-      // ↓↓↓ 新增錯誤分類 ↓↓↓
       if (_isNetworkIssue(e)) {
-        Fluttertoast.showToast(msg: '資料獲取失敗，網路連接異常');
-        return; // 吞掉，不往上拋
+        Fluttertoast.showToast(
+          msg: _t((s) => s.networkFetchError, '資料獲取失敗，網路連接異常'),
+        );
+        return;
       }
       if (_isNoData(e)) {
         // 視為「無更多」
