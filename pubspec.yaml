@@ -18,6 +18,7 @@ dependencies:
   intl: ^0.20.2
   firebase_core: ^3.0.0
   firebase_auth: ^5.0.0
+  firebase_messaging: ^15.1.2
   google_sign_in: ^6.1.5
   flutter_facebook_auth: ^5.0.11
   sign_in_with_apple: ^6.1.0
@@ -25,6 +26,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   dio: ^5.4.3
   flutter_riverpod: ^2.5.1
+  flutter_local_notifications: ^17.2.3
   image_picker: ^1.0.4
   agora_rtc_engine: ^6.2.3
   permission_handler: ^12.0.1
@@ -66,6 +68,7 @@ dependencies:
   in_app_purchase: ^3.1.11
   in_app_purchase_storekit: ^0.3.6
   webview_flutter: ^4.7.0
+  uuid: ^4.5.1
 
   fulive_plugin:
     path: third_party/fulive_plugin

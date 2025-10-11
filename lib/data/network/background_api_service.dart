@@ -136,18 +136,6 @@ class BackgroundApiService {
     });
   }
 
-  /// 只保留 path（/ 開頭），把 http(s) 與查詢參數等都去掉
-  String _pathOnly(String u) {
-    if (!u.isHttp) return u; // 本地檔或已是相對路徑
-    try {
-      final uri = Uri.parse(u);
-      final p = uri.path.isEmpty ? u : uri.path;
-      return p.startsWith('/') ? p : '/$p';
-    } catch (_) {
-      return u;
-    }
-  }
-
   /// 多張頭像上傳後更新會員資訊
   Future<void> uploadAvatarsAndUpdate({
     required List<String> paths,
@@ -256,21 +244,24 @@ extension PathX on String {
 
   // 常見本地絕對路徑（Android/iOS）
   bool get isLocalAbs =>
-      startsWith('/storage/') || // Android
-          startsWith('/mnt/')     || // Android
-          startsWith('/data/')    || // Android app data
-          startsWith('/var/');       // iOS
+      startsWith('/private/') ||   // iOS (真機 temp, docs 等)
+          startsWith('/var/')     ||   // iOS（少數情況會是 /var）
+          startsWith('/Users/')    ||  // iOS 模擬器
+          startsWith('/storage/')  ||  // Android
+          startsWith('/mnt/')      ||  // Android
+          startsWith('/data/');         // Android app data
 
   /// 只有像 /avatar/xxx.jpg 這種「伺服器相對路徑」才回 true
+  /// （本機絕對路徑一律 false）
   bool get isServerRelative => startsWith('/') && !isLocalAbs;
 }
 
 /// 只在「伺服器相對路徑」時拼 CDN，其餘直接回傳原字串
 String joinCdnIfNeeded(String raw, String? cdnBase) {
   if (raw.isEmpty || raw.isHttp || raw.isDataUri || raw.isContentUri || raw.isLocalAbs) {
-    return raw; // 不拼
+    return raw; // 本機檔 or 完整 URL 都不拼
   }
-  if (!raw.isServerRelative) return raw; // 例如本地相對檔案名，也不拼
+  if (!raw.isServerRelative) return raw; // 本地相對檔名也不拼
   if (cdnBase == null || cdnBase.isEmpty) return raw;
 
   final b = cdnBase.endsWith('/') ? cdnBase.substring(0, cdnBase.length - 1) : cdnBase;

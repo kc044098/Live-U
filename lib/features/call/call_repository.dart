@@ -9,6 +9,7 @@ import '../../data/network/api_endpoints.dart';
 
 class CallRepository {
   final ApiClient _api;
+
   CallRepository(this._api);
 
   Future<Map<String, dynamic>> liveCall({
@@ -54,12 +55,12 @@ class CallRepository {
     final data = _toMap(map['data']);
     // 兼容常見命名（data 裡沒有時，再看最外層）
     return (data['token'] ??
-        data['rtcToken'] ??
-        data['rtc_token'] ??
-        map['token'] ??
-        map['rtcToken'] ??
-        map['rtc_token'] ??
-        '')
+            data['rtcToken'] ??
+            data['rtc_token'] ??
+            map['token'] ??
+            map['rtcToken'] ??
+            map['rtc_token'] ??
+            '')
         .toString();
   }
 

@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/io.dart';
 import 'dart:io' show WebSocket;
 
+import 'event_dedupe.dart';
+
 enum WsStatus { disconnected, connecting, connected }
 typedef WsHandler = FutureOr<void> Function(Map<String, dynamic> payload);
 
@@ -213,7 +215,7 @@ class WsService {
                   final typeStr = _mapType(m['type'] ?? m['flag']);
                   debugPrint('[WS] dispatch type(list-item)=$typeStr');
 
-                  if (_isDupAndRemember(m)) continue; // 丟掉重複的 item
+                  if (EventDeduper.I.isDupAndRemember(m)) continue; // 丟掉重複的 item
 
                   for (final h in _anyHandlers.values.toList()) {
                     try { h({'__type__': typeStr, ...m}); } catch (_) {}
@@ -247,7 +249,7 @@ class WsService {
           debugPrint('[WS] dispatch type=$typeStr');
 
           // 去重：命中就直接 return，不派發（但 ACK 還是會在 raw-tap 那邊送）
-          if (_isDupAndRemember(data)) return;
+          if (EventDeduper.I.isDupAndRemember(data)) return;
 
           // 先給「所有事件攔截器」
           for (final h in _anyHandlers.values.toList()) {
@@ -476,33 +478,6 @@ class WsService {
 
   void forceReconnect([String reason = 'watchdog']) {
     _safeClose(reason); // 會走 onDone -> _scheduleReconnect()
-  }
-
-  bool _isDupAndRemember(Map<String, dynamic> m) {
-    final uuid = _extractUuid(m);
-    if (uuid == null || uuid.isEmpty) return false;
-
-    final now = DateTime.now().millisecondsSinceEpoch;
-
-    // 清掉過期
-    if (_seenUuids.length % 128 == 0) {
-      final cutoff = now - _seenTtl.inMilliseconds;
-      _seenUuids.removeWhere((_, ts) => ts < cutoff);
-    }
-
-    // 命中重複（有效期內）
-    final ts = _seenUuids[uuid];
-    if (ts != null && now - ts <= _seenTtl.inMilliseconds) {
-      debugPrint('[WS] drop duplicate uuid=$uuid');
-      return true;
-    }
-
-    // 新記錄 + 簡易 LRU 截斷
-    _seenUuids[uuid] = now;
-    if (_seenUuids.length > _seenCap) {
-      _seenUuids.remove(_seenUuids.keys.first);
-    }
-    return false;
   }
 
 // 和你在 CallSignalListener 裡的版本一致：頂層或 data/Data 皆可取到

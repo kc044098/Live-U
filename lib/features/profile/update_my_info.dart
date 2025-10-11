@@ -22,7 +22,7 @@ class _UpdateMyInfoPageState extends ConsumerState<UpdateMyInfoPage> {
 
   Future<void> _onNext() async {
     if (_selectedGender == null) {
-      Fluttertoast.showToast(msg: "請先選擇性別");
+      Fluttertoast.showToast(msg: S.of(context).setupToastSelectGender);
       return;
     }
 

@@ -316,7 +316,7 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
                       const double gap = 12;
                       return Row(
                         children: [
-                          Expanded(child: _buildSocialButton('assets/icon_facebook_2.svg')),
+                          Expanded(child: _buildSocialButton('assets/icon_facebook_2.svg', onTap: _handleFacebookLogin)),
                           const SizedBox(width: gap),
                           Expanded(child: _buildSocialButton('assets/icon_google_2.svg', onTap: _handleGoogleLogin)),
                           const SizedBox(width: gap),
@@ -429,6 +429,25 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
       Navigator.pushReplacementNamed(context, '/home');
     } else {
       Fluttertoast.showToast(msg: S.of(context).signInFailedApple);
+    }
+  }
+
+  Future<void> _handleFacebookLogin() async {
+    final t = S.of(context);
+    if (Firebase.apps.isEmpty) { Fluttertoast.showToast(msg: t.initializingWait); return; }
+    try {
+      setState(() => _isLoading = true);
+      final user = await _facebookAuthService.signInWithFacebook(ref);
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      if (user != null) {
+        Navigator.pushReplacementNamed(context, '/home');
+      } else {
+        Fluttertoast.showToast(msg: t.signInFailedFacebook);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+      Fluttertoast.showToast(msg: t.signInFailedFacebook);
     }
   }
 

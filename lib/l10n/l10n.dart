@@ -667,12 +667,6 @@ abstract class S {
   /// **'Friends'**
   String get friendsTabTitle;
 
-  /// No description provided for @publishDynamic.
-  ///
-  /// In en, this message translates to:
-  /// **'Post'**
-  String get publishDynamic;
-
   /// No description provided for @fallbackUser.
   ///
   /// In en, this message translates to:
@@ -1044,6 +1038,12 @@ abstract class S {
   /// In en, this message translates to:
   /// **'Free time ended, charging started'**
   String get freeTimeEndedStartBilling;
+
+  /// No description provided for @countdownRechargeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Less than {sec} seconds remaining. Please recharge soon.'**
+  String countdownRechargeHint(int sec);
 
   /// No description provided for @chatEndedTitle.
   ///

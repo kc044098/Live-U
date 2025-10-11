@@ -176,7 +176,7 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
 
     final image = (coverUrl.isNotEmpty && coverUrl.startsWith('http'))
         ? CachedNetworkImage(imageUrl: coverUrl, fit: BoxFit.cover)
-        : Image.asset('assets/pic_girl1.png', fit: BoxFit.cover); // fallback
+        : Image.asset('assets/my_photo_defult.jpeg', fit: BoxFit.cover); // fallback
 
     return AspectRatio(
       aspectRatio: 3 / 4,

@@ -597,6 +597,43 @@ class UserRepository {
     }
   }
 
+  /// 上報／更新這台裝置的推播 token
+  Future<void> upsertDeviceToken({
+    required String userId,
+    String? fcmToken,
+    String? apnsToken,
+    String? voipToken,
+    required String deviceId,
+    required String platform,   // 'ios' / 'android'
+    required String appId,      // bundleId / applicationId
+    required String appVersion,
+  }) async {
+    await _api.post(
+      ApiEndpoints.tokenRegister,
+      data: {
+        'uid'    : int.parse(userId),
+        'fcm_token'  : fcmToken,
+        'apns_token' : apnsToken,
+        'device_id'  : deviceId,
+        'platform'   : platform,
+        'app_id'     : appId,
+        'app_version': appVersion,
+        'voip_token': voipToken,
+      },
+    );
+  }
+
+  /// 這台裝置登出時（或 token 失效）撤銷註冊
+  Future<void> deleteDeviceToken({
+    required String userId,
+    required String deviceId,
+  }) async {
+    await _api.delete(
+      '/devices/$deviceId',
+      data: {'user_id': userId},
+    );
+  }
+
   String _getFileExtension(File file) {
     final ext = p.extension(file.path).toLowerCase();
     return ext.startsWith('.') ? ext.substring(1) : ext;

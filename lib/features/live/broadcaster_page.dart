@@ -108,14 +108,12 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
   bool _isThisChannel(Map p) => _ch(p) == roomId;
 
-  int? _lastCountdownExpire;
-  bool _countdownSheetShowing = false;
-
-
-  // ---------------------------------------------------------------
-
   CallType _callType = CallType.video; // 預設先給 video
   bool get _isVoice => _callType == CallType.voice;
+
+  bool _hideRemoteByHost = false; // 主播手動隱藏遠端畫面
+  bool get _isVoiceLikeUI => _isVoice || (_hideRemoteByHost && asBroadcaster);
+  bool get _canSendGift => !ref.read(userProfileProvider)!.isBroadcaster;
 
   @override
   void initState() {
@@ -135,7 +133,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
         // ★ 剛進房如果仍然沒對方 → 先啟動 5 秒保底離房
         if (_rtc.remoteUids.value.isEmpty) {
-          _armRemoteGoneTimer();    // 5 秒後仍無人 → _endBecauseRemoteLeft()
+          _armRemoteGoneTimer(); // 5 秒後仍無人 → _endBecauseRemoteLeft()
         } else {
           _cancelRemoteGoneTimer(); // 已有人 → 保險取消
         }
@@ -148,7 +146,6 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
         }
       }
     };
-
 
     // ② 改你的 _remoteListener：偵測遠端在/不在 & 啟停計時器
     _remoteListener = () {
@@ -165,9 +162,9 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
       // 只有在「我已加入房間」後才判斷對方
       if (_joined) {
         if (nowHasRemote) {
-          _cancelRemoteGoneTimer();   // 對方回來（或本來就在）→ 取消計時
+          _cancelRemoteGoneTimer(); // 對方回來（或本來就在）→ 取消計時
         } else {
-          _armRemoteGoneTimer();      // 對方不在 → 開始 5 秒倒數
+          _armRemoteGoneTimer(); // 對方不在 → 開始 5 秒倒數
         }
       }
     };
@@ -209,7 +206,6 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     await _closeMiniIfAny();
 
     await _goLiveEndIfBroadcaster();
-
   }
 
   @override
@@ -227,9 +223,10 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
       rtcToken = args['token'] as String?;
       isCallMode = args['isCallMode'] == true;
       asBroadcaster = args['asBroadcaster'] != false;
-      peerAvatar   = (args['peerAvatar'] ?? '').toString();
+      peerAvatar = (args['peerAvatar'] ?? '').toString();
       final freeRaw = args['free_at'] ?? args['freeAt'] ?? args['freeSec'];
-      final fs = (freeRaw is num) ? freeRaw.toInt() : int.tryParse('${freeRaw ?? ''}');
+      final fs =
+          (freeRaw is num) ? freeRaw.toInt() : int.tryParse('${freeRaw ?? ''}');
       if (fs != null && fs >= 0) _freeAtSec = fs;
       _inFreePeriod = _freeAtSec > 0;
       _applyCallFlagFromArgs(args);
@@ -246,7 +243,8 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
       // ★ 進房流程一開始就檢查通話是否被中止
       if (ref.read(callAbortProvider).contains(roomId)) {
-        WidgetsBinding.instance.addPostFrameCallback((_) => _endBecauseRemoteLeft());
+        WidgetsBinding.instance
+            .addPostFrameCallback((_) => _endBecauseRemoteLeft());
       }
 
       // 監聽遠端視訊開關
@@ -262,28 +260,32 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
               _setRemoteVideoOn(true);
               break;
             case RemoteVideoState.remoteVideoStateStopped:
-            // 真正被停止才關閉
+              // 真正被停止才關閉
               _setRemoteVideoOn(false);
               break;
             case RemoteVideoState.remoteVideoStateFrozen:
             case RemoteVideoState.remoteVideoStateFailed:
-            // 這兩個多半是網路波動，先不要切頭像
-            // 保持現狀，等恢復 Decoding 再自動變回 true
+              // 這兩個多半是網路波動，先不要切頭像
+              // 保持現狀，等恢復 Decoding 再自動變回 true
               break;
             default:
               break;
           }
 
           // 只有明確訊號才關閉/開啟
-          if (reason == RemoteVideoStateReason.remoteVideoStateReasonRemoteMuted ||
-              reason == RemoteVideoStateReason.remoteVideoStateReasonRemoteOffline) {
+          if (reason ==
+                  RemoteVideoStateReason.remoteVideoStateReasonRemoteMuted ||
+              reason ==
+                  RemoteVideoStateReason.remoteVideoStateReasonRemoteOffline) {
             _setRemoteVideoOn(false);
           }
-          if (reason == RemoteVideoStateReason.remoteVideoStateReasonRemoteUnmuted ||
-              reason == RemoteVideoStateReason.remoteVideoStateReasonNetworkRecovery) {
+          if (reason ==
+                  RemoteVideoStateReason.remoteVideoStateReasonRemoteUnmuted ||
+              reason ==
+                  RemoteVideoStateReason
+                      .remoteVideoStateReasonNetworkRecovery) {
             _setRemoteVideoOn(true);
           }
-
         },
         // 到期前 ~30 秒觸發：先拿新 token 並續上去
         onTokenPrivilegeWillExpire: (conn, token) async {
@@ -297,7 +299,8 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
         onConnectionStateChanged: (conn, state, reason) {
           // 若因 token 過期導致斷線
           if (conn.channelId == roomId &&
-              reason == ConnectionChangedReasonType.connectionChangedTokenExpired) {
+              reason ==
+                  ConnectionChangedReasonType.connectionChangedTokenExpired) {
             _refreshToken();
           }
         },
@@ -311,10 +314,12 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
         // 舊版/相容事件
         onUserMuteVideo: (conn, uid, muted) {
-          if (conn.channelId == roomId && uid == _remoteUid) _setRemoteVideoOn(!muted);
+          if (conn.channelId == roomId && uid == _remoteUid)
+            _setRemoteVideoOn(!muted);
         },
         onUserEnableVideo: (conn, uid, enabled) {
-          if (conn.channelId == roomId && uid == _remoteUid) _setRemoteVideoOn(enabled);
+          if (conn.channelId == roomId && uid == _remoteUid)
+            _setRemoteVideoOn(enabled);
         },
       );
       _rtc.engine.registerEventHandler(_pageRtcHandler);
@@ -332,7 +337,9 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
   void _onDraftChanged() {
     if (roomId.isEmpty) return;
-    ref.read(callSessionProvider(roomId).notifier).setDraft(_liveInputCtrl.text);
+    ref
+        .read(callSessionProvider(roomId).notifier)
+        .setDraft(_liveInputCtrl.text);
   }
 
   Future<void> _enterRoom() async {
@@ -354,7 +361,6 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
     await WakelockPlus.enable();
 
-
     // 啟動入房逾時（建議 15~20s，先保留你原 10s）
     _armJoinTimeout();
 
@@ -363,8 +369,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
         ChannelProfileType.channelProfileCommunication; // 1v1 通話建議用這個
     final role = ClientRoleType.clientRoleBroadcaster;
 
-    debugPrint(
-        '➡️[RTC] join channel=$roomId uid=${mUser!.uid} tokenLen=${rtcToken?.length} voice=$_isVoice');
+    debugPrint('➡️[RTC] join channel=$roomId uid=${mUser!.uid} tokenLen=${rtcToken?.length} voice=$_isVoice');
 
     // ★ 入房前再檢查一次通話是否被終止
     if (ref.read(callAbortProvider).contains(roomId)) {
@@ -418,24 +423,29 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     }));
 
     _wsUnsubs.add(ws.on('live_chat', _onWsLiveChat));
-    _wsUnsubs.add(ws.on('gift',      _onWsLiveChat));
+    _wsUnsubs.add(ws.on('gift', _onWsLiveChat));
     _wsUnsubs.add(ws.on('countdown', (p) {
       if (!mounted) return;
       final data = (p['data'] as Map?)?.cast<String, dynamic>() ?? const {};
-      final expire = (data['expire'] is num) ? (data['expire'] as num).toInt() : int.tryParse('${data['expire'] ?? ''}') ?? 0;
+      final expire = (data['expire'] is num)
+          ? (data['expire'] as num).toInt()
+          : int.tryParse('${data['expire'] ?? ''}') ?? 0;
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       final remain = (expire - now).clamp(0, 1 << 30);
 
-      final price = (data['price'] is num) ? (data['price'] as num).toInt() : null;
-      final real = (data['real_gold'] is num) ? (data['real_gold'] as num).toInt() : null;
+      final price =
+          (data['price'] is num) ? (data['price'] as num).toInt() : null;
+      final real = (data['real_gold'] is num)
+          ? (data['real_gold'] as num).toInt()
+          : null;
       _showCountdownSheet(remainSec: remain, price: price, realGold: real);
     }));
   }
 
-  /// 圖片按鈕：不加任何底色，圖片自帶圓底
+  // 圖片按鈕：不加任何底色，圖片自帶圓底
   Widget _assetBtn({
-    required String asset,         // 開啟時的圖
-    String? offAsset,              // 關閉時的圖（可不給，改用透明度）
+    required String asset, // 開啟時的圖
+    String? offAsset, // 關閉時的圖（可不給，改用透明度）
     required VoidCallback onTap,
     bool on = true,
   }) {
@@ -456,17 +466,48 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     );
   }
 
+  Widget _roundIconButton({
+    required IconData icon,
+    required VoidCallback onTap,
+    Color iconColor = Colors.white,
+    Color bgColor = const Color(0x66000000),
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: bgColor,
+            shape: BoxShape.circle,
+          ),
+          alignment: Alignment.center,
+          child: Icon(icon, size: 22, color: iconColor),
+        ),
+      ),
+    );
+  }
+
   // === 新增：功能動作 ===
   Future<void> _toggleSpeaker() async {
     final nv = !_speakerOn;
     setState(() => _speakerOn = nv);
-    try { await _rtc.engine.setEnableSpeakerphone(nv); } catch (_) {}
+    try {
+      await _rtc.engine.setEnableSpeakerphone(nv);
+    } catch (_) {}
   }
+
   Future<void> _toggleMic() async {
     final nv = !_micOn;
     setState(() => _micOn = nv);
-    try { await _rtc.engine.muteLocalAudioStream(!nv); } catch (_) {}
+    try {
+      await _rtc.engine.muteLocalAudioStream(!nv);
+    } catch (_) {}
   }
+
   Future<void> _toggleVideo() async {
     // 語音模式就不處理
     if (_isVoice) return;
@@ -493,13 +534,14 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
       Fluttertoast.showToast(msg: S.of(context).toggleVideoFailed);
     }
   }
+
   Future<void> _switchCamera() async {
-    if (_isVoice) return;                 // 語音模式禁用
+    if (_isVoice) return; // 語音模式禁用
     final engine = _rtc.engine;
     if (engine == null) return;
 
     try {
-      await engine.switchCamera();        // Agora 一鍵切換
+      await engine.switchCamera(); // Agora 一鍵切換
       if (!mounted) return;
       setState(() => _frontCamera = !_frontCamera); // 同步本地預覽鏡像
     } catch (e) {
@@ -519,62 +561,64 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
             return false;
           }
 
-          final me    = ref.read(userProfileProvider);
+          final me = ref.read(userProfileProvider);
           final toUid = _remoteUids.first;
           final myUid = int.tryParse(me?.uid ?? '0') ?? 0;
-          final uuid  = cu.genUuid(myUid);
+          final uuid = cu.genUuid(myUid);
 
           // 只送聊天訊息給後端（後端解析扣款）
           final payload = jsonEncode({
-            'type'      : 'gift',
-            'gift_id'   : gift.id,
+            'type': 'gift',
+            'gift_id': gift.id,
             'gift_title': gift.title,
-            'gift_gold' : gift.gold,
-            'gift_icon' : gift.icon, // 相對路徑
+            'gift_gold': gift.gold,
+            'gift_icon': gift.icon, // 相對路徑
             'gift_count': 1,
-            'gift_url'  : gift.url,  // 相對路徑
+            'gift_url': gift.url, // 相對路徑
           });
 
-          final res = await ref.read(chatRepositoryProvider)
+          final res = await ref
+              .read(chatRepositoryProvider)
               .sendText(uuid: uuid, toUid: toUid, text: payload, flag: 'gift');
 
           if (!mounted) return false;
 
           // 失敗：toast，不顯示、不播特效
           if (!res.ok) {
-            final msg = AppErrorCatalog.messageFor(res.code ?? -1, serverMessage: res.message);
+            final msg = AppErrorCatalog.messageFor(res.code ?? -1,
+                serverMessage: res.message);
             Fluttertoast.showToast(msg: msg);
             return false;
           }
 
           // 成功：顯示在面板 + 播放特效（自己送的）
-          final cdn      = me?.cdnUrl;
+          final cdn = me?.cdnUrl;
           final iconFull = cu.joinCdn(cdn, gift.icon);
-          final urlFull  = cu.joinCdn(cdn, gift.url);
+          final urlFull = cu.joinCdn(cdn, gift.url);
 
           // 避免 WS 回來再插一次
           _liveSeenUuid.add(uuid);
 
           ref.read(callSessionProvider(roomId).notifier).addIncoming(
-            ChatMessage(
-              type: MessageType.self,
-              contentType: ChatContentType.gift,
-              text: gift.title,
-              uuid: uuid,
-              flag: 'gift',
-              toUid: toUid,
-              data: {
-                'gift_id'   : gift.id,
-                'gift_title': gift.title,
-                'gift_icon' : iconFull,
-                'gift_gold' : gift.gold,
-                'gift_count': 1,
-                'gift_url'  : urlFull,
-              },
-              sendState: SendState.sent,
-              createAt: cu.nowSec(),
-            ),
-          );
+                ChatMessage(
+                  type: MessageType.self,
+                  contentType: ChatContentType.gift,
+                  text: gift.title,
+                  uuid: uuid,
+                  flag: 'gift',
+                  toUid: toUid,
+                  data: {
+                    'gift_id': gift.id,
+                    'gift_title': gift.title,
+                    'gift_icon': iconFull,
+                    'gift_gold': gift.gold,
+                    'gift_count': 1,
+                    'gift_url': urlFull,
+                  },
+                  sendState: SendState.sent,
+                  createAt: cu.nowSec(),
+                ),
+              );
           _scrollLiveToBottom();
 
           if (urlFull.isNotEmpty) _giftFx.enqueue(context, urlFull); // 這裡才播
@@ -631,12 +675,16 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     final repo = ref.read(callRepositoryProvider);
     ref.read(callSessionProvider(roomId).notifier).clearAll();
     unawaited(
-      repo.respondCall(
-        channelName: roomId,
-        callId: null,
-        accept: false,
-      ).timeout(const Duration(seconds: 2), onTimeout: () => <String, dynamic>{})
-          .then<void>((_) {}, onError: (e) => debugPrint('[hangup] notify fail: $e')),
+      repo
+          .respondCall(
+            channelName: roomId,
+            callId: null,
+            accept: false,
+          )
+          .timeout(const Duration(seconds: 2),
+              onTimeout: () => <String, dynamic>{})
+          .then<void>((_) {},
+              onError: (e) => debugPrint('[hangup] notify fail: $e')),
     );
 
     await _rtc.safeLeave();
@@ -677,7 +725,8 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     await _closeMiniIfAny();
     if (!mounted) return;
 
-    Navigator.of(rootNavigatorKey.currentContext ?? context, rootNavigator: true)
+    Navigator.of(rootNavigatorKey.currentContext ?? context,
+            rootNavigator: true)
         .pushReplacementNamed(
       AppRoutes.live_end,
       arguments: {
@@ -687,7 +736,6 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     );
   }
 
-
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -695,7 +743,9 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     _rtc.remoteUids.removeListener(_remoteListener);
     _cancelRemoteGoneTimer();
 
-    try { _rtc.engine.unregisterEventHandler(_pageRtcHandler); } catch (_) {}
+    try {
+      _rtc.engine.unregisterEventHandler(_pageRtcHandler);
+    } catch (_) {}
 
     _liveInputCtrl.dispose();
     _liveInputFocus.dispose();
@@ -715,21 +765,20 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
   }
 
   void _goMini() {
-
     _giftFx.stop(clearQueue: true);
 
     final rootCtx = Navigator.of(context, rootNavigator: true).context;
 
     final navArgs = {
-      'roomId'       : roomId,
-      'token'        : rtcToken,
-      'title'        : title,
-      'desc'         : desc,
-      'isCallMode'   : true,
+      'roomId': roomId,
+      'token': rtcToken,
+      'title': title,
+      'desc': desc,
+      'isCallMode': true,
       'asBroadcaster': asBroadcaster,
-      'peerAvatar'   : peerAvatar,
-      'callFlag'     : _isVoice ? 2 : 1,
-      'free_at'      : _inFreePeriod ? _freeLeftSec : 0,
+      'peerAvatar': peerAvatar,
+      'callFlag': _isVoice ? 2 : 1,
+      'free_at': _inFreePeriod ? _freeLeftSec : 0,
     };
 
     CallOverlay.show(
@@ -741,7 +790,8 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
         remoteUid: _remoteUids.isNotEmpty ? _remoteUids.first : null,
         onExpand: () {
           CallOverlay.hide();
-          Navigator.of(rootCtx).pushNamed(AppRoutes.broadcaster, arguments: navArgs);
+          Navigator.of(rootCtx)
+              .pushNamed(AppRoutes.broadcaster, arguments: navArgs);
         },
       ),
     );
@@ -753,13 +803,15 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
   @override
   Widget build(BuildContext context) {
     final top = MediaQuery.of(context).padding.top;
-    final Color fg = _isVoice ? Colors.black : Colors.white;
-    final Color chipBg = _isVoice
+    final uiVoice = _isVoiceLikeUI;
+
+    final Color fg = uiVoice ? Colors.black : Colors.white;
+    final Color chipBg = uiVoice
         ? Colors.black.withOpacity(0.05)
         : Colors.black.withOpacity(0.35);
-    final Color chipFg = _isVoice ? Colors.black87 : Colors.white;
+    final Color chipFg = uiVoice ? Colors.black87 : Colors.white;
 
-    final avatarRadius = 60.0;               // 可調
+    final avatarRadius = 60.0; // 可調
     final elapsedText = ref.watch(callTimerProvider.select((t) => t.text));
     final mUser = ref.read(userProfileProvider);
     final ImageProvider avatarProvider = (peerAvatar.isNotEmpty)
@@ -776,7 +828,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     // 之後資料更新也暖啟動（只會對未暖過的 URL 動作）
     ref.listen<AsyncValue<List<GiftItemModel>>>(
       quickGiftListProvider,
-          (prev, next) => next.whenData(_maybeWarmQuickGifts),
+      (prev, next) => next.whenData(_maybeWarmQuickGifts),
     );
 
     // ★ 持續監聽通話被中止
@@ -801,7 +853,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
           children: [
             // 遠端畫面全屏
             Positioned.fill(
-              child: _isVoice
+              child: uiVoice
                   ? const ColoredBox(color: Colors.white)
                   : StableRemoteVideoView(
                 engine: _rtc.engine,
@@ -817,7 +869,10 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
               top: top + 6,
               left: 12,
               child: IconButton(
-                icon: Image.asset('assets/zoom.png', width: 20, height: 20, color: _isVoice? Color(0xFF8E8895) : Colors.white),
+                icon: Image.asset('assets/zoom.png',
+                    width: 20,
+                    height: 20,
+                    color: _isVoice ? Color(0xFF8E8895) : Colors.white),
                 onPressed: _goMini,
                 tooltip: S.of(context).tooltipMinimize,
                 splashRadius: 22,
@@ -825,19 +880,19 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
             ),
 
             // 上方置中：對方名字
-            if (!_isVoice)
-            Positioned(
-              top: top + 20,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: Text(
-                  title.isEmpty ? '' : title,
-                  style: TextStyle(
-                      color: fg, fontSize: 16, fontWeight: FontWeight.w600),
+            if (!uiVoice)
+              Positioned(
+                top: top + 20,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Text(
+                    title.isEmpty ? '' : title,
+                    style: TextStyle(
+                        color: fg, fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
                 ),
               ),
-            ),
 
             // 名字下方：免費時長 / 計時膠囊（二擇一）
             Positioned(
@@ -850,63 +905,70 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
                   duration: const Duration(milliseconds: 200),
                   child: _inFreePeriod
                       ? Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        S.of(context).freeTimeLabel,
-                        style: TextStyle(
-                          color: fg,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Center(
-                        child: FreeDigitsBadge(
-                          text: _mmss(_freeLeftSec),  // 01:10
-                          fg: fg,
-                          bg: chipBg,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      GestureDetector(
-                        onTap: _openRechargeSheetFromFreeBadge,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(14),
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFFFFA770), Color(0xFFD247FE)],
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              S.of(context).freeTimeLabel,
+                              style: TextStyle(
+                                color: fg,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
+                            const SizedBox(height: 6),
+                            Center(
+                              child: FreeDigitsBadge(
+                                text: _mmss(_freeLeftSec), // 01:10
+                                fg: fg,
+                                bg: chipBg,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            GestureDetector(
+                              onTap: _openRechargeSheetFromFreeBadge,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(14),
+                                  gradient: const LinearGradient(
+                                    colors: [
+                                      Color(0xFFFFA770),
+                                      Color(0xFFD247FE)
+                                    ],
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                  ),
+                                ),
+                                child: Text(
+                                  S.of(context).rechargeGo,
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      : Container(
+                          padding: const EdgeInsets.only(top: 4),
+                          width: 120,
+                          height: 26,
+                          decoration: BoxDecoration(
+                            color: chipBg,
+                            borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
-                            S.of(context).rechargeGo,
-                            style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                            elapsedText,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: chipFg,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                  )
-                      : Container(
-                    padding: const EdgeInsets.only(top: 4),
-                    width: 120,
-                    height: 26,
-                    decoration: BoxDecoration(
-                      color: chipBg,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      elapsedText,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: chipFg,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
                 ),
               ),
             ),
@@ -924,7 +986,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
             ),
 
             // 語音模式：頂部 30 顯示大頭照 + 名稱
-            if (_isVoice)
+            if (uiVoice)
               Positioned(
                 top: top + 180,
                 left: 0,
@@ -932,11 +994,15 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    CircleAvatar(radius: avatarRadius, backgroundImage: avatarProvider),
+                    CircleAvatar(
+                        radius: avatarRadius, backgroundImage: avatarProvider),
                     const SizedBox(height: 16),
                     Text(
                       title.isEmpty ? '' : title,
-                      style: const TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                          color: Colors.black,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600),
                     ),
                   ],
                 ),
@@ -980,14 +1046,17 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
               left: 10,
               bottom: 110,
               child: LiveChatPanel(
-                messages: ref.watch(callSessionProvider(roomId).select((s) => s.messages)),
+                messages: ref.watch(
+                    callSessionProvider(roomId).select((s) => s.messages)),
                 controller: _liveScroll,
-                myName: mUser?.displayName ?? ' ${S.of(context).userWithId(_remoteUids.first) }',
+                myName: mUser?.displayName ??
+                    ' ${S.of(context).userWithId(_remoteUids.first)}',
                 peerName: title,
               ),
             ),
 
             // 快捷禮物列（輸入框正上方）
+            if (_canSendGift)
             Positioned(
               left: 12,
               bottom: 55,
@@ -1007,22 +1076,32 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
                         return quickGifts.when(
                           loading: () => const Center(
-                            child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                            child: SizedBox(
+                                width: 18,
+                                height: 18,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2)),
                           ),
-                          error: (_, __) => const SizedBox.shrink(), // 靜默；不影響輸入與聊天
+                          error: (_, __) => const SizedBox.shrink(),
+                          // 靜默；不影響輸入與聊天
                           data: (list) {
                             if (list.isEmpty) return const SizedBox.shrink();
 
-                            final cdnBase = ref.watch(userProfileProvider)?.cdnUrl ?? '';
+                            final cdnBase =
+                                ref.watch(userProfileProvider)?.cdnUrl ?? '';
                             // 只顯示 3 個寬度，但可以水平滑到更多
                             return ListView.separated(
                               scrollDirection: Axis.horizontal,
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 1),
                               itemCount: list.length,
-                              separatorBuilder: (_, __) => const SizedBox(width: 6),
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(width: 6),
                               itemBuilder: (_, i) {
                                 final g = list[i];
-                                final icon = g.icon.startsWith('http') ? g.icon : cu.joinCdn(cdnBase, g.icon);
+                                final icon = g.icon.startsWith('http')
+                                    ? g.icon
+                                    : cu.joinCdn(cdnBase, g.icon);
                                 return InkWell(
                                   borderRadius: BorderRadius.circular(10),
                                   onTap: () => _sendQuickGift(g),
@@ -1030,13 +1109,16 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
                                     width: 48,
                                     height: 48,
                                     decoration: BoxDecoration(
-                                      color: _isVoice ? Colors.white : const Color(0xFF0F0F10),
+                                      color: _isVoice
+                                          ? Colors.white
+                                          : const Color(0xFF0F0F10),
                                       borderRadius: BorderRadius.circular(10),
                                     ),
                                     child: ClipRRect(
                                       borderRadius: BorderRadius.circular(10),
                                       child: (icon.isNotEmpty)
-                                          ? CachedNetworkImage(imageUrl: icon, fit: BoxFit.cover)
+                                          ? CachedNetworkImage(
+                                              imageUrl: icon, fit: BoxFit.cover)
                                           : const SizedBox.shrink(),
                                     ),
                                   ),
@@ -1051,6 +1133,22 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
                 ),
               ),
             ),
+
+            if (ref.watch(userProfileProvider)!.isBroadcaster && !_isVoice) // 只有主播且為「影像通話」時顯示
+              Positioned(
+                right: 10,
+                // 調整這個數字可以更貼近你實際 UI；110 大多數機型會剛好在 switch 上方
+                bottom: 60,
+                child: _roundIconButton(
+                  icon: _hideRemoteByHost ? Icons.visibility_off : Icons.visibility,
+                  // 在影像樣式下用白色，在語音樣式(白底)下用深色
+                  iconColor: _isVoiceLikeUI ? Colors.black87 : Colors.green,
+                  bgColor: _isVoiceLikeUI
+                      ? Colors.black.withOpacity(0.06)
+                      : Colors.black.withOpacity(0.25),
+                  onTap: _toggleHideRemote,
+                ),
+              ),
 
             // === 底部輸入 + 功能鍵（同一個 Positioned / 同一個 Row）===
             Positioned(
@@ -1084,10 +1182,11 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
                           const SizedBox(width: 20),
 
                           // 右側按鈕列（固定高度，和輸入框垂直置中）
-                          _assetBtn(
-                            asset: 'assets/icon_gift.png',
-                            onTap: _openGiftSheetLive,
-                          ),
+                          if (_canSendGift)
+                            _assetBtn(
+                              asset: 'assets/icon_gift.png',
+                              onTap: _openGiftSheetLive,
+                            ),
                           _assetBtn(
                             asset: 'assets/icon_speaker_1.png',
                             offAsset: 'assets/icon_speaker_2.png',
@@ -1118,7 +1217,6 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
                 ),
               ),
             )
-
           ],
         ),
       ),
@@ -1129,8 +1227,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     await showInsufficientGoldSheet(
       context,
       ref,
-      onRechargeTap: (int? amount) {
-      },
+      onRechargeTap: (int? amount) {},
       suggestedAmount: null, // ★ 與禮物面板底部「儲值」按鈕一致
     );
   }
@@ -1146,7 +1243,6 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     );
   }
 
-
   Map<String, dynamic>? _decodeJsonMap(String? s) {
     if (s == null || s.isEmpty) return null;
     try {
@@ -1155,7 +1251,10 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     } catch (_) {}
     return null;
   }
-  int _toInt(dynamic v) => (v is num) ? v.toInt() : int.tryParse('${v ?? ''}') ?? -1;
+
+  int _toInt(dynamic v) =>
+      (v is num) ? v.toInt() : int.tryParse('${v ?? ''}') ?? -1;
+
   String _joinCdn(String base, String path) {
     if (path.isEmpty || path.startsWith('http')) return path;
     final b = base.replaceFirst(RegExp(r'/+$'), '');
@@ -1164,16 +1263,19 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
   }
 
   void _onWsLiveChat(Map<String, dynamic> payload) {
-    if (!mounted || _closing) return;  // ★ 避免頁面關閉後還處理
+    if (!mounted || _closing) return; // ★ 避免頁面關閉後還處理
     try {
       final data = (payload['Data'] is Map)
           ? Map<String, dynamic>.from(payload['Data'])
           : (payload['data'] is Map)
-          ? Map<String, dynamic>.from(payload['data'])
-          : const <String, dynamic>{};
+              ? Map<String, dynamic>.from(payload['data'])
+              : const <String, dynamic>{};
 
       // 保險型過濾：只收 live_chat（flag/type=3）
-      final tRaw = payload['type'] ?? payload['Type'] ?? payload['flag'] ?? payload['Flag'];
+      final tRaw = payload['type'] ??
+          payload['Type'] ??
+          payload['flag'] ??
+          payload['Flag'];
       final tVal = (tRaw is num) ? tRaw.toInt() : int.tryParse('$tRaw');
       if (tVal != null && tVal != 3 && tVal != 1) return;
 
@@ -1191,41 +1293,53 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
       final me = ref.read(userProfileProvider);
       final myUid = int.tryParse(me?.uid ?? '') ?? -1;
-      final fromUid = _toInt(data['Uid'] ?? payload['Uid'] ?? data['uid'] ?? payload['uid']);
-      final toUid   = _toInt(data['ToUid'] ?? payload['ToUid'] ?? data['to_uid'] ?? payload['toUid']);
+      final fromUid = _toInt(
+          data['Uid'] ?? payload['Uid'] ?? data['uid'] ?? payload['uid']);
+      final toUid = _toInt(data['ToUid'] ??
+          payload['ToUid'] ??
+          data['to_uid'] ??
+          payload['toUid']);
 
       final remote = _remoteUids.isNotEmpty ? _remoteUids.first : null;
       if (remote == null) return;
 
       final isThisTalk = (fromUid == remote && toUid == myUid) ||
-          (fromUid == myUid   && toUid == remote);
+          (fromUid == myUid && toUid == remote);
       if (!isThisTalk) return;
 
-      final uuid = (payload['uuid'] ?? payload['UUID'] ?? data['uuid'] ?? data['UUID'] ?? '').toString();
+      final uuid = (payload['uuid'] ??
+              payload['UUID'] ??
+              data['uuid'] ??
+              data['UUID'] ??
+              '')
+          .toString();
       if (uuid.isNotEmpty && !_liveSeenUuid.add(uuid)) return;
-      final now  = cu.nowSec();
+      final now = cu.nowSec();
 
       // ★ 第二層：chat_text 可能是字串化的禮物 JSON
       final inner = _decodeJsonMap(chatText);
-      final innerType = (inner?['type'] ?? inner?['t'])?.toString().toLowerCase();
+      final innerType =
+          (inner?['type'] ?? inner?['t'])?.toString().toLowerCase();
 
       final session = ref.read(callSessionProvider(roomId).notifier);
       final cdnBase = me?.cdnUrl ?? '';
 
       if (innerType == 'gift') {
-        final gid   = _toInt(inner?['gift_id'] ?? inner?['id']);
-        final title = (inner?['gift_title'] ?? inner?['title'] ?? '').toString();
-        final iconRel = (inner?['gift_icon'] ?? inner?['icon'] ?? '').toString();
-        final gold  = _toInt(inner?['gift_gold'] ?? inner?['gold']);
+        final gid = _toInt(inner?['gift_id'] ?? inner?['id']);
+        final title =
+            (inner?['gift_title'] ?? inner?['title'] ?? '').toString();
+        final iconRel =
+            (inner?['gift_icon'] ?? inner?['icon'] ?? '').toString();
+        final gold = _toInt(inner?['gift_gold'] ?? inner?['gold']);
         final count = _toInt(inner?['gift_count'] ?? inner?['count']);
         String urlRel = (inner?['gift_url'] ?? '').toString();
 
         // 若缺 gift_url，靠本地禮物表補
         if (urlRel.isEmpty && gid >= 0) {
           final gifts = ref.read(giftListProvider).maybeWhen(
-            data: (v) => v,
-            orElse: () => const <GiftItemModel>[],
-          );
+                data: (v) => v,
+                orElse: () => const <GiftItemModel>[],
+              );
           final g = gifts.where((e) => e.id == gid).toList();
           if (g.isNotEmpty && g.first.url.isNotEmpty) {
             urlRel = g.first.url; // 相對
@@ -1233,7 +1347,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
         }
 
         final iconFull = _joinCdn(cdnBase, iconRel);
-        final urlFull  = _joinCdn(cdnBase, urlRel);
+        final urlFull = _joinCdn(cdnBase, urlRel);
 
         if (fromUid != myUid && urlFull.isNotEmpty) {
           _giftFx.enqueue(context, urlFull);
@@ -1318,7 +1432,6 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     );
   }
 
-
   String _mmss(int sec) {
     if (sec < 0) sec = 0;
     final m = (sec ~/ 60).toString().padLeft(2, '0');
@@ -1358,7 +1471,8 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
 
   void _armRemoteGoneTimer() {
     _cancelRemoteGoneTimer();
-    _remoteGoneTimer = Timer(const Duration(seconds: _remoteGoneGraceSec), () async {
+    _remoteGoneTimer =
+        Timer(const Duration(seconds: _remoteGoneGraceSec), () async {
       if (!mounted || _closing) return;
       // 再確認一次確實沒人
       if (_rtc.remoteUids.value.isEmpty) {
@@ -1401,7 +1515,8 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
       contentType: ChatContentType.text,
       text: txt,
       uuid: uuid,
-      flag: 'chat_room', // 只是記錄，實際 API 會用
+      flag: 'chat_room',
+      // 只是記錄，實際 API 會用
       toUid: toUid,
       sendState: SendState.sending,
       createAt: cu.nowSec(),
@@ -1420,7 +1535,8 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     );
 
     if (!mounted) return;
-    session.updateSendState(uuid, sendResult.ok ? SendState.sent : SendState.failed);
+    session.updateSendState(
+        uuid, sendResult.ok ? SendState.sent : SendState.failed);
   }
 
   Future<void> _sendQuickGift(GiftItemModel gift) async {
@@ -1429,29 +1545,31 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
       return;
     }
 
-    final me    = ref.read(userProfileProvider);
+    final me = ref.read(userProfileProvider);
     final toUid = _remoteUids.first;
     final myUid = int.tryParse(me?.uid ?? '0') ?? 0;
-    final uuid  = cu.genUuid(myUid);
+    final uuid = cu.genUuid(myUid);
 
     final payload = jsonEncode({
-      'type'      : 'gift',
-      'gift_id'   : gift.id,
+      'type': 'gift',
+      'gift_id': gift.id,
       'gift_title': gift.title,
-      'gift_gold' : gift.gold,
-      'gift_icon' : gift.icon, // 相對
+      'gift_gold': gift.gold,
+      'gift_icon': gift.icon, // 相對
       'gift_count': 1,
-      'gift_url'  : gift.url,  // 相對
+      'gift_url': gift.url, // 相對
     });
 
-    final res = await ref.read(chatRepositoryProvider)
+    final res = await ref
+        .read(chatRepositoryProvider)
         .sendText(uuid: uuid, toUid: toUid, text: payload, flag: 'gift');
 
     if (!mounted) return;
 
     // 失敗就僅提示
     if (!res.ok) {
-      final msg = AppErrorCatalog.messageFor(res.code ?? -1, serverMessage: res.message);
+      final msg = AppErrorCatalog.messageFor(res.code ?? -1,
+          serverMessage: res.message);
       Fluttertoast.showToast(msg: msg);
       if (res.code == 102) {
         // 可選：直接開充值面板
@@ -1461,32 +1579,32 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     }
 
     // 成功 → 顯示在面板 + 播特效
-    final cdn      = me?.cdnUrl;
+    final cdn = me?.cdnUrl;
     final iconFull = cu.joinCdn(cdn, gift.icon);
-    final urlFull  = cu.joinCdn(cdn, gift.url);
+    final urlFull = cu.joinCdn(cdn, gift.url);
 
     _liveSeenUuid.add(uuid); // 防 WS 重複
 
     ref.read(callSessionProvider(roomId).notifier).addIncoming(
-      ChatMessage(
-        type: MessageType.self,
-        contentType: ChatContentType.gift,
-        text: gift.title,
-        uuid: uuid,
-        flag: 'gift',
-        toUid: toUid,
-        data: {
-          'gift_id'   : gift.id,
-          'gift_title': gift.title,
-          'gift_icon' : iconFull,
-          'gift_gold' : gift.gold,
-          'gift_count': 1,
-          'gift_url'  : urlFull,
-        },
-        sendState: SendState.sent,
-        createAt: cu.nowSec(),
-      ),
-    );
+          ChatMessage(
+            type: MessageType.self,
+            contentType: ChatContentType.gift,
+            text: gift.title,
+            uuid: uuid,
+            flag: 'gift',
+            toUid: toUid,
+            data: {
+              'gift_id': gift.id,
+              'gift_title': gift.title,
+              'gift_icon': iconFull,
+              'gift_gold': gift.gold,
+              'gift_count': 1,
+              'gift_url': urlFull,
+            },
+            sendState: SendState.sent,
+            createAt: cu.nowSec(),
+          ),
+        );
     _scrollLiveToBottom();
 
     if (urlFull.isNotEmpty) _giftFx.enqueue(context, urlFull);
@@ -1513,18 +1631,31 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
   Future<void> _refreshToken() async {
     if (roomId.isEmpty) return;
     try {
-
       final newToken = await ref.read(callRepositoryProvider).renewRtcToken(
-        channelName: roomId,
-      );
+            channelName: roomId,
+          );
 
-      await _rtc.engine.renewToken(newToken);        // ✅ 回傳給 Agora
-      setState(() => rtcToken = newToken);           // (可選)保留現值
+      await _rtc.engine.renewToken(newToken); // ✅ 回傳給 Agora
+      setState(() => rtcToken = newToken); // (可選)保留現值
       debugPrint('[RTC] token renewed');
     } catch (e) {
       debugPrint('[RTC] renew token error: $e');
       // 失敗策略（可選）：稍後重試/提示/視情況離房
     }
+  }
+
+  Future<void> _toggleHideRemote() async {
+    if (!asBroadcaster) return;
+    final next = !_hideRemoteByHost;
+    setState(() => _hideRemoteByHost = next);
+
+    // 省流量：隱藏時停止拉取對方影像；顯示時恢復
+    final uid = _remoteUid;
+    try {
+      if (uid != null) {
+        await _rtc.engine.muteRemoteVideoStream(uid: uid, mute: next);
+      }
+    } catch (_) {}
   }
 
   void _applyCallFlagFromArgs(Map<String, dynamic> args) {
@@ -1561,7 +1692,7 @@ class _CountdownRechargeSheet extends StatelessWidget {
               Image.asset('assets/pic_notify.png', width: 56, height: 56),
               const SizedBox(height: 12),
               Text(
-                '當前剩餘時間不足 $sec秒 ，請盡快充值。',
+                S.of(context).countdownRechargeHint(sec),
                 style: const TextStyle(fontSize: 14, color: Color(0xFFFF3B30)),
               ),
               const SizedBox(height: 16),
@@ -1582,8 +1713,8 @@ class _CountdownRechargeSheet extends StatelessWidget {
                         colors: [Color(0xFFFFA770), Color(0xFFD247FE)],
                       ),
                     ),
-                    child: const Text(
-                      '去充值',
+                    child: Text(
+                      S.of(context).rechargeGo,
                       style: TextStyle(
                         fontSize: 15,
                         color: Colors.white,
@@ -1602,6 +1733,5 @@ class _CountdownRechargeSheet extends StatelessWidget {
     );
   }
 }
-
 
 enum CallType { video, voice }

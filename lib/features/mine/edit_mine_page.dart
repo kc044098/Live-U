@@ -112,57 +112,34 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
 
   // 新增一個圖片載入判斷
   Widget _buildImageByPath(String path) {
-    if (path.isEmpty) {
-      return Image.asset(
-        'assets/my_photo_defult.jpeg',
+    final p = path.trim();
+    if (p.isEmpty) {
+      return Image.asset('assets/my_photo_defult.jpeg',
+          width: double.infinity, height: 288, fit: BoxFit.cover, alignment: Alignment.topCenter);
+    }
+
+    // ✅ iOS/Android 的本機絕對路徑
+    final file = File(p);
+    if (file.existsSync()) {
+      return Image.file(file,
+          width: double.infinity, height: 288, fit: BoxFit.cover, alignment: Alignment.topCenter);
+    }
+
+    // ✅ 網路圖（http/https）
+    if (p.startsWith('http://') || p.startsWith('https://')) {
+      return CachedNetworkImage(
+        imageUrl: p,
         width: double.infinity,
         height: 288,
         fit: BoxFit.cover,
         alignment: Alignment.topCenter,
+        errorWidget: (_, __, ___) => Image.asset('assets/my_photo_defult.jpeg'),
       );
     }
-    // Base64 或 本地路徑
-    if (path.startsWith('data:image') || path.length > 200) {
-      try {
-        final bytes = base64Decode(path);
-        return Image.memory(
-          bytes,
-          width: double.infinity,
-          height: 288,
-          fit: BoxFit.cover,
-          alignment: Alignment.topCenter,
-        );
-      } catch (_) {
-        return Image.asset(
-          'assets/my_photo_defult.jpeg',
-          width: double.infinity,
-          height: 288,
-          fit: BoxFit.cover,
-          alignment: Alignment.topCenter,
-        );
-      }
-    } else {
-      final file = File(path);
-      if (file.existsSync()) {
-        return Image.file(
-          file,
-          width: double.infinity,
-          height: 288,
-          fit: BoxFit.cover,
-          alignment: Alignment.topCenter,
-        );
-      } else {
-        return CachedNetworkImage(
-          imageUrl: path,
-          width: double.infinity,
-          height: 288,
-          fit: BoxFit.cover,
-          alignment: Alignment.topCenter,
-          errorWidget: (_, __, ___) =>
-              Image.asset('assets/my_photo_defult.jpeg'),
-        );
-      }
-    }
+
+    // 其他未知格式 → 預設圖
+    return Image.asset('assets/my_photo_defult.jpeg',
+        width: double.infinity, height: 288, fit: BoxFit.cover, alignment: Alignment.topCenter);
   }
 
   Widget buildMyProfileTab(UserModel? user) {
@@ -299,27 +276,6 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
                     const SizedBox(height: 8),
                     Text(s.commonNoContentYet, style: TextStyle(color: Colors.grey[600])), // '還沒有內容'
                     const SizedBox(height: 120),
-                    GestureDetector(
-                      onTap: () => Navigator.pushNamed(context, AppRoutes.videoRecorder),
-                      child: Container(
-                        width: 288, height: 48,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(colors: [Color(0xFFFFB56B), Color(0xFFDF65F8)]),
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                        child: Center(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              SvgPicture.asset('assets/icon_start_video.svg', width: 24, height: 24),
-                              const SizedBox(width: 6),
-                              Text(s.commonPublishMoment, // '發佈動態'
-                                  style: const TextStyle(color: Colors.white, fontSize: 16)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),

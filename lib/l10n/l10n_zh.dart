@@ -294,9 +294,6 @@ class SZh extends S {
   String get friendsTabTitle => '交友';
 
   @override
-  String get publishDynamic => '發布動態';
-
-  @override
   String get fallbackUser => '用戶';
 
   @override
@@ -503,6 +500,11 @@ class SZh extends S {
 
   @override
   String get freeTimeEndedStartBilling => '免費時長已結束，開始計費';
+
+  @override
+  String countdownRechargeHint(int sec) {
+    return '當前剩餘時間不足 $sec 秒，請盡快充值。';
+  }
 
   @override
   String get chatEndedTitle => '聊天結束';

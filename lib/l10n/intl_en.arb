@@ -103,7 +103,6 @@
 
   "homeTabTitle": "Home",
   "friendsTabTitle": "Friends",
-  "publishDynamic": "Post",
   "fallbackUser": "User",
   "fallbackBroadcaster": "Host",
   "tagRecommended": "Recommended",
@@ -191,6 +190,12 @@
   "pleaseGrantMicOnly": "Please grant microphone permission",
   "pleaseGrantMicAndCamera": "Please grant microphone and camera permissions",
   "freeTimeEndedStartBilling": "Free time ended, charging started",
+  "countdownRechargeHint": "Less than {sec} seconds remaining. Please recharge soon.",
+  "@countdownRechargeHint": {
+    "placeholders": {
+      "sec": { "type": "int" }
+    }
+  },
   "chatEndedTitle": "Chat ended",
   "refresh": "Refresh",
   "settlingPleaseWait": "Settling, please wait…",

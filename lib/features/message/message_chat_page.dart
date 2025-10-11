@@ -79,6 +79,8 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
 
   late Future<EmojiPack> _emojiPackFut;
 
+  final Set<String> _chatSeenUuid = <String>{};
+
   int? _asInt(dynamic v) => (v is num) ? v.toInt() : int.tryParse('$v');
   bool _showEmoji = false;
 
@@ -721,12 +723,17 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
             (prev, next) {
           next.whenData((msg) {
             if (!mounted) return;
+
+            // ✅ 先用 uuid 去重（我自己剛插入過的就不再加）
+            final u = msg.uuid ?? '';
+            if (u.isNotEmpty && !_chatSeenUuid.add(u)) {
+              return; // 已看過 → 丟掉 echo
+            }
+
             setState(() => _messages.add(msg));
 
-            // ★ 對方來的新訊息 → 樂觀標記已讀
-            if (msg.type == MessageType.other) {
-              _markThreadReadOptimistic();
-            }
+            // ★ 對方的新訊息 → 樂觀標記已讀
+            if (msg.type == MessageType.other) _markThreadReadOptimistic();
 
             _tryPlayGiftFromMessage(msg);
 
@@ -972,7 +979,9 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
           ),
         );
       }},
+      if(!ref.read(userProfileProvider)!.isBroadcaster)
       {'icon': 'assets/message_icon_4.svg', 'label': s.giftLabel, 'onTap': _openGiftSheet},
+
       {'icon': 'assets/message_icon_5.svg', 'label': s.imageLabel, 'onTap': () async {
         await _pickAndSendImage();
       }},
@@ -1532,6 +1541,10 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
             final user   = ref.read(userProfileProvider);
             final myUid  = int.tryParse(user?.uid ?? '0') ?? 0;
             final toUid  = widget.partnerUid ?? 0;
+            if (toUid == 0 || myUid == 0) {
+              Fluttertoast.showToast(msg: '尚未登入或收件人錯誤');
+              return false;
+            }
             final uuid   = cu.genUuid(myUid);
 
             // 準備 payload：只送聊天訊息，讓後端扣款與推送
@@ -1542,10 +1555,10 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
               'gift_gold' : gift.gold,
               'gift_icon' : gift.icon,  // 相對路徑
               'gift_count': 1,
-              'gift_url'  : gift.url,   // 讓對端/自己收到 WS 時可直接播特效
+              'gift_url'  : gift.url,   // 相對路徑
             });
 
-            // ⛔ 不要先播特效、不要樂觀插入訊息
+            // 先打 API（確認扣款成功）
             final res = await ref.read(chatRepositoryProvider).sendText(
               uuid: uuid,
               toUid: toUid,
@@ -1568,16 +1581,52 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
               return false;
             }
 
-            // ✅ 成功：
-            // 不手動加訊息，等 WS 推回來後（roomChatProvider）自動加到面板，
-            // 並由 _tryPlayGiftFromMessage(msg) 解析 gift_url 後播放特效（確保只有成功才會播）
+            // ✅ 成功 → 立刻本地插入 + 播特效 + 放入去重集合
+            final cdn = user?.cdnUrl;
+            final iconFull = cu.joinCdn(cdn, gift.icon); // 給 UI 顯示用完整 URL
+            final urlFull  = cu.joinCdn(cdn, gift.url);  // 特效完整 URL
+
+            // 先把 uuid 登記起來，避免等會兒 WS echo 再加一次
+            _chatSeenUuid.add(uuid);
+
+            // 插入自己的禮物訊息（送出就視為 sent）
+            setState(() {
+              _messages.add(
+                ChatMessage(
+                  type: MessageType.self,
+                  contentType: ChatContentType.gift,
+                  text: gift.title,
+                  uuid: uuid,
+                  flag: 'chat_gift',
+                  toUid: toUid,
+                  data: {
+                    'gift_id'   : gift.id,
+                    'gift_title': gift.title,
+                    'gift_icon' : iconFull,
+                    'gift_gold' : gift.gold,
+                    'gift_count': 1,
+                    if ((gift.url).isNotEmpty) 'gift_url': urlFull,
+                  },
+                  sendState: SendState.sent,
+                  createAt: cu.nowSec(),
+                ),
+              );
+            });
+            _scrollToBottom();
+
+            // 立刻播特效（有 URL 才播）
+            if (urlFull.isNotEmpty) _giftFx.enqueue(context, urlFull);
+
+            // 可選：同步刷新餘額（若你有錢包 provider）
+            // ref.refresh(walletBalanceProvider);
+
+            // 關閉禮物面板
             return true;
           },
         );
       },
     );
   }
-
 
   void _enqueueGift(String url) {
     if (url.isEmpty) return;

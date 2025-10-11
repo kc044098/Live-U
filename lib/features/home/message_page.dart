@@ -60,8 +60,8 @@ class _MessagePageState extends ConsumerState<MessagePage>
 
   // 只拿來決定長度=2；實際 Tab 文案用 S.of(context)
   final List<Tab> _tabs = const [
-    Tab(text: '消息'),
-    Tab(text: '通話'),
+    Tab(text: ''),
+    Tab(text: ''),
   ];
 
   @override

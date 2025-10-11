@@ -103,7 +103,6 @@
 
   "homeTabTitle": "首頁",
   "friendsTabTitle": "交友",
-  "publishDynamic": "發布動態",
   "fallbackUser": "用戶",
   "fallbackBroadcaster": "主播",
   "tagRecommended": "推薦",
@@ -191,6 +190,12 @@
   "pleaseGrantMicOnly": "請先授權麥克風",
   "pleaseGrantMicAndCamera": "請先授權麥克風與相機",
   "freeTimeEndedStartBilling": "免費時長已結束，開始計費",
+  "countdownRechargeHint": "當前剩餘時間不足 {sec} 秒，請盡快充值。",
+  "@countdownRechargeHint": {
+    "placeholders": {
+      "sec": { "type": "int" }
+    }
+  },
   "chatEndedTitle": "聊天結束",
   "refresh": "重新整理",
   "settlingPleaseWait": "結算中，請稍候…",
@@ -697,5 +702,4 @@
   "rechargeFailed": "充值失敗：{err}",
   "@rechargeFailed": { "placeholders": { "err": {} } },
   "paymentMethodUnsupported": "未支援的支付方式"
-
 }

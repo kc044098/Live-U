@@ -10,7 +10,9 @@ import '../../core/user_local_storage.dart';
 import '../../l10n/l10n.dart';
 import '../mine/user_repository_provider.dart';
 import '../profile/profile_controller.dart';
+import 'apple_auth_service.dart';
 import 'auth_repository.dart';
+import 'facebook_auth_service.dart';
 import 'google_auth_service.dart';
 // 通过账号密码登录（多語化版）
 class AccountLoginScreen extends ConsumerStatefulWidget {
@@ -26,6 +28,9 @@ class _AccountLoginScreenState extends ConsumerState<AccountLoginScreen> {
   bool _obscurePassword = true;
 
   final GoogleAuthService _googleAuthService = GoogleAuthService();
+  final AppleAuthService _appleAuthService = AppleAuthService();
+  final FacebookAuthService _facebookAuthService = FacebookAuthService();
+
   bool _isLoading = false;
 
   Future<void> _onLoginPressed() async {
@@ -232,17 +237,13 @@ class _AccountLoginScreenState extends ConsumerState<AccountLoginScreen> {
             // Social login
             LayoutBuilder(
               builder: (context, constraints) {
-                const double gap = 12;
                 return Row(
                   children: [
-                    Expanded(child: _buildSocialButton('assets/icon_facebook_2.svg')),
-                    const SizedBox(width: gap),
-                    Expanded(child: _buildSocialButton(
-                      'assets/icon_google_2.svg',
-                      onTap: _handleGoogleLogin,
-                    )),
-                    const SizedBox(width: gap),
-                    Expanded(child: _buildSocialButton('assets/icon_apple_2.svg')),
+                    Expanded(child: _buildSocialButton('assets/icon_facebook_2.svg', onTap: _handleFacebookLogin)),
+                    const SizedBox(width: 12),
+                    Expanded(child: _buildSocialButton('assets/icon_google_2.svg', onTap: _handleGoogleLogin)),
+                    const SizedBox(width: 12),
+                    Expanded(child: _buildSocialButton('assets/icon_apple_2.svg', onTap: _handleAppleLogin)),
                   ],
                 );
               },
@@ -272,6 +273,39 @@ class _AccountLoginScreenState extends ConsumerState<AccountLoginScreen> {
       Navigator.pushReplacementNamed(context, '/home');
     } else {
       Fluttertoast.showToast(msg: t.signInFailedGoogle);
+    }
+  }
+
+  Future<void> _handleAppleLogin() async {
+    final t = S.of(context);
+    if (Firebase.apps.isEmpty) { Fluttertoast.showToast(msg: t.initializingWait); return; }
+    setState(() => _isLoading = true);
+    final user = await _appleAuthService.signInWithAppleViaFirebase(ref);
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+    if (user != null) {
+      Navigator.pushReplacementNamed(context, '/home');
+    } else {
+      Fluttertoast.showToast(msg: t.signInFailedApple);
+    }
+  }
+
+  Future<void> _handleFacebookLogin() async {
+    final t = S.of(context);
+    if (Firebase.apps.isEmpty) { Fluttertoast.showToast(msg: t.initializingWait); return; }
+    try {
+      setState(() => _isLoading = true);
+      final user = await _facebookAuthService.signInWithFacebook(ref);
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      if (user != null) {
+        Navigator.pushReplacementNamed(context, '/home');
+      } else {
+        Fluttertoast.showToast(msg: t.signInFailedFacebook);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+      Fluttertoast.showToast(msg: t.signInFailedFacebook);
     }
   }
 

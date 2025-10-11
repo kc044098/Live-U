@@ -67,6 +67,8 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
 
   bool _inMini = false;
 
+  String _statusText = '';
+
   // 改為 getter：依目前語系取字串
   String get _kToastTimeout => S.of(_rootCtx).callTimeoutNoResponse;
 
@@ -77,29 +79,17 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _statusText = S.of(_rootCtx).statusConnecting;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _kickoffFlow();
     });
   }
 
   void _kickoffFlow() {
-    final t = S.of(_rootCtx);
-    switch (widget.calleeState) {
-      case CalleeState.busy:
-        _playUnavailableTone();
-        _startTimeout(toast: t.calleeBusy);
-        break;
-      case CalleeState.offline:
-        _playUnavailableTone();
-        _startTimeout(toast: t.calleeOffline);
-        break;
-      case CalleeState.online:
-        _handleOnlineFlow();
-        break;
-    }
+    _startDialFlow();
   }
 
-  Future<void> _handleOnlineFlow() async {
+  Future<void> _startDialFlow() async {
     final ok = await ensureMicCam(
       needCam: widget.isVideoCall == true,
       context: context,
@@ -454,7 +444,7 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
                       ),
                       const SizedBox(height: 24),
                       Text(
-                        _statusTextFor(widget.calleeState),
+                        _statusText.isEmpty ? S.of(_rootCtx).statusConnecting : _statusText, // 👈 永遠顯示接通中
                         style: const TextStyle(fontSize: 18, color: Colors.white),
                       ),
                       const SizedBox(height: 240),

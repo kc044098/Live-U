@@ -129,8 +129,6 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
                                         ),
                                       ),
                                     ),
-
-                                  const SizedBox(width: 4),
                                   IconButton(
                                     onPressed: () async {
                                       await Navigator.push(
@@ -143,7 +141,7 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
                                     },
                                     icon: SvgPicture.asset('assets/icon_edit1.svg', width: 24, height: 24),
                                     padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                                    constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
                                     splashRadius: 22,
                                   )
                                 ],
