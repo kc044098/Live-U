@@ -31,10 +31,11 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+        isCoreLibraryDesugaringEnabled = true
     }
-    kotlinOptions { jvmTarget = "11" }
+    kotlinOptions { jvmTarget = "1.8" }
     aaptOptions {
         noCompress += setOf("bundle", "js", "csv")
     }
@@ -79,15 +80,13 @@ android {
         }
 
     }
-
-    // ⚠️ 新增：指定不要壓縮的副檔名（FaceUnity 常見）
     androidResources {
-        // 依你實際資源調整：bundle / model / dat / js / tflite 等
         noCompress += setOf("bundle", "model", "dat", "js")
     }
 }
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
     implementation("com.google.android.play:feature-delivery:2.1.0")
     implementation("com.google.android.play:core-common:2.0.4")
     implementation("com.google.android.play:app-update:2.1.0")

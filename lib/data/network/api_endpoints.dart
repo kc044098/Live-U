@@ -23,6 +23,7 @@ class ApiEndpoints {
   static const String videoLike = '/api/member/video/like'; // 喜歡視頻
   static const String videoRecommend = '/api/member/recommend'; // 推薦視頻
   static const String userRecommend = '/api/member/recommend/user'; // 推薦用戶
+  static const String videoView = '/api/member/video/view';    // 紀錄觀看視頻時長
 
   static const String liveCall = '/api/live/call'; // 撥打電話
   static const String liveCallAccept = '/api/live/call/accept'; // 1.接聽電話 2.拒絕電話
@@ -59,5 +60,8 @@ class ApiEndpoints {
 
   static const String liveEnd = '/api/live/report';
   static const String iapVerify = '/iap/verify';
+
+  static const String tokenRegister = '/api/member/register'; // FCM 註冊token
+
 
 }

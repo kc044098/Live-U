@@ -132,7 +132,7 @@ class _LikedUsersPageState extends ConsumerState<LikedUsersPage> {
       placeholder: (_, __) => const ColoredBox(color: Colors.black),
       errorWidget: (_, __, ___) => const ColoredBox(color: Colors.black12),
     )
-        : Image.asset('assets/pic_girl1.png', fit: BoxFit.cover);
+        : Image.asset('assets/my_photo_defult.jpeg', fit: BoxFit.cover);
 
     return AspectRatio(
       aspectRatio: 3 / 4,

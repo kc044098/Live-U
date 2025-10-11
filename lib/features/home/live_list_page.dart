@@ -579,6 +579,37 @@ class _VideoCardState extends ConsumerState<_VideoCard> with WidgetsBindingObser
   VoidCallback? _gateListener;
   Timer? _watchdog;
 
+  // === 觀看時長累計 ===
+  DateTime? _watchStartAt;
+  int _accumulatedMs = 0;
+
+
+  void _startWatchIfNeeded() {
+    if (_watchStartAt == null) {
+      _watchStartAt = DateTime.now();
+      debugPrint('[watch] START id=${widget.item.id}');
+    }
+  }
+
+  void _stopWatchAndMaybeFlush({bool force = false}) {
+    if (_watchStartAt != null) {
+      _accumulatedMs += DateTime.now().difference(_watchStartAt!).inMilliseconds;
+      _watchStartAt = null;
+    }
+    _flushWatchIfNeeded(force: force);
+  }
+
+  void _flushWatchIfNeeded({bool force = false}) {
+    if (!force && _accumulatedMs < 1000) return;
+    final sec = (_accumulatedMs ~/ 1000);
+    _accumulatedMs = 0;
+    if (sec <= 0) return;
+
+    debugPrint('[watch] FLUSH id=${widget.item.id} +${sec}s');
+    final repo = ref.read(videoRepositoryProvider);
+    unawaited(repo.reportVideoView(id: widget.item.id, durationSec: 0, watchSec: sec));
+  }
+
   bool get _isUserInteracting {
     final pos = Scrollable.of(context)?.position;
     return (pos?.isScrollingNotifier.value ?? false);
@@ -621,11 +652,13 @@ class _VideoCardState extends ConsumerState<_VideoCard> with WidgetsBindingObser
       await _viewKey.currentState?.setMuted(widget.mute);
       await _viewKey.currentState?.play();
 
+      // 只要成功要求播放，就先開始計時（首幀回來再顯示封面而已）
+      _startWatchIfNeeded();
+
       _watchdog?.cancel();
       _watchdog = Timer(const Duration(milliseconds: 800), () async {
         if (!mounted) return;
         if (_coverVisible && !_isUserInteracting) {
-          // 只做一次熱插拔
           _watchdog?.cancel();
           try {
             await _viewKey.currentState?.detach();
@@ -636,7 +669,7 @@ class _VideoCardState extends ConsumerState<_VideoCard> with WidgetsBindingObser
         }
       });
 
-      if (mounted) setState(() { _attached = true; /* 不動 _coverVisible */ });
+      if (mounted) setState(() { _attached = true; });
     } catch (_) {}
   }
 
@@ -646,27 +679,34 @@ class _VideoCardState extends ConsumerState<_VideoCard> with WidgetsBindingObser
     try {
       await _viewKey.currentState?.pause();
       await _viewKey.currentState?.detach();
-      // 小延遲，給原生釋放 Surface/Buffer 時間
       await Future.delayed(const Duration(milliseconds: 50));
     } catch (_) {}
     if (mounted) {
       setState(() {
         _attached = false;
-        _coverVisible = true; // 👈 離場就把封面顯示回來
+        _coverVisible = true;
       });
+      // ⚠️ 將 flush 放在 setState 外，避免奇怪的重建時機吃掉呼叫
+      _stopWatchAndMaybeFlush();
     }
   }
 
   @override
   void didUpdateWidget(covariant _VideoCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.item.videoUrl != oldWidget.item.videoUrl) {
-      setState(() => _coverVisible = true); // 切新片，先顯示封面
+
+    // 切到新影片 → 先 flush 舊的
+    if (widget.item.id != oldWidget.item.id || widget.item.videoUrl != oldWidget.item.videoUrl) {
+      _stopWatchAndMaybeFlush(force: true);
+      setState(() => _coverVisible = true);
     }
+
+    // 變成當前可見卡片 → 立刻開播並啟動計時
     if (!oldWidget.isActive && widget.isActive) {
-      _attachAndPlay();        // 不隱藏封面
+      _attachAndPlay();
+      _startWatchIfNeeded();
     } else if (oldWidget.isActive && !widget.isActive) {
-      _detachAndPause();       // 顯示封面
+      _detachAndPause();
     }
 
     if (oldWidget.mute != widget.mute) {
@@ -678,22 +718,27 @@ class _VideoCardState extends ConsumerState<_VideoCard> with WidgetsBindingObser
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
-      // 回前台：只有當前卡片是 active 才重新綁上 Surface 並播放
         if (widget.isActive) {
           _attachAndPlay();
+          _startWatchIfNeeded();
         }
         break;
       case AppLifecycleState.inactive:
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
-      // 進背景/半活躍：切乾淨，避免持有舊 Surface 或卡 codec
-        _detachAndPause();
+        _detachAndPause(); // 內部會 flush
         break;
       case AppLifecycleState.detached:
-      // App 要被銷毀：把 native 資源放掉
         _viewKey.currentState?.detach();
+        _stopWatchAndMaybeFlush(force: true);
         break;
     }
+  }
+
+  @override
+  void deactivate() {
+    _stopWatchAndMaybeFlush(force: true);
+    super.deactivate();
   }
 
   @override
@@ -701,6 +746,8 @@ class _VideoCardState extends ConsumerState<_VideoCard> with WidgetsBindingObser
     WidgetsBinding.instance.removeObserver(this);
     _watchdog?.cancel();
     _viewKey.currentState?.detach();
+
+    _stopWatchAndMaybeFlush(force: true);
     widget.playGate.removeListener(_gateListener!);
     super.dispose();
   }
@@ -735,6 +782,8 @@ class _VideoCardState extends ConsumerState<_VideoCard> with WidgetsBindingObser
               if (!mounted) return;
               _watchdog?.cancel();
               setState(() => _coverVisible = false);
+              // 這裡保留，若先前尚未 start 也會被補上
+              _startWatchIfNeeded();
             },
             muted: widget.mute,
           ),
@@ -885,7 +934,7 @@ class _PublishButton extends StatelessWidget {
             SvgPicture.asset('assets/icon_add.svg'),
             const SizedBox(width: 4),
             Text(
-              t.publishDynamic,
+              t.commonPublishMoment,
               style: const TextStyle(fontSize: 14, color: Colors.white),
             ),
           ],

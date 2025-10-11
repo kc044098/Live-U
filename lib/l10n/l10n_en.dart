@@ -301,9 +301,6 @@ class SEn extends S {
   String get friendsTabTitle => 'Friends';
 
   @override
-  String get publishDynamic => 'Post';
-
-  @override
   String get fallbackUser => 'User';
 
   @override
@@ -523,6 +520,11 @@ class SEn extends S {
 
   @override
   String get freeTimeEndedStartBilling => 'Free time ended, charging started';
+
+  @override
+  String countdownRechargeHint(int sec) {
+    return 'Less than $sec seconds remaining. Please recharge soon.';
+  }
 
   @override
   String get chatEndedTitle => 'Chat ended';

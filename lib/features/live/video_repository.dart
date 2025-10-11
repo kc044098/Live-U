@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:dio/dio.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../config/app_config.dart';
 import '../../core/error_handler.dart';
@@ -105,6 +107,30 @@ class VideoRepository {
       rethrow;
     }
   }
+
+  /// 記錄觀看時長（樂觀上傳）
+  Future<void> reportVideoView({
+    required int id,
+    required int durationSec,
+    required int watchSec,
+  }) async {
+    try {
+      await _api.postOk(
+        ApiEndpoints.videoView,
+        data: {
+          "id": id,
+          "duration": durationSec,
+          "watch": watchSec,
+        },
+        // 只要 API 正常回 2xx 就當成功；失敗不拋錯（樂觀上傳）
+        alsoOkCodes: const {200, 201, 202},
+      );
+    } catch (e) {
+      // 樂觀上傳：記 log，但不向外拋
+      debugPrint('[VideoRepository] reportVideoView fail id=$id: $e');
+    }
+  }
+
 
   /// 取得音樂清單
   Future<List<MusicTrack>> fetchMusicList() async {

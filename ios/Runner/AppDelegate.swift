@@ -1,7 +1,9 @@
+// ios/Runner/AppDelegate.swift
 import UIKit
 import Flutter
-import FirebaseCore
 import FBSDKCoreKit
+import PushKit   // ★
+import CallKit   // ★
 
 @UIApplicationMain
 class AppDelegate: FlutterAppDelegate {
@@ -12,30 +14,32 @@ class AppDelegate: FlutterAppDelegate {
   ) -> Bool {
 
     // Facebook 初始化
-    ApplicationDelegate.shared.application(
-        application,
-        didFinishLaunchingWithOptions: launchOptions
-    )
+    ApplicationDelegate.shared.application(application, didFinishLaunchingWithOptions: launchOptions)
 
     // Flutter 插件
     GeneratedPluginRegistrant.register(with: self)
 
+    // 綁定 MethodChannel
+    if let controller = window?.rootViewController as? FlutterViewController {
+      CallKitChannel.shared.bind(messenger: controller.binaryMessenger)
+    }
+
+    // 啟動 PushKit（VoIP）
+    VoipPushManager.shared.start()
+
     print("### Runtime BundleID =", Bundle.main.bundleIdentifier ?? "nil")
     print("### GoogleService-Info path =", Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") ?? "not found")
-
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
-  // iOS 9+ URL 回呼（新版簽名）
+  // iOS 9+ URL 回呼（Facebook）
   override func application(
       _ app: UIApplication,
       open url: URL,
       options: [UIApplication.OpenURLOptionsKey : Any] = [:]
   ) -> Bool {
-    print("FB openURL => \(url.absoluteString)")
     let handled = ApplicationDelegate.shared.application(app, open: url, options: options)
-    print("FB handled: \(handled)")
     return handled || super.application(app, open: url, options: options)
   }
 }

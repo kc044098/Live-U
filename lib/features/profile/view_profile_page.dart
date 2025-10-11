@@ -145,8 +145,19 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    Expanded(flex:2, child: _InfoRow(label: t.profileMeasurements, value: body)),
-                    Expanded(flex:1, child: _InfoRow(label: t.profileCity, value: city)),
+                    Expanded(flex: 2,
+                      child: _InfoRow(label: t.profileMeasurements, value: body),
+                    ),
+                    Expanded(flex: 1,
+                      child: Visibility(
+                        visible: !(user?.isBroadcaster ?? false),
+                        maintainSize: true,
+                        maintainAnimation: true,
+                        maintainState: true,
+                        maintainSemantics: false,
+                        child: _InfoRow(label: t.profileCity, value: city),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 4),
@@ -802,7 +813,7 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
             .toList();
 
         if (headerPhotos.isEmpty) {
-          headerPhotos.add('assets/pic_girl1.png');                          // 全空時給預設圖
+          headerPhotos.add('assets/my_photo_defult.jpeg');                          // 全空時給預設圖
         }
         final likesDisplay = current.fans ?? 0;
         final effectiveIsLike = likeFromHome ?? (u.isLike == 1);
