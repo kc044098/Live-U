@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:djs_live_stream/features/widgets/tools/image_resolver.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
@@ -297,15 +298,12 @@ class _MessagePageState extends ConsumerState<MessagePage>
               final tIndex = hasLikeCard ? index - 1 : index;
               final it = _threads[tIndex];
 
-              final avatarRel = it.avatars.isNotEmpty ? it.avatars.first : '';
-              final avatarUrl = _fullUrl(me.cdnUrl ?? '', avatarRel);
-
               return Column(
                 children: [
                   ListTile(
                       leading: Stack(
                         children: [
-                          buildAvatarCircle(url: avatarUrl, radius: 24),
+                          CircleAvatar(radius: 24, backgroundImage: _avatarOf(me.cdnUrl ?? '', it)),
                           Positioned(
                             bottom: 2, right: 2,
                             child: Container(
@@ -359,7 +357,9 @@ class _MessagePageState extends ConsumerState<MessagePage>
                           MaterialPageRoute(
                             builder: (_) => MessageChatPage(
                               partnerName: _partnerName(it, me),
-                              partnerAvatar: it.avatars.isNotEmpty ? '${me.cdnUrl}${it.avatars.first}' : 'assets/my_icon_defult.jpeg',
+                              partnerAvatar: _avatarUrl(me.cdnUrl ?? '', it.avatars).isNotEmpty
+                                  ? _avatarUrl(me.cdnUrl ?? '', it.avatars)
+                                  : 'assets/my_icon_defult.jpeg',
                               vipLevel: it.vip,
                               statusText: it.status,
                               partnerUid: partnerUid,
@@ -417,8 +417,7 @@ class _MessagePageState extends ConsumerState<MessagePage>
         separatorBuilder: (_, __) => const Divider(indent: 20, endIndent: 20),
         itemBuilder: (context, index) {
           final it = _callItems[index];
-          final avatar = (it.avatars.isNotEmpty ? it.avatars.first : '');
-          final url = avatar.startsWith('http') ? avatar : (cdn.isNotEmpty ? '$cdn$avatar' : avatar);
+          final url = _avatarUrl(cdn, it.avatars);
           final title = (it.nickname.isNotEmpty) ? it.nickname : t.userWithId(it.uid);
           final statusText = _callStatusText(it);
           // 用「本地化 token」判斷是否標紅
@@ -476,7 +475,7 @@ class _MessagePageState extends ConsumerState<MessagePage>
       try {
         final outer = jsonDecode(it.contentRaw);
         if (outer is Map) {
-          final innerText = outer['chat_text']?.toString();
+          final innerText = outer['translate_chat_text']?.toString();
           gift = _parseGiftPayloadFromChatText(innerText);
         }
       } catch (_) {}
@@ -601,6 +600,13 @@ class _MessagePageState extends ConsumerState<MessagePage>
     return const Text('…', style: TextStyle(color: Colors.grey));
   }
 
+  String _fullUrl(String base, String p) {
+    if (p.isEmpty) return p;
+    if (p.startsWith('http')) return p;
+    if (base.isEmpty) return p;
+    return p.startsWith('/') ? '$base$p' : '$base/$p';
+  }
+
   Future<void> _reloadThreadsSilently() async {
     final now = DateTime.now().millisecondsSinceEpoch;
     if (now - _lastSilentReloadMs < 800) return;
@@ -631,12 +637,22 @@ class _MessagePageState extends ConsumerState<MessagePage>
   }
 
   ImageProvider _avatarOf(String cdnUrl, ChatThreadItem it) {
-    if (it.avatars.isNotEmpty) {
-      final p = it.avatars.first;
-      final url = p.startsWith('http') ? p : '$cdnUrl$p';
-      return NetworkImage(url);
+    final raw = _firstNonEmpty(it.avatars).trim();
+    if (raw.isEmpty) {
+      return const AssetImage('assets/my_icon_defult.jpeg');
     }
-    return const AssetImage('assets/my_icon_defult.jpeg');
+
+    // 本機圖用 FileImage（避免被當成網路圖）
+    if (raw.isLocalAbs) {
+      return FileImage(File(raw));
+    }
+
+    // 其餘先標準化成可用網址（含 Google / 相對路徑拼 CDN）
+    final url = _avatarUrl(cdnUrl, it.avatars);
+    if (url.isEmpty) {
+      return const AssetImage('assets/my_icon_defult.jpeg');
+    }
+    return NetworkImage(url);
   }
 
   int _partnerUid(ChatThreadItem it, UserModel me) {
@@ -764,13 +780,6 @@ class _MessagePageState extends ConsumerState<MessagePage>
     return null;
   }
 
-  String _fullUrl(String base, String p) {
-    if (p.isEmpty) return p;
-    if (p.startsWith('http')) return p;
-    if (base.isEmpty) return p;
-    return p.startsWith('/') ? '$base$p' : '$base/$p';
-  }
-
   void _toastNetworkError() {
     Fluttertoast.showToast(msg: S.of(context).networkFetchError);
   }
@@ -802,6 +811,18 @@ class _MessagePageState extends ConsumerState<MessagePage>
       _lastSilentReloadMs = now;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) => _reloadThreadsSilently());
+  }
+
+  String _firstNonEmpty(List<String> list) {
+    for (final e in list) {
+      if (e.trim().isNotEmpty) return e.trim();
+    }
+    return '';
+  }
+
+  String _avatarUrl(String cdn, List<String> avatars) {
+    final raw = _firstNonEmpty(avatars);
+    return sanitizeAvatarUrl(raw, cdnBase: cdn);
   }
 
   bool _isNoDataError(Object e) {

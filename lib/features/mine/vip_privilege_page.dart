@@ -218,7 +218,7 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
               : SingleChildScrollView(
                   child: Column(
                     children: [
-                      const SizedBox(height: 70),
+                      SizedBox(height: MediaQuery.of(context).padding.top + 40),
 
                       // 顯示 IAP 警語（若有）
                       if (_iapWarn != null && _iapWarn!.isNotEmpty)
@@ -230,15 +230,17 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                             decoration: BoxDecoration(
                               color: const Color(0xFFFFF3F3),
                               borderRadius: BorderRadius.circular(8),
-                              border:
-                                  Border.all(color: const Color(0xFFFFD6D6)),
+                              border: Border.all(color: const Color(0xFFFFD6D6)),
                             ),
-                            child: Text(_iapWarn!,
-                                style: const TextStyle(
-                                    fontSize: 12, color: Colors.red)),
+                            child: Text(
+                              _iapWarn!,
+                              softWrap: true,
+                              maxLines: 3,                // 可依需要調整
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12, color: Colors.red),
+                            ),
                           ),
                         ),
-
                       // 會員特權卡片（原樣）
                       Container(
                         width: double.infinity,
@@ -270,39 +272,56 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                                   ClipRRect(
                                     borderRadius: BorderRadius.circular(24),
                                     child: Image(
-                                      image: user?.avatarImage ??
-                                          const AssetImage(
-                                              'assets/my_icon_defult.jpeg'),
+                                      image: user?.avatarImage ?? const AssetImage('assets/my_icon_defult.jpeg'),
                                       width: 30,
                                       height: 30,
                                       fit: BoxFit.cover,
                                     ),
                                   ),
                                   const SizedBox(width: 8),
-                                  Text(user?.displayName ?? '',
-                                      style: const TextStyle(
-                                          fontSize: 14, color: Colors.black)),
-                                  const Spacer(),
-                                  (user?.isVipEffective ?? false)
-                                      ? Text(
+
+                                  // ⬇️ 原本的 Text + Spacer 改成 Expanded（限制暱稱只佔可壓縮區）
+                                  Expanded(
+                                    child: Text(
+                                      user?.displayName ?? '',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 14, color: Colors.black),
+                                    ),
+                                  ),
+
+                                  const SizedBox(width: 8),
+
+                                  // ⬇️ 右側用 Flexible + FittedBox，過寬時自動等比縮小到不溢位
+                                  Flexible(
+                                    fit: FlexFit.loose,
+                                    child: Align(
+                                      alignment: Alignment.centerRight,
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: (user?.isVipEffective ?? false)
+                                            ? Text(
                                           _fmtExpire(user?.vipExpireAt),
-                                          style: const TextStyle(
-                                              fontSize: 12,
-                                              color: Color(0xFF9E9E9E)),
+                                          maxLines: 1,
+                                          style: const TextStyle(fontSize: 12, color: Color(0xFF9E9E9E)),
                                         )
-                                      : Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 10, vertical: 4),
+                                            : Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                           decoration: BoxDecoration(
                                             color: Colors.white,
-                                            borderRadius:
-                                                BorderRadius.circular(12),
+                                            borderRadius: BorderRadius.circular(12),
                                           ),
-                                    child: Text(t.vipNotActivated,
-                                              style: TextStyle(
-                                                  fontSize: 12,
-                                                  color: Colors.pinkAccent)),
+                                          child: Text(
+                                            t.vipNotActivated,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(fontSize: 12, color: Colors.pinkAccent),
+                                          ),
                                         ),
+                                      ),
+                                    ),
+                                  ),
+
                                   const SizedBox(width: 10),
                                 ],
                               ),

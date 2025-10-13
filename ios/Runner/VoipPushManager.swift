@@ -62,14 +62,7 @@ final class VoipPushManager: NSObject, PKPushRegistryDelegate {
             let flag = Int("\(dict["flag"] ?? "1")") ?? 1
             let hasVideo = (flag == 1)
 
-            let isActive = UIApplication.shared.applicationState == .active
-            if isActive {
-                print("### [VOIP] invite while foreground → skip CallKit & skip Dart emit")
-                // 前景：什麼都不做（不顯示 CallKit、不 emit 到 Flutter）
-                return
-            }
-
-            // 背景：顯示系統來電 UI；完成後不必再 emit 到 Flutter（看需求）
+           // ✅ 前景/背景都要顯示 CallKit
             CallManager.shared.reportNewIncomingCall(
                 uuid: uuid,
                 displayName: name,

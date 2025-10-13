@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:djs_live_stream/push/app_lifecycle.dart';
-import 'package:djs_live_stream/push/nav_helpers.dart';
+import 'package:djs_live_stream/push/presence_reporter.dart';
 import 'package:djs_live_stream/push/push_service.dart';
 import 'package:djs_live_stream/push/push_token_registrar.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -82,7 +82,10 @@ class MyApp extends ConsumerWidget {
     // 監聽登入狀態：登入後上報一次（之後 token 變更會自動上報）
     ref.listen<UserModel?>(userProfileProvider, (prev, next) {
       if (next != null) {
-        PushTokenRegistrar.I.onLogin(ref);
+        unawaited(PushTokenRegistrar.I.onLogin(ref));
+        unawaited(PresenceReporter.I.start(ref));
+      } else {
+        unawaited(PresenceReporter.I.stop());
       }
     });
 

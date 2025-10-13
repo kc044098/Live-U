@@ -223,12 +223,9 @@ class WalletRepository {
     }
 
     final payload = <String, dynamic>{
-      'platform': pf,               // 'android' / 'ios'
       'product_id': productId,      // 商店商品 id
-      if (packetId != null) 'packet_id': packetId,  // 你的禮包 id
-      // Android 傳 purchase_token；iOS 傳 receipt_data
-      if (isAndroid) 'purchase_token': purchaseTokenOrReceipt,
-      if (isIos) 'receipt_data': purchaseTokenOrReceipt,
+      if (isAndroid) 'transaction_id': purchaseTokenOrReceipt,
+      if (isIos) 'transaction_id': purchaseTokenOrReceipt,
     };
 
     // 這是動作型 API：成功回 200 即可，不取回傳資料

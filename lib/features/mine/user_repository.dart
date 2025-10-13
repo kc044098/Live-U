@@ -76,6 +76,7 @@ class UserRepository {
         loginTime: data['update_at'] ?? currentUser.loginTime,
         fans: data['fans'] ?? currentUser.fans,
         isLike: data['is_like'] ?? currentUser.isLike,
+        city: data['city'] ??'',
         extra: {...?currentUser.extra, ...(data['detail'] ?? {})},
       );
     } catch (e) {
@@ -110,6 +111,7 @@ class UserRepository {
         status: data['status'] ?? 0,
         videoPrice: _intOf(data['video_price']),
         voicePrice: _intOf(data['voice_price']),
+        city: data['city'] ??'',
       );
     } catch (e) {
       AppErrorToast.show(e);
@@ -631,6 +633,18 @@ class UserRepository {
     await _api.delete(
       '/devices/$deviceId',
       data: {'user_id': userId},
+    );
+  }
+
+  // 上報在線狀態
+  Future<void> setPresence({
+    required bool isOnline,
+  }) async {
+    await _api.post(
+      ApiEndpoints.setPresence,
+      data: {
+        'values'    : isOnline ? 'in': 'out', // status
+      },
     );
   }
 

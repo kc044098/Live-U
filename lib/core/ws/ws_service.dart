@@ -38,9 +38,6 @@ class WsService {
   final Map<int, void Function(dynamic raw)> _rawTaps = {}; // 攔 raw frame
   final Map<int, WsHandler> _anyHandlers = {};             // 攔所有事件
 
-  final _seenUuids = LinkedHashMap<String, int>(); // uuid -> firstSeenMs
-  static const _seenTtl = Duration(minutes: 10);
-  static const _seenCap = 4096;
 
   DateTime _lastRx = DateTime.now();
 
@@ -53,8 +50,6 @@ class WsService {
   bool get _hasAuth =>
       (_headers['Token']?.isNotEmpty ?? false) &&
           (_headers['X-UID']?.isNotEmpty ?? false);
-
-  bool _wireLogEnabled = true;
 
   // 確保連線：沒有憑證就先不連
   Future<void> ensureConnected() async {
@@ -196,9 +191,36 @@ class WsService {
           String _clip(String s, {int max = 4000}) =>
               (s.length <= max) ? s : (s.substring(0, max) + '… <truncated ${s.length - max} chars>');
 
+          // ---- 在嘗試 jsonDecode 之前先過濾心跳/非 JSON ----
+          final s = text.trim();
+
+          // 1) 常見的「應用層心跳」回覆（依你的後端實際情況再擴充）
+          if (s == '1' ||
+              s == 'pong' ||
+              s == 'ok') {
+            debugPrint('[WS] <= heartbeat ack: $s');
+            return;
+          }
+
+          // 2) 不是 JSON（不以 { / [ 開頭結尾），直接忽略
+          final looksJson = (s.startsWith('{') && s.endsWith('}')) ||
+              (s.startsWith('[') && s.endsWith(']'));
+          if (!looksJson) {
+            debugPrint('[WS] ignore non-JSON frame: $s');
+            return;
+          }
+
           Map<String, dynamic>? data;
           try {
             final obj = jsonDecode(text);
+
+            // 讓 data/Data 無論是 Map 或「字串化 JSON」最後都變成 Map
+            final inner =
+                _peelJsonMap(obj['data']) ?? _peelJsonMap(obj['Data']);
+            if (inner != null) {
+              obj['data'] = inner;
+              obj.remove('Data');
+            }
 
             if (obj is Map) {
               data = obj.map((k, v) => MapEntry(k.toString(), v));
@@ -211,28 +233,44 @@ class WsService {
               for (final e in obj) {
                 if (e is Map) {
                   final m = e.map((k, v) => MapEntry(k.toString(), v));
+
+                  final inner =
+                      _peelJsonMap(m['data']) ?? _peelJsonMap(m['Data']);
+                  if (inner != null) {
+                    m['data'] = inner;
+                    m.remove('Data');
+                  }
+
+                  _expandRoomChatContentInPlace(m);
                   // 與下方 Map 流程相同的派發 + 日誌
                   final typeStr = _mapType(m['type'] ?? m['flag']);
                   debugPrint('[WS] dispatch type(list-item)=$typeStr');
 
-                  if (EventDeduper.I.isDupAndRemember(m)) continue; // 丟掉重複的 item
+                  if (EventDeduper.I.isDupAndRemember(m))
+                    continue; // 丟掉重複的 item
 
                   for (final h in _anyHandlers.values.toList()) {
-                    try { h({'__type__': typeStr, ...m}); } catch (_) {}
+                    try {
+                      h({'__type__': typeStr, ...m});
+                    } catch (_) {}
                   }
                   _dispatch(typeStr, m);
                   if (typeStr == 'call') {
-                    final derived = _mapCallStateToEventDynamic(m['status'] ?? m['data']?['status']) ?? 'invite';
+                    final derived = _mapCallStateToEventDynamic(
+                            m['status'] ?? (m['data'] as Map?)?['status']) ??
+                        'invite';
+
                     for (final h in _anyHandlers.values.toList()) {
-                      try { h({'__type__': 'call.$derived', ...m}); } catch (_) {}
+                      try {
+                        h({'__type__': 'call.$derived', ...m});
+                      } catch (_) {}
                     }
                     _dispatch('call.$derived', m);
                   }
                 }
               }
-              return; // 清單已處理完
+              return;
             } else {
-              // ✅ 詳細列印：是單值（字串/數字/bool/null）就直接印值與原始 text
               debugPrint('[WS] JSON value (type=${obj.runtimeType}): $obj RAW:${_clip(text)}');
               return;
             }
@@ -241,6 +279,8 @@ class WsService {
             debugPrint('[WS] parse error: $e\nRAW:${_clip(text)}');
             return;
           }
+
+          _expandRoomChatContentInPlace(data);
 
           debugPrint('[WS] <= JSON (parsed)\n${_prettyJson(data)}');
 
@@ -261,8 +301,7 @@ class WsService {
 
           // 若是 call，再細分（沒有 status 就當 invite）
           if (typeStr == 'call') {
-            final stateRaw = (data['status'] ?? '').toString().toLowerCase();
-            final derived = _mapCallStateToEventDynamic(data['status'] ?? data['data']?['status']) ?? 'invite';
+            final derived = _mapCallStateToEventDynamic(data['status'] ?? (data['data'] as Map?)?['status']) ?? 'invite';
             debugPrint('[WS] event => call.$derived payload=$data');
 
             // 也讓 onAny 再吃一次細分事件（你想追更細可以看到 __type2__）
@@ -291,6 +330,30 @@ class WsService {
     } catch (e) {
       debugPrint('[WS] connect error: $e');
       _onError(e);
+    }
+  }
+
+  void _expandRoomChatContentInPlace(Map<String, dynamic> root) {
+    final typeStr = _mapType(root['type'] ?? root['flag']);
+    if (typeStr != 'room_chat') return;
+
+    final d = root['data'];
+    if (d is! Map) return;
+
+    // 不動原本的 data.content（保持字串），只新增 data.content_json 方便上層用
+    final contentJson = _peelJsonMap(d['content'], maxDepth: 1);
+    if (contentJson != null) {
+      d['content_json'] = contentJson;
+
+      // 常用欄位平鋪（若原本沒有才補），避免上層到處判斷/解 JSON
+      final chatText = contentJson['chat_text'];
+      final transText = contentJson['translate_chat_text'];
+      if (chatText != null && (d['chat_text'] == null)) {
+        d['chat_text'] = chatText.toString();
+      }
+      if (transText != null && (d['translate_chat_text'] == null)) {
+        d['translate_chat_text'] = transText.toString();
+      }
     }
   }
 
@@ -358,7 +421,7 @@ class WsService {
     } catch (_) {}
   }
 
-// 啟動周期性重綁（避免代理或後端清了綁定表）
+  // 啟動周期性重綁（避免代理或後端清了綁定表）
   void _startHelloLoop() {
     _helloTimer?.cancel();
     // 先送一次
@@ -434,8 +497,10 @@ class WsService {
       case 'invite':
       case 'ringing':
         return 'invite';
+      case '2':
       case 'reject':
         return 'reject';
+      case '3':
       case 'cancel':
         return 'cancel';
       case 'timeout':
@@ -473,32 +538,45 @@ class WsService {
     }
   }
 
+  Map<String, dynamic>? _asJsonMap(dynamic v) {
+    if (v is Map) return v.map((k, v) => MapEntry(k.toString(), v));
+    if (v is String) {
+      try {
+        final j = jsonDecode(v);
+        if (j is Map) return j.map((k, v) => MapEntry(k.toString(), v));
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  Map<String, dynamic>? _peelJsonMap(dynamic v, {int maxDepth = 2}) {
+    dynamic cur = v;
+    for (var i = 0; i < maxDepth; i++) {
+      if (cur is String) {
+        final s = cur.trim();
+        final looksJson = (s.startsWith('{') && s.endsWith('}')) ||
+            (s.startsWith('[') && s.endsWith(']'));
+        if (!looksJson) break;
+        try {
+          cur = jsonDecode(s);
+          continue; // 若還是字串，下一輪再解一次
+        } catch (_) {
+          break;
+        }
+      }
+      break;
+    }
+    if (cur is Map) {
+      return cur.map((k, v) => MapEntry(k.toString(), v));
+    }
+    return null;
+  }
+
   DateTime get lastRx => _lastRx;
   Duration get idleFor => DateTime.now().difference(_lastRx);
 
   void forceReconnect([String reason = 'watchdog']) {
     _safeClose(reason); // 會走 onDone -> _scheduleReconnect()
-  }
-
-// 和你在 CallSignalListener 裡的版本一致：頂層或 data/Data 皆可取到
-  String? _extractUuid(Map<String, dynamic> m) {
-    String? pick(Map mm, List<String> ks) {
-      for (final k in ks) {
-        final v = mm[k];
-        if (v == null) continue;
-        final s = v.toString();
-        if (s.isNotEmpty) return s;
-      }
-      return null;
-    }
-    final top = pick(m, ['uuid','UUID']);
-    if (top != null) return top;
-
-    Map<String, dynamic> asMap(dynamic v) =>
-        (v is Map) ? v.map((k, v) => MapEntry(k.toString(), v)) : <String, dynamic>{};
-
-    final data = asMap(m['data']).isNotEmpty ? asMap(m['data']) : asMap(m['Data']);
-    return pick(data, ['uuid','UUID','id','Id']);
   }
 
 }

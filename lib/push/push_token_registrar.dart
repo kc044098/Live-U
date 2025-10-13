@@ -95,9 +95,14 @@ class PushTokenRegistrar {
         }
         case 'answer': {
           final m = Map<String, dynamic>.from(call.arguments as Map);
-          final payload = Map<String, dynamic>.from(m['payload'] ?? {});
+          final raw = Map<String, dynamic>.from(m['payload'] ?? {});
+          final payload = flattenPayloadMap(raw);   // ★ 新增
+
           debugPrint('[[VOIP][answer]] $payload');
-          goToLiveFromPayload(payload); // 直接進房
+          // 建議：和通知點「接聽」走同一條邏輯（會幫你補 token）
+          // PushService.I.acceptFromNativeIncoming(payload); // 需要你在 PushService 暴露 public 方法（下面第 2 步）
+          // 先不動架構的話，也可直接：
+          goToLiveFromPayload(payload);
           break;
         }
         case 'end': {

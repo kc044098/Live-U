@@ -3,8 +3,8 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:djs_live_stream/data/network/background_api_service.dart';
 import 'package:djs_live_stream/features/mine/user_repository_provider.dart';
+import 'package:djs_live_stream/features/widgets/tools/image_resolver.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

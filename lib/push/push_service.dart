@@ -76,11 +76,9 @@ class PushService {
     // 2) 初始化本地通知 + 建立渠道
     await _ensureInitializedLocalPlugin();
 
-    // ✅ 前景監聽 → 只印一行，完全不處理
     _fgSub = FirebaseMessaging.onMessage.listen((m) {
-      final plat = Platform.isIOS ? 'iOS' : (Platform.isAndroid ? 'Android' : 'other');
-      debugPrint('[[FG][$plat]] FCM ignored (app in foreground). id=${m.messageId} data=${m.data}');
-      // ✅ 不要呼叫 _showFromRemoteMessage
+      // ✅ 前景也進統一路徑
+      _showFromRemoteMessage(m, fromBg: false);
     });
 
     // 3) 使用者點擊通知進 App
@@ -111,11 +109,11 @@ class PushService {
           'incoming_call',
           actions: [
             DarwinNotificationAction.plain(
-              'ACCEPT', '接聽',
+              'ACCEPT', 'ACCEPT',
               options: const {DarwinNotificationActionOption.foreground},
             ),
             DarwinNotificationAction.plain(
-              'REJECT', '拒接',
+              'REJECT', 'REJECT',
               options: {DarwinNotificationActionOption.destructive},
             ),
           ],
@@ -162,8 +160,7 @@ class PushService {
   Future<void> _showFromRemoteMessage(RemoteMessage m, {bool fromBg = false}) async {
     debugPrint('[FCM][handle] id=${m.messageId} fromBg=$fromBg data=${m.data}');
 
-    // 前景時不吃 FCM（交給 WS），除非這是背景 isolate 呼進來
-    if (AppLifecycle.I.isForeground && !fromBg) return;
+    // ✅ 不再因為前景而整體早退，改用型別分流（call 一律顯示）
 
     final data = normalize(m);
 
@@ -234,19 +231,16 @@ class PushService {
       }
 
       // 邀請事件（來電）
-      final name = s(data['nick_name']).isNotEmpty ? s(data['nick_name']) : '來電';
+      final name = s(data['nick_name']).isNotEmpty ? s(data['nick_name']) : 'Incoming call';
       final flag = i(data['flag']) ?? 1; // 1=video, 2=voice
       final timeoutSec = i(data['timeout']) ?? 30;
 
-      // 背景 isolate 進來 → 顯示 full-screen 來電；前景顯示由 maybeShowPendingIncomingUI 接手
-      if (fromBg) {
-        await _showIncomingCall(
-          title: name,
-          body: (flag == 2) ? 'Voice call' : 'Video call',
-          payload: data,
-          timeoutSec: timeoutSec,
-        );
-      }
+      await _showIncomingCall(
+        title: name,
+        body: (flag == 2) ? 'Voice call' : 'Video call',
+        payload: data,
+        timeoutSec: timeoutSec,
+      );
       return;
     }
 
@@ -254,13 +248,10 @@ class PushService {
     if (_isChat(data)) {
       final title = s(data['nick_name']).isNotEmpty
           ? s(data['nick_name'])
-          : (s(data['title']).isNotEmpty ? s(data['title']) : '新訊息');
+          : (s(data['title']).isNotEmpty ? s(data['title']) : 'New message');
       final preview = _resolveChatPreview(data);
 
-      // 背景 isolate：出系統通知；回前景後由點擊回調導頁
-      if (fromBg) {
-        await _showMessage(title: title, body: preview, payload: data);
-      }
+      await _showMessage(title: title, body: preview, payload: data);
       return;
     }
 
@@ -294,8 +285,8 @@ class PushService {
       timeoutAfter: timeoutSec * 1000,
       // 動作鈕（可選；點了會觸發 onDidReceiveNotificationResponse）
       actions: const [
-        AndroidNotificationAction('ACCEPT', '接聽', showsUserInterface: true, cancelNotification: true),
-        AndroidNotificationAction('REJECT', '拒接', showsUserInterface: true, cancelNotification: true),
+        AndroidNotificationAction('ACCEPT', 'ACCEPT', showsUserInterface: true, cancelNotification: true),
+        AndroidNotificationAction('REJECT', 'REJECT', showsUserInterface: true, cancelNotification: true),
       ],
     );
 
@@ -421,7 +412,7 @@ class PushService {
     final camOk = !needCam || statuses[Permission.camera] == PermissionStatus.granted;
     debugPrint('[[CALL][ACCEPT]] perms mic=$micOk cam=$camOk needCam=$needCam');
     if (!micOk || !camOk) {
-      Fluttertoast.showToast(msg: needCam ? '需要麥克風與相機權限' : '需要麥克風權限');
+      Fluttertoast.showToast(msg: needCam ? 'Mic and camera permissions required' : 'Microphone permission required');
       return;
     }
 
@@ -435,7 +426,7 @@ class PushService {
       token = d?['string']?.toString() ?? d?['token']?.toString();
       debugPrint('[[CALL][ACCEPT]] gotToken=${token != null && token!.isNotEmpty}');
       if (token == null || token.isEmpty) {
-        Fluttertoast.showToast(msg: '接聽失敗');
+        Fluttertoast.showToast(msg: 'Failed to accept');
         return;
       }
     } else {
@@ -465,7 +456,7 @@ class PushService {
       }
     } on TimeoutException catch (e, st) {
       debugPrint('[[CALL][ACCEPT]] respondCall timeout: $e\n$st');
-      if (surfaceError) AppErrorToast.show('網路偏慢，稍後會自動校正');
+      if (surfaceError) AppErrorToast.show('[CALL] respondCall timeout');
     } catch (e, st) {
       debugPrint('[[CALL][ACCEPT]] respondCall error: $e\n$st');
       if (surfaceError) AppErrorToast.show(e);
@@ -482,12 +473,12 @@ class PushService {
         final txt = (outer['chat_text'] ?? '').toString();
         final img = (outer['img_path'] ?? outer['image_path'] ?? '').toString();
         final voice = (outer['voice_path'] ?? '').toString();
-        if (img.isNotEmpty)  return '[圖片]';
-        if (voice.isNotEmpty) return '[語音]';
+        if (img.isNotEmpty)  return '[Image]';
+        if (voice.isNotEmpty) return '[Voice]';
         if (txt.isNotEmpty)  return txt;
       }
     } catch (_) {}
-    return content.isNotEmpty ? content : '發來新訊息';
+    return content.isNotEmpty ? content : 'New Messages';
   }
 
   Future<void> _drainPendingActions() async {

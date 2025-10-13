@@ -19,6 +19,7 @@ import '../live/data_model/call_overlay.dart';
 import '../live/mini_call_view.dart';
 import '../profile/profile_controller.dart';
 import '../widgets/cached_network_image.dart';
+import '../widgets/tools/image_resolver.dart';
 import 'call_abort_provider.dart';
 
 class IncomingCallPage extends ConsumerStatefulWidget {
@@ -342,7 +343,7 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
         _endWithToast(t.callerEndedRequest);
       }
     });
-
+    final safeAvatar = sanitizeAvatarUrl(widget.callerAvatar);
     return WillPopScope(
       onWillPop: () async {
         _goMini();
@@ -360,7 +361,7 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
                 child: Column(
                   children: [
                     const SizedBox(height: 110),
-                    buildAvatarCircle(url: widget.callerAvatar, radius: 54),
+                    buildAvatarCircle(url: safeAvatar, radius: 54),
                     const SizedBox(height: 16),
                     Text(
                       widget.callerName,

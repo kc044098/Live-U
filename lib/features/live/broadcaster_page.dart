@@ -1134,22 +1134,6 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
               ),
             ),
 
-            if (ref.watch(userProfileProvider)!.isBroadcaster && !_isVoice) // 只有主播且為「影像通話」時顯示
-              Positioned(
-                right: 10,
-                // 調整這個數字可以更貼近你實際 UI；110 大多數機型會剛好在 switch 上方
-                bottom: 60,
-                child: _roundIconButton(
-                  icon: _hideRemoteByHost ? Icons.visibility_off : Icons.visibility,
-                  // 在影像樣式下用白色，在語音樣式(白底)下用深色
-                  iconColor: _isVoiceLikeUI ? Colors.black87 : Colors.green,
-                  bgColor: _isVoiceLikeUI
-                      ? Colors.black.withOpacity(0.06)
-                      : Colors.black.withOpacity(0.25),
-                  onTap: _toggleHideRemote,
-                ),
-              ),
-
             // === 底部輸入 + 功能鍵（同一個 Positioned / 同一個 Row）===
             Positioned(
               left: 12,
@@ -1187,6 +1171,16 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
                               asset: 'assets/icon_gift.png',
                               onTap: _openGiftSheetLive,
                             ),
+                          if (!_canSendGift)
+                          _roundIconButton(
+                            icon: _hideRemoteByHost ? Icons.visibility_off : Icons.visibility,
+                            // 在影像樣式下用白色，在語音樣式(白底)下用深色
+                            iconColor: _isVoiceLikeUI ? Colors.black87 : Colors.green,
+                            bgColor: _isVoiceLikeUI
+                                ? Colors.black.withOpacity(0.06)
+                                : Colors.black.withOpacity(0.25),
+                            onTap: _toggleHideRemote,
+                          ),
                           _assetBtn(
                             asset: 'assets/icon_speaker_1.png',
                             offAsset: 'assets/icon_speaker_2.png',
