@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:djs_live_stream/data/network/background_api_service.dart';
+import 'package:djs_live_stream/features/widgets/tools/image_resolver.dart';
 import 'package:flutter/cupertino.dart';
 
 import '../../features/auth/LoginMethod.dart';
@@ -74,6 +75,8 @@ class UserModel {
   final int? totalIncome;            // total_income 總佣金
   final int? cashAmount;             // amount 可提現佣金
 
+  final String? city;
+
   UserModel({
     required this.uid,
     this.displayName = 'Guest',
@@ -114,6 +117,7 @@ class UserModel {
     this.inviteNum,
     this.totalIncome,
     this.cashAmount,
+    this.city,
   });
 
   /// 取得主要頭像的 ImageProvider
@@ -207,6 +211,7 @@ class UserModel {
       inviteNum: _intOf(json['invite_num']),
       totalIncome: _intOf(json['total_income']),
       cashAmount: _intOf(json['amount']),
+      city: json['city'],
     );
   }
 
@@ -250,6 +255,7 @@ class UserModel {
       'invite_num': inviteNum,
       'total_income': totalIncome,
       'amount': cashAmount,
+      'city': city,
     };
   }
 
@@ -284,6 +290,7 @@ class UserModel {
     List<String>? tags,
     String? email,
     String? password,
+    String? city,
     int? createAt,
     int? loginTime,
     int? gold,
@@ -335,6 +342,8 @@ class UserModel {
       inviteNum: inviteNum ?? this.inviteNum,
       totalIncome: totalIncome ?? this.totalIncome,
       cashAmount: cashAmount ?? this.cashAmount,
+
+      city: city ?? this.city,
     );
   }
 }

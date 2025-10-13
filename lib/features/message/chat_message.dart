@@ -13,6 +13,7 @@ class ChatMessage {
   final MessageType type;
   final ChatContentType contentType;
   final String? text;
+  final String? translate_text;
   final String? avatar;
   final String? audioPath;
   final int? duration;
@@ -40,6 +41,7 @@ class ChatMessage {
     required this.type,
     required this.contentType,
     this.text,
+    this.translate_text,
     this.avatar,
     this.audioPath,
     this.duration,
@@ -72,6 +74,7 @@ class ChatMessage {
     MessageType? type,
     ChatContentType? contentType,
     String? text,
+    String? translate_text,
     String? avatar,
     String? audioPath,
     int? duration,
@@ -88,6 +91,7 @@ class ChatMessage {
       type: type ?? this.type,
       contentType: contentType ?? this.contentType,
       text: text ?? this.text,
+      translate_text: translate_text?? this.translate_text,
       avatar: avatar ?? this.avatar,
       audioPath: audioPath ?? this.audioPath,
       duration: duration ?? this.duration,

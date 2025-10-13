@@ -59,9 +59,10 @@ class ApiEndpoints {
   static const String renewRtcToken = '/api/live/token/renew';
 
   static const String liveEnd = '/api/live/report';
-  static const String iapVerify = '/iap/verify';
+  static const String iapVerify = '/api/finance/pay/apple';
 
   static const String tokenRegister = '/api/member/register'; // FCM 註冊token
+  static const String setPresence = '/api/member/status/set'; // 上報在線狀態
 
 
 }

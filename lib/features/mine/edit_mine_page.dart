@@ -1,5 +1,4 @@
 // 個人資料頁面
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -15,7 +14,6 @@ import 'package:flutter/services.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 
-import '../../core/location_helper.dart';
 import '../../core/user_local_storage.dart';
 import '../../data/models/user_model.dart';
 import '../../l10n/l10n.dart';
@@ -148,7 +146,7 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
     final height = user?.extra?['height'] ?? s.commonUnknown;
     final weight = user?.extra?['weight'] ?? s.commonUnknown;
     final body   = user?.extra?['body']   ?? s.commonUnknown;
-    final city   = user?.extra?['city']   ?? currentCity;
+    final city   = user?.city   ?? currentCity;
     final job    = user?.extra?['job']    ?? s.commonUnknown;
 
     return SingleChildScrollView(
@@ -509,7 +507,6 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
       ref.read(userProfileProvider.notifier).setUser(merged);
       ref.read(memberFeedProvider.notifier).loadFirstPage(int.parse(ref.watch(userProfileProvider)!.uid));
     });
-    _getCurrentCityFromGPS();
 
     // 接近動態底部時抓下一頁
     _videoScrollController.addListener(() {
@@ -574,33 +571,6 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
         ),
       ),
     );
-  }
-
-  Future<void> _getCurrentCityFromGPS() async {
-    final city = await LocationHelper.getCurrentCity();
-    if (city == null || city.isEmpty) return;
-
-    debugPrint('📍 GPS取得城市: $city');
-    setState(() => currentCity = city);
-
-    final user = ref.read(userProfileProvider);
-    if (user == null) return;
-
-    final updatedExtra = Map<String, dynamic>.from(user.extra ?? {});
-    updatedExtra['city'] = city;
-
-    // 呼叫 API 更新暱稱
-    final repo = ref.read(userRepositoryProvider);
-    await repo.updateMemberInfo({
-      'detail': {
-        'city': city,
-      }
-    });
-
-    // 更新 provider 與本地存儲
-    final updatedUser = user.copyWith(extra: updatedExtra);
-    ref.read(userProfileProvider.notifier).setUser(updatedUser);
-    await UserLocalStorage.saveUser(updatedUser);
   }
 
   @override

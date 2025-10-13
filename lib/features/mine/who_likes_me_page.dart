@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 
-import '../../data/network/background_api_service.dart';
+import '../widgets/tools/image_resolver.dart';
 import '../../l10n/l10n.dart';
 import '../call/call_request_page.dart';
 import '../profile/profile_controller.dart';
@@ -16,11 +16,7 @@ import '../wallet/payment_method_page.dart';
 import 'member_fans_provider.dart';
 import 'model/fan_user.dart';
 import 'model/vip_plan.dart';
-import 'dart:ui';
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class WhoLikesMePage extends ConsumerStatefulWidget {
   const WhoLikesMePage({super.key});
@@ -119,7 +115,12 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
         (me != null) && !(me.isVipEffective || me.isBroadcaster);
 
     if (showBlockLayer && !_plansLoading && _plans.isEmpty) {
-      Future.microtask(_loadPlansIfNeeded);
+         // iOS 上用 postFrame 會更穩，不會在第一幀看到「空白一層」
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+           if (mounted && !_plansLoading && _plans.isEmpty) {
+             _loadPlansIfNeeded();
+          }
+         });
     }
 
     return Scaffold(
@@ -265,10 +266,15 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
 
   Widget _buildOverlayLayer(S t) {
     return Stack(
-      children: [
-        BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(color: Colors.black.withOpacity(0.6)),
+       children: [
+      // iOS/Metal 上，BackdropFilter 必須包在 ClipRect，並鋪滿畫面
+       Positioned.fill(
+         child: ClipRect(
+          child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: Container(color: Colors.black.withOpacity(0.6)),
+            ),
+          ),
         ),
         Align(
           alignment: Alignment.center,

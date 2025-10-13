@@ -10,6 +10,7 @@ import '../../data/network/background_api_service.dart';
 import '../../l10n/l10n.dart';
 import '../profile/profile_controller.dart';
 import '../profile/view_profile_page.dart';
+import '../widgets/tools/image_resolver.dart';
 import 'member_focus_provider.dart';
 import 'model/focus_user.dart';
 

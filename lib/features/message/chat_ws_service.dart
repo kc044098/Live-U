@@ -137,11 +137,13 @@ class ChatWsService {
     // 第一層：content -> Map（含 chat_text / voice_path）
     Map<String, dynamic>? cjson = decodeJsonMap(content);
     String? chatText;
+    String? translateText;
     String? voiceRel;
     int duration = 0;
 
     if (cjson != null) {
       chatText = (cjson['chat_text'] ?? '').toString();
+      translateText = (cjson['translate_chat_text'] ?? '').toString();
       voiceRel = (cjson['voice_path'] ?? '').toString();
       final dRaw = cjson['duration'];
       duration = (dRaw is num) ? dRaw.toInt() : int.tryParse('${dRaw ?? ''}') ?? 0;
@@ -230,6 +232,7 @@ class ChatWsService {
       type: MessageType.other,
       contentType: ChatContentType.text,
       text: chatText ?? '',
+      translate_text: translateText,
       uuid: uuid.isEmpty ? null : uuid,
       createAt: createAt,
       readStatus: st,

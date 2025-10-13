@@ -159,7 +159,23 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
         ..sort((a, b) => (a.createAt ?? 0).compareTo(b.createAt ?? 0));
 
       setState(() {
-        _messages..clear()..addAll(msgs);
+        final isBc = ref.read(userProfileProvider)?.isBroadcaster ?? false;
+        final projected = <ChatMessage>[];
+        for (final m in msgs) {
+          projected.addAll(_projectForDisplay(m, isBroadcaster: isBc));
+        }
+
+        setState(() {
+          _messages..clear()..addAll(projected);
+          final latest = _messages.isNotEmpty ? _messages.last : null;
+          if (latest != null && latest.type == MessageType.other) {
+            _markThreadReadOptimistic();
+          }
+          _loading = false;
+          _hasMore = list.isNotEmpty;
+          _page = 1;
+        });
+
         final latest = _messages.isNotEmpty ? _messages.last : null;
         if (latest != null && latest.type == MessageType.other) {
           _markThreadReadOptimistic();
@@ -204,6 +220,12 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
       ).toList()
         ..sort((a, b) => (a.createAt ?? 0).compareTo(b.createAt ?? 0));
 
+      final isBc = ref.read(userProfileProvider)?.isBroadcaster ?? false;
+      final expandedOlder = <ChatMessage>[];
+      for (final m in older) {
+        expandedOlder.addAll(_projectForDisplay(m, isBroadcaster: isBc));
+      }
+
       bool _dup(ChatMessage x) => _messages.any((y) =>
       (y.createAt == x.createAt) &&
           (y.contentType == x.contentType) &&
@@ -212,7 +234,7 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
           ((y.imagePath ?? '') == (x.imagePath ?? '')) &&
           (y.type == x.type));
 
-      final toInsert = older.where((e) => !_dup(e)).toList();
+      final toInsert = expandedOlder.where((e) => !_dup(e)).toList();
       inserted = toInsert.length;
 
       if (inserted > 0) {
@@ -730,12 +752,17 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
               return; // 已看過 → 丟掉 echo
             }
 
-            setState(() => _messages.add(msg));
+            final isBc = ref.read(userProfileProvider)?.isBroadcaster ?? false;
+            final projected = _projectForDisplay(msg, isBroadcaster: isBc);
 
-            // ★ 對方的新訊息 → 樂觀標記已讀
-            if (msg.type == MessageType.other) _markThreadReadOptimistic();
+            setState(() {
+              _messages.addAll(projected);
+            });
 
-            _tryPlayGiftFromMessage(msg);
+            for (final each in projected) {
+              if (each.type == MessageType.other) _markThreadReadOptimistic();
+              _tryPlayGiftFromMessage(each);
+            }
 
             final atBottom = !_scrollController.hasClients
                 || _scrollController.position.pixels <= 40;
@@ -1134,13 +1161,6 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
     return null;
   }
 
-  String _fullUrl(String base, String p) {
-    if (p.isEmpty) return p;
-    if (p.startsWith('http')) return p;
-    if (base.isEmpty) return p;
-    return p.startsWith('/') ? '$base$p' : '$base/$p';
-  }
-
   ChatMessage _fromApiMsg(
       Map<String, dynamic> m, {
         required int myUid,
@@ -1159,9 +1179,10 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
     } catch (_) {}
 
     final voicePathRel = c?['voice_path']?.toString();
-    final chatText     = c?['chat_text']?.toString();
+    final chatText = c?['chat_text']?.toString();
+    final translateText = c?['translate_chat_text']?.toString();
     final duration = _asInt(c?['duration']) ?? 0;
-    final imgPathRel   = (c?['img_path'] ?? c?['image_path'])?.toString();
+    final imgPathRel = (c?['img_path'] ?? c?['image_path'])?.toString();
 
     // 圖片
     if ((imgPathRel ?? '').isNotEmpty) {
@@ -1231,10 +1252,52 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
       type: senderUid == myUid ? MessageType.self : MessageType.other,
       contentType: ChatContentType.text,
       text: (chatText != null && chatText.isNotEmpty) ? chatText : rawContent,
+      translate_text: translateText,
       createAt: createAt,
-      sendState: senderUid == myUid ? SendState.sent : null, // ★
-      readStatus: readStatus, // ★
+      sendState: senderUid == myUid ? SendState.sent : null,
+      readStatus: readStatus,
     );
+  }
+
+  List<ChatMessage> _projectForDisplay(ChatMessage m, {required bool isBroadcaster}) {
+    if (m.contentType != ChatContentType.text) return [m];
+
+    String? orig = m.text.toString();
+    String? trans = m.translate_text.toString();
+
+    // ✨ Fallback：若 data 裡沒有這兩個欄位，試著從 content_json 或 content(字串)解析
+    if ((orig == null && trans == null) && (m.data != null)) {
+      final d = m.data!;
+      Map<String, dynamic>? cj;
+      final rawCj = d['content_json'];
+      if (rawCj is Map) {
+        cj = rawCj.map((k, v) => MapEntry(k.toString(), v));
+      } else if (d['content'] is String) {
+        cj = _decodeJsonMap(d['content'] as String);
+      }
+      if (cj != null) {
+        orig  = (orig  ?? cj['chat_text'])?.toString();
+        trans = (trans ?? cj['translate_chat_text'])?.toString();
+
+        // 把解析到的內容補回 data，之後就不必再解析
+        m = m.copyWith(data: {
+          ...d,
+          if (orig != null)  'chat_text': orig,
+          if (trans != null) 'translate_chat_text': trans,
+        });
+      }
+    }
+
+    bool has(String? s) => s != null && s.trim().isNotEmpty;
+
+    if (isBroadcaster) {
+      // 主播：兩條都顯示
+        return [m.copyWith(text: orig), m.copyWith(text: trans)];
+    } else {
+      // 非主播：優先顯示翻譯，其次原文，最後退回現有 text
+      final show = has(trans) ? trans : (has(orig) ? orig : m.text);
+      return [m.copyWith(text: show)];
+    }
   }
 
   Widget _buildInputBar() {

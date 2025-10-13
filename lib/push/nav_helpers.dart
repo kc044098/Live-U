@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 
 import '../core/ws/event_dedupe.dart';
 import '../data/models/user_model.dart';
@@ -52,8 +53,8 @@ Map<String, dynamic> normalize(RemoteMessage m) {
 }
 
 // 進直播間（使用你給的 arguments）
-void goToLiveFromPayload(Map<String, dynamic> data) {
-  debugPrint('[[NAV][LIVE]] room=${data['channel_id'] ?? data['roomId']} uid=${_me?.uid} token?=${(data['token'] ?? '').toString().isNotEmpty}'); // ★
+void goToLiveFromPayload(Map<String, dynamic> raw) {
+  final data = flattenPayloadMap(raw);  // ★ 先攤平
 
   final me = _me; if (me == null) return;
   final cdn = me.cdnUrl ?? '';
@@ -64,6 +65,18 @@ void goToLiveFromPayload(Map<String, dynamic> data) {
   final needCam = (int.tryParse('${data['flag'] ?? 1}') ?? 1) == 1;
   final name    = (data['nick_name'] ?? 'Call').toString();
   final avatar  = joinCdn(cdn, firstAvatar(data['avatar']));
+
+  if (roomId.isEmpty) {
+    debugPrint('[[NAV][LIVE][ABORT]] empty channel_id in payload=$data');
+    Fluttertoast.showToast(msg: 'Chat ended');
+    return;
+  }
+
+  // 如果你專案需要 token 才能進（多數情況是需要的），也加一道守門：
+  if ((token).isEmpty) {
+    debugPrint('[[NAV][LIVE][WARN]] empty token, will still try if your backend allows no-token.');
+    // 若「必須 token」，改成直接 return 並提示 / 或去呼叫 accept API 取 token。
+  }
 
   Navigator.of(rootNavigatorKey.currentContext!, rootNavigator: true)
       .pushReplacementNamed(
@@ -81,6 +94,21 @@ void goToLiveFromPayload(Map<String, dynamic> data) {
       'peerAvatar'   : avatar,
     },
   );
+}
+
+// 新增一個工具：把 Map payload 攤平（支援 data 是字串 or Map）
+Map<String, dynamic> flattenPayloadMap(Map<String, dynamic> m) {
+  final out = Map<String, dynamic>.from(m);
+  final inner = out['data'] ?? out['Data'];
+  if (inner is String && inner.isNotEmpty) {
+    try {
+      final j = jsonDecode(inner);
+      if (j is Map) out.addAll(j.map((k, v) => MapEntry(k.toString(), v)));
+    } catch (_) {}
+  } else if (inner is Map) {
+    out.addAll(Map<String, dynamic>.from(inner));
+  }
+  return out;
 }
 
 // 進聊天室（用你的頁面建構子）

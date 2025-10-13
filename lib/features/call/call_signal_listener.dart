@@ -18,6 +18,7 @@ import '../message/chat_providers.dart';
 import '../message/inbox_message_banner.dart';
 import '../message/message_chat_page.dart';
 import '../profile/profile_controller.dart';
+import '../widgets/tools/image_resolver.dart';
 import 'call_abort_provider.dart';
 import 'call_repository.dart';
 import 'home_visible_provider.dart';
@@ -202,7 +203,7 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
       if (v is List && v.isNotEmpty) return _s(v.first);
       return _s(v);
     })();
-    final avatarUrl = _joinCdn2(cdn, avatarRaw);
+    final avatarUrl = sanitizeAvatarUrl(avatarRaw, cdnBase: cdn);
 
     final content = _s(data['content']);
     debugPrint('📬[Banner] parsed nick="$nick", avatarRaw="$avatarRaw", content="$content"');
@@ -280,13 +281,6 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
     }
     final s = v.toString().trim();
     return s.isNotEmpty ? s : null;
-  }
-
-  String _joinCdn(String cdn, String path) {
-    if (path.startsWith('http')) return path;
-    final a = cdn.endsWith('/') ? cdn.substring(0, cdn.length - 1) : cdn;
-    final b = path.startsWith('/') ? path.substring(1) : path;
-    return '$a/$b';
   }
 
   Future<void> _openChatAndHide(int partnerUid, String name, String avatarUrl) async {
@@ -420,7 +414,7 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
     final name = _nick(p);
     final cdn  = ref.read(userProfileProvider)?.cdnUrl ?? '';
     final avatarPath = _firstAvatarPath(_avatarRaw(p));
-    final avatarUrl  = (avatarPath == null) ? '' : _joinCdn(cdn, avatarPath);
+    final avatarUrl  = sanitizeAvatarUrl(avatarPath, cdnBase: cdn);
     final token = _token(p); // 可能為空
     final int flag = _flag(p);
 
@@ -670,12 +664,5 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
 
   Map<String, dynamic> _pickData(Map p) =>
       _asMap(p['data']).isNotEmpty ? _asMap(p['data']) : _asMap(p['Data']);
-
-  String _joinCdn2(String cdn, String path) {
-    if (path.isEmpty || path.startsWith('http')) return path;
-    final a = cdn.endsWith('/') ? cdn.substring(0, cdn.length - 1) : cdn;
-    final b = path.startsWith('/') ? path.substring(1) : path;
-    return '$a/$b';
-  }
 
 }
