@@ -33,6 +33,8 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
   Map<String, ProductDetails> _productMap = {}; // productId -> ProductDetails
   String? _iapWarn;
 
+  String kGetPid(VipPlan p) => p.productId;
+
   @override
   void initState() {
     super.initState();
@@ -94,16 +96,16 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
         }
       }
 
-      // 如果是 iOS 且 IAP 可用 → 查商品
+      // 原本只在 iOS 查 → 改成兩邊都查
       Map<String, ProductDetails> pMap = {};
       String? iapWarn;
-      if (Platform.isIOS && _iapReady) {
-        final ids = plans.map((e) => e.productId).where((s) => s.isNotEmpty).toSet();
+      if (_iapReady) {
+        final ids = plans.map((e) => kGetPid(e)).where((s) => s.isNotEmpty).toSet();
         if (ids.isNotEmpty) {
           pMap = await IapService.instance.queryProducts(ids);
-          if (pMap.isEmpty) iapWarn = t.iapWarnNoProducts;         // ← 改
+          if (pMap.isEmpty) iapWarn = S.of(context).iapWarnNoProducts;
         } else {
-          iapWarn = t.iapWarnNoProductId;                           // ← 改
+          iapWarn = S.of(context).iapWarnNoProductId;
         }
       }
 
@@ -128,7 +130,6 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
     if (productId.isEmpty) return null;
     final cached = _productMap[productId];
     if (cached != null) return cached;
-    // 補查單一商品
     final map = await IapService.instance.queryProducts({productId});
     if (map.isNotEmpty) {
       setState(() => _productMap.addAll(map));
@@ -140,44 +141,79 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
   Future<void> _buySelectedPlan() async {
     final sel = _plans[selectedIndex];
     final t = S.of(context);
+
+    // 共用流程：檢查 IAP 可用、確保能拿到 ProductDetails
+    Future<ProductDetails?> _preparePd() async {
+      if (!_iapReady) { Fluttertoast.showToast(msg: t.iapUnavailable); return null; }
+      final pid = kGetPid(sel);
+      if (pid.isEmpty) { Fluttertoast.showToast(msg: t.iapProductIdMissing); return null; }
+      final pd = await _ensureProduct(pid);
+      if (pd == null) { Fluttertoast.showToast(msg: t.iapProductNotFound); }
+      return pd;
+    }
+
     if (Platform.isIOS) {
-      if (!_iapReady) { Fluttertoast.showToast(msg: t.iapUnavailable); return; }
-      if (sel.productId.isEmpty) { Fluttertoast.showToast(msg: t.iapProductIdMissing); return; }
-      final pd = await _ensureProduct(sel.productId);
-      if (pd == null) { Fluttertoast.showToast(msg: t.iapProductNotFound); return; }
+      final pd = await _preparePd();
+      if (pd == null) return;
 
       setState(() => _buying = true);
       try {
         final purchase = await IapService.instance.buyNonConsumable(pd);
-        final receipt = purchase.verificationData.serverVerificationData;
-
+        final receipt = purchase.verificationData.serverVerificationData; // iOS 收據(base64)
         await ref.read(walletRepositoryProvider).verifyIapAndCredit(
           platform: 'ios',
           productId: pd.id,
           packetId: sel.id,
           purchaseTokenOrReceipt: receipt,
         );
-        await IapService.instance.finish(purchase);
-
-        final walletRepo = ref.read(walletRepositoryProvider);
-        final w = await walletRepo.fetchMoneyCash();
-        final user = ref.read(userProfileProvider);
-        if (user != null) {
-          ref.read(userProfileProvider.notifier).state = user.copyWith(
-            isVip: true, vipExpire: w.vipExpire, gold: w.gold,
-          );
-        }
-        Fluttertoast.showToast(msg: t.vipOpenSuccess); // ← 改
+        await IapService.instance.finish(purchase); // acknowledge/complete
+        await _refreshVipAndWallet();
+        Fluttertoast.showToast(msg: t.vipOpenSuccess);
       } catch (e) {
-        Fluttertoast.showToast(msg: t.vipOpenFailed('$e')); // ← 改
+        Fluttertoast.showToast(msg: t.vipOpenFailed('$e'));
       } finally {
         if (mounted) setState(() => _buying = false);
       }
       return;
     }
 
-    // Android 日後再接
-    Fluttertoast.showToast(msg: 'Android 訂閱即將開放');
+    if (Platform.isAndroid) {
+      final pd = await _preparePd();
+      if (pd == null) return;
+
+      setState(() => _buying = true);
+      try {
+        final purchase = await IapService.instance.buyNonConsumable(pd);
+        final token = purchase.verificationData.serverVerificationData; // Android 的 purchaseToken
+        await ref.read(walletRepositoryProvider).verifyIapAndCredit(
+          platform: 'android',
+          productId: pd.id,
+          packetId: sel.id,
+          purchaseTokenOrReceipt: token,
+        );
+        await IapService.instance.finish(purchase); // acknowledge/consume(若為可消耗)
+        await _refreshVipAndWallet();
+        Fluttertoast.showToast(msg: t.vipOpenSuccess);
+      } catch (e) {
+        Fluttertoast.showToast(msg: t.vipOpenFailed('$e'));
+      } finally {
+        if (mounted) setState(() => _buying = false);
+      }
+      return;
+    }
+
+    Fluttertoast.showToast(msg: 'Unsupported platform');
+  }
+
+  Future<void> _refreshVipAndWallet() async {
+    final walletRepo = ref.read(walletRepositoryProvider);
+    final w = await walletRepo.fetchMoneyCash();
+    final user = ref.read(userProfileProvider);
+    if (user != null) {
+      ref.read(userProfileProvider.notifier).state = user.copyWith(
+        isVip: true, vipExpire: w.vipExpire, gold: w.gold,
+      );
+    }
   }
 
   String _fmtMoney(double v) => '\$ ${v.toStringAsFixed(2)}';
@@ -346,6 +382,7 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                             itemBuilder: (context, index) {
                               final p = _plans[index];
                               final selected = selectedIndex == index;
+                              final storePrice = _productMap[kGetPid(p)]?.price; // 例如 US$4.99，會帶幣別與當地含稅
 
                               return GestureDetector(
                                 onTap: () =>
@@ -385,7 +422,7 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                                                       fontWeight:
                                                           FontWeight.bold)),
                                               const SizedBox(height: 4),
-                                              Text(_fmtMoney(p.payPrice),
+                                            Text(storePrice ?? _fmtMoney(p.payPrice),
                                                   style: const TextStyle(
                                                       fontSize: 16,
                                                       color: Colors.black)),

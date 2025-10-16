@@ -31,7 +31,7 @@ import 'features/live/video_recorder_page.dart';
 import 'routes/app_routes.dart';
 
 Future<void> main() async {
-
+  debugPrint('main() start~');
   Future<void> logFirebaseConfig() async {
     try {
       final app = Firebase.app();

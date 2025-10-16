@@ -170,11 +170,6 @@ class _AccountManagePageState extends ConsumerState<AccountManagePage> {
             ],
           ),
 
-          if (_isBinding)
-            Container(
-              color: Colors.black.withOpacity(0.15),
-              child: const Center(child: CircularProgressIndicator()),
-            ),
         ],
       ),
     );

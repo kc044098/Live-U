@@ -12,5 +12,7 @@
 	<array/>
 	<key>com.apple.developer.networking.slicing.trafficcategory</key>
 	<array/>
+	<key>com.apple.developer.networking.wifi-info</key>
+	<true/>
 </dict>
 </plist>
