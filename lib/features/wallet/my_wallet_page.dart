@@ -321,7 +321,8 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
           final p = packets[index];
           final storeId = Platform.isIOS ? p.iosProductId : p.androidProductId;
           final storePrice = (storeId != null) ? _storeProducts[storeId]?.price : null;
-          final displayPrice = storePrice ?? _displayPrice(p.price); // 優先顯示商店價格
+          // 若有商店價 → 直接顯示；否則用你後端價 + 美元符號
+          final displayPrice = storePrice ?? '\$${_displayPrice(p.price)}';
           final bonusText = p.bonus > 0 ? t.walletBonusGift(p.bonus) : null;
 
           return GestureDetector(
@@ -500,14 +501,7 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
         await IapService.instance.finish(purchase);
 
         // 重新拉餘額，更新 UI / Profile
-        final walletRepo = ref.read(walletRepositoryProvider);
-        final w = await walletRepo.fetchMoneyCash();
-        if (mounted) setState(() => _gold = w.gold);
-        final user = ref.read(userProfileProvider);
-        if (user != null) {
-          ref.read(userProfileProvider.notifier).state =
-              user.copyWith(gold: w.gold, vipExpire: w.vipExpire);
-        }
+        await _refreshWallet();
 
         Fluttertoast.showToast(msg: t.rechargeSuccess);
       } catch (e) {
@@ -518,21 +512,60 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
       return;
     }
 
-    // ===== Android：先維持舊流程/或顯示稍後支援 =====
-    // 你目前是走 PurchaseRouter，先保留（若要立刻改 IAP，再告訴我）
-    final amountToPay = (picked.price >= 1000)
-        ? picked.price / 100.0
-        : picked.price.toDouble();
+    // ===== Android：Google Play Billing 消耗型購買 =====
+    if (Platform.isAndroid) {
+      if (!_iapReady) { Fluttertoast.showToast(msg: t.iapUnavailable); return; }
+      final productId = picked.androidProductId ?? '';
+      if (productId.isEmpty) { Fluttertoast.showToast(msg: t.iapProductIdMissing); return; }
 
-    FocusScope.of(context).unfocus();
-    PurchaseRouter.open(
-      context,
-      amount: amountToPay,
-      packetId: picked.id,
-      iosProductId: picked.iosProductId,
-      androidProductId: picked.androidProductId,
-      isCustom: false,
-    );
+      // 取商品資訊（先看快取，沒有就補查）
+      ProductDetails? pd = _storeProducts[productId];
+      if (pd == null) {
+        final map = await IapService.instance.queryProducts({productId});
+        pd = map[productId];
+      }
+      if (pd == null) { Fluttertoast.showToast(msg: t.iapProductNotFound); return; }
+
+      setState(() => _buying = true);
+      try {
+        // 金幣＝消耗型
+        final purchase = await IapService.instance.buyConsumable(pd);
+
+        // Android：這裡拿到的是 purchaseToken
+        final token = purchase.verificationData.serverVerificationData;
+
+        // 後端驗單入帳（沿用你的 verify 端點）
+        await ref.read(walletRepositoryProvider).verifyIapAndCredit(
+          platform: 'android',
+          productId: pd.id,
+          packetId: picked.id,
+          purchaseTokenOrReceipt: token,
+        );
+
+        // 完成交易（acknowledge/consume）
+        await IapService.instance.finish(purchase);
+
+        // 重新拉餘額，更新 UI / Profile
+        await _refreshWallet();
+        Fluttertoast.showToast(msg: t.rechargeSuccess);
+      } catch (e) {
+        Fluttertoast.showToast(msg: t.rechargeFailedShort);
+      } finally {
+        if (mounted) setState(() => _buying = false);
+      }
+      return;
+    }
   }
+  Future<void> _refreshWallet() async {
+    final walletRepo = ref.read(walletRepositoryProvider);
+    final w = await walletRepo.fetchMoneyCash();
+    if (mounted) setState(() => _gold = w.gold);
+    final user = ref.read(userProfileProvider);
+    if (user != null) {
+      ref.read(userProfileProvider.notifier).state =
+          user.copyWith(gold: w.gold, vipExpire: w.vipExpire);
+    }
+  }
+
 
 }

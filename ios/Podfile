@@ -44,13 +44,25 @@ post_install do |installer|
       bs['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
       bs['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
 
-      # 安全地追加 OTHER_LDFLAGS（保留 $(inherited)）
+      # 你的現有 flags（保留）
       flags = bs['OTHER_LDFLAGS']
-      # 可能是 nil / 字串 / 陣列，都處理掉
-      flags = ['$(inherited)']                 if flags.nil? || flags == ''
-      flags = flags.split(' ')                 if flags.is_a?(String)
-      flags << '-Wl,-U,_Iris_InitDartApiDL'    unless flags.include?('-Wl,-U,_Iris_InitDartApiDL')
+      flags = ['$(inherited)'] if flags.nil? || flags == ''
+      flags = flags.split(' ')  if flags.is_a?(String)
+      flags << '-Wl,-U,_Iris_InitDartApiDL' unless flags.include?('-Wl,-U,_Iris_InitDartApiDL')
       bs['OTHER_LDFLAGS'] = flags
+
+      # 👇 關鍵：打開 permission_handler 的 iOS 子模組
+      defs = bs['GCC_PREPROCESSOR_DEFINITIONS'] || ['$(inherited)']
+      defs = defs.is_a?(Array) ? defs : [defs]
+      needed = %w[
+        PERMISSION_CAMERA=1
+        PERMISSION_MICROPHONE=1
+        PERMISSION_PHOTOS=1
+        PERMISSION_SPEECH_RECOGNIZER=1
+        PERMISSION_BLUETOOTH=1
+      ]
+      needed.each { |d| defs << d unless defs.include?(d) }
+      bs['GCC_PREPROCESSOR_DEFINITIONS'] = defs
     end
   end
 end

@@ -99,7 +99,7 @@ class _LogoutConfirmDialogState extends ConsumerState<LogoutConfirmDialog> {
                           height: 40,
                           child: Center(
                             child: Text(
-                              s.commonConfirm,
+                              _loading ? '' : s.commonConfirm,
                               style: const TextStyle(
                                 color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold,
                               ),
