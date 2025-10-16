@@ -1,26 +1,27 @@
-# Uncomment this line to define a global platform for your project
 platform :ios, '13.0'
+use_frameworks! :linkage => :static
 
-# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
+pod 'AgoraRtcEngine_iOS', '4.5.2'
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
 project 'Runner', {
-  'Debug' => :debug,
-  'Profile' => :release,
-  'Release' => :release,
+  'Debug'        => :debug,
+  'Release'      => :release,
+  'Profile'      => :release,
+  'Prod-Debug'   => :debug,
+  # 'Prod-Release' => :release,   # 你如果也建了 Prod-Release 就打開這行
 }
 
 def flutter_root
-  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'))
   unless File.exist?(generated_xcode_build_settings_path)
     raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
   end
-
   File.foreach(generated_xcode_build_settings_path) do |line|
     matches = line.match(/FLUTTER_ROOT\=(.*)/)
     return matches[1].strip if matches
   end
-  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
+  raise "FLUTTER_ROOT not found in Generated.xcconfig. Run flutter pub get first."
 end
 
 require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
@@ -28,31 +29,28 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 flutter_ios_podfile_setup
 
 target 'Runner' do
-  use_frameworks!
-  use_modular_headers!
+  # 用 framework 方式整合（使用靜態 linkage，通常相容性最好）
+  use_frameworks! :linkage => :static
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 end
 
 post_install do |installer|
-  installer.pods_project.targets.each do |target|
-    # 保留 Flutter 內建設定（你同事版）
-    flutter_additional_ios_build_settings(target)
+  installer.pods_project.targets.each do |t|
+    flutter_additional_ios_build_settings(t)
 
-    # 只針對 permission_handler 設定要啟用的權限
-    if target.name == 'permission_handler_apple' # 你的 Pod 列表顯示是這個名字
-      target.build_configurations.each do |config|
-        defs = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
-        defs << 'PERMISSION_CAMERA=1'
-        defs << 'PERMISSION_MICROPHONE=1'
-        defs << 'PERMISSION_PHOTOS=1'
-        defs << 'PERMISSION_NOTIFICATIONS=1'
-        defs << 'PERMISSION_LOCATION=1'
-        # 不用的就別開，或改成 =0 以縮包
-        # defs << 'PERMISSION_CONTACTS=0'
-        # defs << 'PERMISSION_CALENDAR=0'
-      end
+    t.build_configurations.each do |config|
+      bs = config.build_settings
+      bs['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+      bs['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+
+      # 安全地追加 OTHER_LDFLAGS（保留 $(inherited)）
+      flags = bs['OTHER_LDFLAGS']
+      # 可能是 nil / 字串 / 陣列，都處理掉
+      flags = ['$(inherited)']                 if flags.nil? || flags == ''
+      flags = flags.split(' ')                 if flags.is_a?(String)
+      flags << '-Wl,-U,_Iris_InitDartApiDL'    unless flags.include?('-Wl,-U,_Iris_InitDartApiDL')
+      bs['OTHER_LDFLAGS'] = flags
     end
   end
 end
-

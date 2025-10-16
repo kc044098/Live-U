@@ -203,13 +203,13 @@ class _InsufficientGoldSheetState extends ConsumerState<_InsufficientGoldSheet> 
                                                 child: Row(
                                                                                             mainAxisAlignment: MainAxisAlignment.center,
                                                                                             children: [
-                                                Image.asset('assets/icon_gold1.png', width: 28),
-                                                const SizedBox(width: 6),
+                                                Image.asset('assets/icon_gold1.png', width: 24),
+                                                const SizedBox(width: 4),
                                                 Text(
                                                   '${NumberFormat.decimalPattern(Localizations.maybeLocaleOf(context)?.toLanguageTag())
                                                       .format(packets[index].gold)} ${s.coinsUnit}',
                                                   style: TextStyle(
-                                                    fontSize: 14,
+                                                    fontSize: 12,
                                                     color: isSelected ? Colors.red : const Color(0xFF9E9E9E),
                                                     fontWeight: FontWeight.w600,
                                                   ),

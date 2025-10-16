@@ -28,32 +28,41 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
   final TextEditingController _customAmountController = TextEditingController();
   Map<String, ProductDetails> _storeProducts = {};
 
+  // 新增
+  bool _iapReady = false;
+  bool _buying = false;
+  String? _iapWarn; // 目前未顯示，如要顯示可像 VIP 那樣放一個 banner
+
   @override
   void initState() {
     super.initState();
-    // 首次進入頁面時載入餘額（最小頻率，不做即時刷新）
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // 讀餘額（原樣）
       try {
         final repo = ref.read(walletRepositoryProvider);
         final w = await repo.fetchMoneyCash();
-
         if (!mounted) return;
-        setState(() {
-          _gold = w.gold;
-        });
-
+        setState(() { _gold = w.gold; });
         final user = ref.read(userProfileProvider);
         if (user != null) {
           ref.read(userProfileProvider.notifier).state =
               user.copyWith(gold: w.gold, vipExpire: w.vipExpire);
         }
-      } catch (e) {
-        // 靜默失敗即可，避免打擾 UI；需要時可加上 toast
+      } catch (_) {
         Fluttertoast.showToast(msg: S.of(context).walletReadFail);
       }
     });
 
-    IapService.instance.init();
+    // ✅ IAP 初始化（等同 VIP）
+    () async {
+      try {
+        await IapService.instance.init();
+        if (mounted) setState(() => _iapReady = IapService.instance.isAvailable);
+      } catch (_) {
+        if (mounted) setState(() => _iapReady = false);
+      }
+    }();
   }
 
 
@@ -68,6 +77,7 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
     if (!mounted) return;
     setState(() => _storeProducts = map);
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -157,7 +167,7 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
           height: 48,
           width: double.infinity,
           child: ElevatedButton(
-            onPressed: _onRechargePressed,
+            onPressed: _buying ? null : _onRechargePressed,
             style: ElevatedButton.styleFrom(
               elevation: 0,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
@@ -228,7 +238,7 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
 
   Widget _buildRechargeGrid(List<CoinPacket> packets) {
     final customIndex = packets.length; // ★ 最後一個是自訂金額
-    final itemCount = packets.length + 1;
+    final itemCount = packets.length;
     final t = S.of(context);
 
     return Padding(
@@ -249,8 +259,9 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
           // 目前是否被選中
           final isSelected = selectedIndex == index;
 
+          final isShow = false;
           // 自訂金額卡
-          if (isCustom) {
+          if (isCustom && isShow) {
             return GestureDetector(
               onTap: () => setState(() => selectedIndex = index),
               child: Stack(
@@ -443,33 +454,11 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
     return v.toStringAsFixed(2);
   }
 
-  void _onRechargePressed() {
+  void _onRechargePressed() async {
     final t = S.of(context);
     final packets = ref.read(coinPacketsProvider).asData?.value ?? [];
     if (packets.isEmpty) {
       Fluttertoast.showToast(msg: t.walletPacketsNotLoaded);
-      return;
-    }
-
-    final customIndex = packets.length;
-    final isCustom = selectedIndex == customIndex;
-
-    if (isCustom) {
-      final input = _customAmountController.text.trim();
-      final parsed = double.tryParse(input);
-      if (parsed == null || parsed < 1 || parsed % 1 != 0) {
-        Fluttertoast.showToast(msg: t.walletEnterIntAmountAtLeast1);
-        return;
-      }
-      FocusScope.of(context).unfocus();
-      PurchaseRouter.open(
-        context,
-        amount: parsed,
-        packetId: null,
-        iosProductId: null,                 // 自訂金額沒有對應 IAP
-        androidProductId: null,
-        isCustom: true,
-      );
       return;
     }
 
@@ -479,18 +468,69 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
     }
 
     final picked = packets[selectedIndex];
+
+    // ===== iOS：IAP 消耗型購買 =====
+    if (Platform.isIOS) {
+      if (!_iapReady) { Fluttertoast.showToast(msg: t.iapUnavailable); return; }
+      final productId = picked.iosProductId ?? '';
+      if (productId.isEmpty) { Fluttertoast.showToast(msg: t.iapProductIdMissing); return; }
+
+      // 取商品資訊（先看快取，沒有就補查）
+      ProductDetails? pd = _storeProducts[productId];
+      if (pd == null) {
+        final map = await IapService.instance.queryProducts({productId});
+        pd = map[productId];
+      }
+      if (pd == null) { Fluttertoast.showToast(msg: t.iapProductNotFound); return; }
+
+      setState(() => _buying = true);
+      try {
+        // 🔑 金幣屬「消耗型」
+        final purchase = await IapService.instance.buyConsumable(pd);
+        final receipt = purchase.verificationData.serverVerificationData;
+
+        // 驗單入帳（沿用你 VIP 的 verify 端點）
+        await ref.read(walletRepositoryProvider).verifyIapAndCredit(
+          platform: 'ios',
+          productId: pd.id,
+          packetId: picked.id,
+          purchaseTokenOrReceipt: receipt,
+        );
+
+        await IapService.instance.finish(purchase);
+
+        // 重新拉餘額，更新 UI / Profile
+        final walletRepo = ref.read(walletRepositoryProvider);
+        final w = await walletRepo.fetchMoneyCash();
+        if (mounted) setState(() => _gold = w.gold);
+        final user = ref.read(userProfileProvider);
+        if (user != null) {
+          ref.read(userProfileProvider.notifier).state =
+              user.copyWith(gold: w.gold, vipExpire: w.vipExpire);
+        }
+
+        Fluttertoast.showToast(msg: t.rechargeSuccess);
+      } catch (e) {
+        Fluttertoast.showToast(msg: t.rechargeFailedShort);
+      } finally {
+        if (mounted) setState(() => _buying = false);
+      }
+      return;
+    }
+
+    // ===== Android：先維持舊流程/或顯示稍後支援 =====
+    // 你目前是走 PurchaseRouter，先保留（若要立刻改 IAP，再告訴我）
     final amountToPay = (picked.price >= 1000)
         ? picked.price / 100.0
         : picked.price.toDouble();
 
     FocusScope.of(context).unfocus();
-
     PurchaseRouter.open(
       context,
       amount: amountToPay,
       packetId: picked.id,
-      iosProductId: picked.iosProductId,           // ★ 新增
-      androidProductId: picked.androidProductId,   // ★ 新增
+      iosProductId: picked.iosProductId,
+      androidProductId: picked.androidProductId,
       isCustom: false,
     );
   }

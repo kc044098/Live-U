@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +9,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../l10n/l10n.dart';
+import '../../update/version_repository.dart';
 import '../widgets/webview_flutter.dart';
 import 'account_login_screen.dart';
 import 'apple_auth_service.dart';
@@ -38,6 +41,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   void initState() {
     super.initState();
     _loadVersion();
+
+    if (Platform.isIOS) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(updateServiceProvider).checkAndPromptIOS(context);
+      });
+    }
   }
 
   @override
@@ -209,7 +218,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               builder: (ctx, constraints) {
                 return SingleChildScrollView(
                   padding: const EdgeInsets.symmetric(horizontal: 24)
-                      .copyWith(bottom: 80), // 給右下角版本號留空間
+                      .copyWith(bottom: 60), // 給右下角版本號留空間
                   keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                   child: ConstrainedBox(
                     constraints: BoxConstraints(minHeight: constraints.maxHeight),
@@ -217,7 +226,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       mainAxisSize: MainAxisSize.min, // 關鍵：讓內容可壓縮
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        const SizedBox(height: 64),
+                        const SizedBox(height: 56),
                         SvgPicture.asset('assets/logo_placeholder.svg', height: 80),
                         const SizedBox(height: 28),
                         Text(
@@ -286,7 +295,42 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           style: const TextStyle(fontSize: 12, color: Colors.grey),
                         ),
 
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 40),
+
+
+                        // 底部公司的三行信息（不拦截点击）
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: SafeArea(
+                              child: Align(
+                                alignment: Alignment.bottomCenter,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(bottom: 16),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: const [
+                                      Text(
+                                        'Company Name: PUSH HALION. LTD',
+                                        style: TextStyle(fontSize: 10, color: Colors.grey),
+                                      ),
+                                      SizedBox(height: 2),
+                                      Text(
+                                        'Address: 7 Copperfield Road, Coventry, West Midlands, \n England, United Kingdom, CV2 4AQ',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(fontSize: 10, color: Colors.grey),
+                                      ),
+                                      SizedBox(height: 2),
+                                      Text(
+                                        'Email: info@lu.live',
+                                        style: TextStyle(fontSize: 10, color: Colors.grey),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),

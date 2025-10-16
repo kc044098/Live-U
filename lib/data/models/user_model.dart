@@ -24,7 +24,6 @@ class UserModel {
     }
     return '';
   }
-  String get avatarUrlAbs => avatarUrl.joinCdn(cdnUrl);
 
   bool isVip;                        // 會員狀態 (vip)
   final bool isBroadcaster;          // 是否為主播 (flag = 2 代表主播)

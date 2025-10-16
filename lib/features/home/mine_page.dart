@@ -21,6 +21,7 @@ import '../profile/profile_controller.dart';
 import '../mine/edit_mine_page.dart';
 import '../wallet/my_wallet_page.dart';
 import '../wallet/wallet_repository.dart';
+import '../widgets/tools/image_resolver.dart';
 
 class MinePage extends ConsumerStatefulWidget {
   const MinePage({super.key});
@@ -58,6 +59,8 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
       );
     }
 
+    final avatarPath = sanitizeAvatarUrl(user.avatarUrl, cdnBase: user.cdnUrl);
+
     return Scaffold(
       body: Stack(
         children: [
@@ -85,7 +88,7 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
                         CircleAvatar(
                           radius: 32,
                           backgroundImage: buildAvatarProvider(
-                            avatarUrl: user.avatarUrlAbs,
+                            avatarUrl: avatarPath,
                             context: context,
                             logicalSize: 64,
                           ),

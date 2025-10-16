@@ -32,12 +32,15 @@ class CallRequestPage extends ConsumerStatefulWidget {
   final bool isVideoCall;
   final CalleeState calleeState;
 
+  final int? videoId;
+
   const CallRequestPage({
     super.key,
     required this.broadcasterId,
     required this.broadcasterName,
     required this.broadcasterImage,
     this.isVideoCall = true,
+    this.videoId,
     CalleeState? calleeState,
     @Deprecated('Use calleeState instead') bool? isBusy,
   }) : calleeState = calleeState ?? (isBusy == true ? CalleeState.busy : CalleeState.online);
@@ -173,10 +176,6 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
     Navigator.of(rootNavigatorKey.currentContext!).pushNamed(AppRoutes.home);
   }
 
-  Future<void> _playUnavailableTone() async {
-    await _busyPlayer.setReleaseMode(ReleaseMode.loop);
-    await _busyPlayer.play(AssetSource('unavailable_phone.mp3'));
-  }
 
   Future<void> _playRingtone() async {
     await Future.delayed(const Duration(milliseconds: 200));
@@ -194,6 +193,7 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
       final data = await ref.read(callRepositoryProvider).liveCall(
         flag: flag,
         toUid: int.parse(widget.broadcasterId),
+        videoId: widget.videoId,
       );
 
       final Map<String, dynamic> m =

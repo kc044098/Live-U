@@ -1265,38 +1265,20 @@ class _MessageChatPageState extends ConsumerState<MessageChatPage> with SingleTi
     String? orig = m.text.toString();
     String? trans = m.translate_text.toString();
 
-    // ✨ Fallback：若 data 裡沒有這兩個欄位，試著從 content_json 或 content(字串)解析
-    if ((orig == null && trans == null) && (m.data != null)) {
-      final d = m.data!;
-      Map<String, dynamic>? cj;
-      final rawCj = d['content_json'];
-      if (rawCj is Map) {
-        cj = rawCj.map((k, v) => MapEntry(k.toString(), v));
-      } else if (d['content'] is String) {
-        cj = _decodeJsonMap(d['content'] as String);
-      }
-      if (cj != null) {
-        orig  = (orig  ?? cj['chat_text'])?.toString();
-        trans = (trans ?? cj['translate_chat_text'])?.toString();
-
-        // 把解析到的內容補回 data，之後就不必再解析
-        m = m.copyWith(data: {
-          ...d,
-          if (orig != null)  'chat_text': orig,
-          if (trans != null) 'translate_chat_text': trans,
-        });
-      }
-    }
-
-    bool has(String? s) => s != null && s.trim().isNotEmpty;
-
     if (isBroadcaster) {
       // 主播：兩條都顯示
-        return [m.copyWith(text: orig), m.copyWith(text: trans)];
+      if (m.type != MessageType.self) {
+        final lines = <String>[];
+        if (orig.isNotEmpty)  lines.add(orig);
+        if (trans.isNotEmpty) lines.add(trans);
+        final combined = lines.join('\n'); // 原始消息 \n 翻譯消息
+        return [m.copyWith(text: combined)];
+      } else {
+        return [m.copyWith(text: m.text)];
+      }
     } else {
-      // 非主播：優先顯示翻譯，其次原文，最後退回現有 text
-      final show = has(trans) ? trans : (has(orig) ? orig : m.text);
-      return [m.copyWith(text: show)];
+      // 非主播：顯示原文
+      return [m.copyWith(text: m.text)];
     }
   }
 

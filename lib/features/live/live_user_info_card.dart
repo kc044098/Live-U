@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../data/network/avatar_cache.dart';
 import '../../l10n/l10n.dart';
 import '../profile/profile_controller.dart';
 import '../profile/view_profile_page.dart';
@@ -122,10 +123,12 @@ class _LiveUserInfoCardState extends ConsumerState<LiveUserInfoCard> {
                     );
                   },
                   child: CircleAvatar(
-                    backgroundImage: (widget.avatarPath == null || widget.avatarPath!.isEmpty)
-                        ? const AssetImage('assets/my_icon_defult.jpeg')
-                        : CachedNetworkImageProvider(widget.avatarPath!) as ImageProvider,
                     radius: 24,
+                    backgroundImage: buildAvatarProvider(
+                      avatarUrl: widget.avatarPath!,
+                      context: context,
+                      logicalSize: 48,
+                    ),
                   ),
                 ),
                 Positioned(

@@ -9,6 +9,8 @@ class ApiEndpoints {
   static const String memberInfo = '/api/member/info';
   static const String memberInfoUpdate = '/api/member/info/update';
   static const String memberVipList = '/api/finance/vip/list'; // Vip方案列表
+  static const String emailBind = '/api/member/email/bind';
+  static const String bindThird = '/api/member/bind/google';
 
   static const String memberFans = '/api/member/fans';
   static const String memberFocus = '/api/member/focus';  // 關注主播
@@ -64,5 +66,5 @@ class ApiEndpoints {
   static const String tokenRegister = '/api/member/register'; // FCM 註冊token
   static const String setPresence = '/api/member/status/set'; // 上報在線狀態
 
-
+  static const String appLastestVersion = '/api/member/version';
 }

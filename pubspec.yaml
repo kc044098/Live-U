@@ -1,9 +1,9 @@
 name: djs_live_stream
 
-description: "djs_live_stream Flutter project."
+description: "LiveU Talk Flutter project."
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.0.0+5
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -69,6 +69,7 @@ dependencies:
   webview_flutter: ^4.7.0
   uuid: ^4.5.1
   connectivity_plus: ^4.0.0
+  pub_semver: ^2.1.4
 
   fulive_plugin:
     path: third_party/fulive_plugin
@@ -83,7 +84,6 @@ dev_dependencies:
   build_runner: ^2.4.6
   json_serializable: ^6.7.1
   flutter_launcher_icons: ^0.14.4
-  flutter_native_splash: ^2.4.0
 
 flutter:
   uses-material-design: true
@@ -95,11 +95,4 @@ flutter:
 flutter_icons:
   android: true
   ios: true
-  image_path: "assets/app_icon.jpeg"
-
-flutter_native_splash:
-  color: "#FFFFFF"                # 啟動背景色（可改）
-  image: "assets/app_lunch.png"     # 啟動畫面顯示的圖片
-  android: true
-  ios: true
-  web: false
+  image_path: "assets/app_lunch.png"

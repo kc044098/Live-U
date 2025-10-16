@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:djs_live_stream/push/app_lifecycle.dart';
 import 'package:djs_live_stream/push/presence_reporter.dart';
@@ -6,11 +7,12 @@ import 'package:djs_live_stream/push/push_service.dart';
 import 'package:djs_live_stream/push/push_token_registrar.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:provider/provider.dart' as legacy;
-import 'config/app_config.dart';
+import 'config/providers/app_config_provider.dart';
 import 'core/ws/ws_provider.dart';
 import 'data/models/user_model.dart';
 import 'features/call/call_signal_listener.dart';
@@ -19,6 +21,7 @@ import 'features/live/broadcaster_page.dart';
 import 'features/live/live_end_page.dart';
 import 'features/live/pip_system_ui.dart';
 import 'features/profile/profile_controller.dart';
+import 'firebase_options.dart';
 import 'globals.dart';
 import 'l10n/l10n.dart';
 import 'locale_provider.dart';
@@ -28,6 +31,23 @@ import 'features/live/video_recorder_page.dart';
 import 'routes/app_routes.dart';
 
 Future<void> main() async {
+
+  Future<void> logFirebaseConfig() async {
+    try {
+      final app = Firebase.app();
+      final o = app.options;
+      debugPrint('### Firebase Runtime Options');
+      debugPrint('### platform=${Platform.isIOS ? "iOS" : Platform.operatingSystem}');
+      debugPrint('### appId=${o.appId}');
+      debugPrint('### projectId=${o.projectId}');
+      debugPrint('### gcmSenderId=${o.messagingSenderId}');
+      debugPrint('### storageBucket=${o.storageBucket}');
+      debugPrint('### apiKey(head)=${o.apiKey.substring(0, 8)}...');
+    } catch (e) {
+      debugPrint('### Firebase not initialized: $e');
+    }
+  }
+
   WidgetsFlutterBinding.ensureInitialized();
 
   AppLifecycle.I.init();
@@ -36,10 +56,18 @@ Future<void> main() async {
     PushService.I.maybeShowPendingIncomingUI();
   });
 
-  // 1) 先把 Firebase 初始化完成
   await Firebase.initializeApp();
+  await logFirebaseConfig();
+
+  const env   = String.fromEnvironment('ENV', defaultValue: '<MISSING>');
+  const api   = String.fromEnvironment('API_BASE', defaultValue: '<MISSING>');
+  const ws    = String.fromEnvironment('WS_URL', defaultValue: '<MISSING>');
+  // 也順便印出你原本的判斷
+  debugPrint('### DART_DEFINES => ENV=$env, API_BASE=$api, WS_URL=$ws, kReleaseMode=$kReleaseMode');
+
 
   FirebaseMessaging.onBackgroundMessage(firebaseBgHandler);
+
 
   // 2) 再做你其他初始化
   final mgr = RtcEngineManager();

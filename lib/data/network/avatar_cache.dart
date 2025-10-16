@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:djs_live_stream/features/widgets/tools/image_resolver.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter/material.dart';
 import 'dart:typed_data';
@@ -29,7 +30,7 @@ ImageProvider<Object> buildAvatarProvider({
   final dpr = MediaQuery.of(context).devicePixelRatio;
   final targetPx = (logicalSize * dpr).round(); // 目標解碼大小（像素）
 
-  if (avatarUrl.isEmpty) {
+  if (avatarUrl.isEmpty || avatarUrl.isLocalAbs || avatarUrl.isDataUri) {
     return const AssetImage('assets/my_icon_defult.jpeg');
   }
 

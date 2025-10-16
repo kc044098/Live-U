@@ -1,3 +1,13 @@
+import java.util.Properties
+import java.io.FileInputStream
+
+val keystorePropsFile = rootProject.file("key.properties")
+val keystoreProps = Properties().apply {
+    if (keystorePropsFile.exists()) {
+        load(FileInputStream(keystorePropsFile))
+    }
+}
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -11,7 +21,6 @@ android {
     ndkVersion = "27.0.12077973"
 
     defaultConfig {
-        applicationId = "lu.live"
         minSdk = 24
         targetSdk = 34
         versionCode = flutter.versionCode
@@ -30,6 +39,20 @@ android {
         )
     }
 
+    flavorDimensions += "env"
+    productFlavors {
+        create("dev") {          // ← 測試版
+            dimension = "env"
+            applicationId = "lu.live"
+            resValue("string", "app_name", "LiveU Talk Dev")
+        }
+        create("prod") {         // ← 正式版
+            dimension = "env"
+            applicationId = "liveu.live"
+            resValue("string", "app_name", "LiveU Talk")
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
@@ -45,20 +68,32 @@ android {
 
     sourceSets["main"].assets.srcDirs("src/main/assets")
 
+    signingConfigs {
+        create("release") {
+            // 若 key.properties 缺少欄位會拋例外；請確認都填了
+            storeFile = file(keystoreProps["storeFile"] as String)
+            storePassword = keystoreProps["storePassword"] as String
+            keyAlias = keystoreProps["keyAlias"] as String
+            keyPassword = keystoreProps["keyPassword"] as String
+            //（可省略）v1/v2 預設為啟用，不特別設也可以
+            // isV1SigningEnabled = true
+            // isV2SigningEnabled = true
+        }
+    }
+
     buildTypes {
-        debug {
-            // debug 也可以先關掉混淆，方便排查
+        getByName("debug") {
             isMinifyEnabled = false
         }
-        release {
-            // 開啟 R8 混淆 & 資源壓縮
+        getByName("release") {
             isMinifyEnabled = true
             isShrinkResources = true
-            // 指定規則檔（就在 app/ 下）
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // ★ 重點：讓 release 用上面的簽章
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
