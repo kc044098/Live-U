@@ -23,6 +23,7 @@ import '../live/video_repository_provider.dart';
 import '../mine/user_repository_provider.dart';
 import '../profile/profile_controller.dart';
 import '../profile/view_profile_page.dart';
+import '../widgets/tools/image_resolver.dart';
 
 class LiveListPage extends ConsumerStatefulWidget {
   final ValueChanged<int>? onTabChanged;
@@ -521,6 +522,7 @@ class _CallButton extends ConsumerWidget {
         ? item.nickName!
         : (item.title.isEmpty ? S.of(context).fallbackBroadcaster : item.title);
     final broadcasterImage = item.firstAvatar ?? item.coverCandidate ?? 'assets/default.jpg';
+    final int videoId = item.id;
 
     // ★ 進入撥打頁前，先把首頁影片關掉
     ref.read(homePlayGateProvider.notifier).state = false;
@@ -535,6 +537,7 @@ class _CallButton extends ConsumerWidget {
             broadcasterImage: broadcasterImage,
             isVideoCall: true,
             calleeState: _mapToCalleeState(item),
+            videoId: videoId,
           ),
         ),
       );
@@ -764,10 +767,7 @@ class _VideoCardState extends ConsumerState<_VideoCard> with WidgetsBindingObser
     final displayAvatarRaw = widget.item.firstAvatar ?? (cover ?? '');
     final displayTags   = widget.item.tags.isNotEmpty ? widget.item.tags : <String>[t.tagRecommended, t.tagNewUpload];
     final cdn = ref.watch(userProfileProvider)?.cdnUrl ?? '';
-    final avatarUrl = joinUrl(cdn, displayAvatarRaw);
-    if (avatarUrl.isNotEmpty) {
-      precacheImage(CachedNetworkImageProvider(avatarUrl), context); // 可選：滑到時更穩
-    }
+    final avatarUrl =  sanitizeAvatarUrl(displayAvatarRaw, cdnBase: cdn);
 
     return Stack(
       children: [

@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter/cupertino.dart';
+
 import '../../core/error_handler.dart';
 import '../../data/models/user_model.dart';
 import '../../data/network/api_client.dart';
@@ -10,6 +12,23 @@ import 'LoginMethod.dart';
 class AuthRepository {
   final ApiClient _api;
   AuthRepository(this._api);
+
+  Future<UserModel?> bindThird(Map<String, String> payload) async {
+    debugPrint('[bindThird] payload : ${payload}');
+    final resp = await _api.postOk(ApiEndpoints.bindThird, data: payload);
+    debugPrint('[bindThird] resp : ${resp}');
+
+    // 後端若回 User 就解析；若沒回 data 就回 null 讓上層自行拼本地狀態
+    final data = (resp['data'] as Map?)?.cast<String, dynamic>();
+    return (data != null) ? UserModel.fromJson(data) : null;
+  }
+
+  Future<void> bindEmail({required String email, required String code}) async {
+    await _api.postOk(
+      ApiEndpoints.emailBind,
+      data: {'email': email, 'code': code},
+    );
+  }
 
   /// 發送信箱驗證碼
   Future<void> sendEmailCode(String email) async {

@@ -2,20 +2,21 @@ import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../config/env.dart';
 import '../../data/locale_provider.dart';
 import '../../features/profile/profile_controller.dart';
 import '../ws/ws_service.dart';
 import 'package:flutter/material.dart';
 
 final wsProvider = Provider<WsService>((ref) {
-  const wsUrl = 'wss://api.ludev.shop/api/im/index';
-  debugPrint('[WS-PROVIDER] create instance');
+  final wsUrl = Env.wsUrl;
+  debugPrint('[WS-PROVIDER] resolved ws=$wsUrl env=${Env.current}');
 
   final s = WsService(url: wsUrl, headers: const {});
 
-  Map<String, String> _lastHeaders = const {};
-  DateTime _lastEnsureAt = DateTime.fromMillisecondsSinceEpoch(0);
-  Timer? _watchdog; // ← 新增：定時器
+  Map<String, String> lastHeaders = const {};
+  DateTime lastEnsureAt = DateTime.fromMillisecondsSinceEpoch(0);
+  Timer? watchdog; // ← 新增：定時器
 
   bool _mapEquals(Map a, Map b) {
     if (a.length != b.length) return false;
@@ -30,8 +31,8 @@ final wsProvider = Provider<WsService>((ref) {
 
   void ensureConnectedThrottled() {
     final now = DateTime.now();
-    if (now.difference(_lastEnsureAt).inMilliseconds < 1500) return;
-    _lastEnsureAt = now;
+    if (now.difference(lastEnsureAt).inMilliseconds < 1500) return;
+    lastEnsureAt = now;
     s.ensureConnected(); // 已連線 / 連線中 會直接 return
   }
 
@@ -47,8 +48,8 @@ final wsProvider = Provider<WsService>((ref) {
       'Accept-Language': locale.languageCode,
     };
 
-    if (!_mapEquals(headers, _lastHeaders)) {
-      _lastHeaders = Map.unmodifiable(headers);
+    if (!_mapEquals(headers, lastHeaders)) {
+      lastHeaders = Map.unmodifiable(headers);
       debugPrint('[WS-PROVIDER] headers changed -> $headers');
       s.updateHeaders(headers);
       ensureConnectedThrottled();
@@ -64,10 +65,10 @@ final wsProvider = Provider<WsService>((ref) {
 
   // 3) 新增：每 30 秒做健康檢查（有憑證才檢查）
   void _startWatchdog() {
-    _watchdog?.cancel();
-    _watchdog = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (!_hasAuth(_lastHeaders)) {
-        debugPrint('[WS-PROVIDER][watchdog] not Auth. Token:${_lastHeaders['Token']}, X-UID:${_lastHeaders['X-UID']}.');
+    watchdog?.cancel();
+    watchdog = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!_hasAuth(lastHeaders)) {
+        debugPrint('[WS-PROVIDER][watchdog] not Auth. Token:${lastHeaders['Token']}, X-UID:${lastHeaders['X-UID']}.');
         return;
       }
 
@@ -89,7 +90,7 @@ final wsProvider = Provider<WsService>((ref) {
   _startWatchdog();
 
   ref.onDispose(() {
-    _watchdog?.cancel();
+    watchdog?.cancel();
     s.close();
   });
 

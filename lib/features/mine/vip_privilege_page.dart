@@ -413,7 +413,7 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                                           child: Container(
                                             width: 60,
                                             padding: const EdgeInsets.symmetric(
-                                                horizontal: 8, vertical: 2),
+                                                horizontal: 4, vertical: 2),
                                             decoration: const BoxDecoration(
                                               color: Color(0xFFFF4D67),
                                               borderRadius: BorderRadius.only(

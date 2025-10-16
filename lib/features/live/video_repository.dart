@@ -4,7 +4,7 @@ import 'dart:ui' as ui;
 import 'package:dio/dio.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../config/app_config.dart';
+import '../../config/providers/app_config_provider.dart';
 import '../../core/error_handler.dart';
 import '../../data/models/member_video_model.dart';
 import '../../data/models/user_model.dart';

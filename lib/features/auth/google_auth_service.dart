@@ -1,7 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import '../../config/env.dart';
 import '../../core/error_handler.dart';
 import '../mine/user_repository_provider.dart';
 import './providers/auth_repository_provider.dart';
@@ -72,63 +75,80 @@ class GoogleAuthService {
   }
 
   Future<User?> signInWithGoogle(WidgetRef ref) async {
+    final sw = Stopwatch()..start();
+    void log(String m) => debugPrint('[GGL] $m');
+    String _short(String? s, {int head = 8}) {
+      if (s == null || s.isEmpty) return '-';
+      return s.length <= head ? s : '${s.substring(0, head)}…';
+    }
     try {
-      final googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) return null;
+      log('start env=${Env.current} api=${Env.apiBase}');
 
-      final googleAuth = await googleUser.authentication;
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
+      final acc = await _googleSignIn.signIn();
+      if (acc == null) { log('cancelled'); return null; }
+      log('account=${acc.email ?? acc.id}');
+
+      final gAuth = await acc.authentication;
+      log('tokens id=${_short(gAuth.idToken)} access=${_short(gAuth.accessToken)}');
+
+      final cred = GoogleAuthProvider.credential(
+        accessToken: gAuth.accessToken,
+        idToken: gAuth.idToken,
       );
 
-      final userCredential = await _firebaseAuth.signInWithCredential(credential);
-      final user = userCredential.user;
+      final uc = await _firebaseAuth.signInWithCredential(cred);
+      final fu = uc.user;
+      if (fu == null) { log('firebase user=null'); return null; }
+      log('firebase uid=${fu.uid} email=${fu.email ?? "-"}');
 
-      if (user != null) {
-        final idToken = await user.getIdToken();
+      final idToken = await fu.getIdToken();
+      log('firebase idToken=${_short(idToken)}');
 
-        final tempModel = UserModel(
-          uid: user.uid,
-          displayName: user.displayName,
-          photoURL: user.photoURL != null ? [user.photoURL!] : [],
-          logins: [
-            LoginMethod(
-              provider: 'google',
-              identifier: user.email ?? user.uid,
-              isPrimary: true,
-              token: idToken,
-            ),
-          ],
-          extra: {
-            'email': user.email,
-          },
-        );
+      final tempModel = UserModel(
+        uid: fu.uid,
+        displayName: fu.displayName,
+        photoURL: fu.photoURL != null ? [fu.photoURL!] : [],
+        logins: [
+          LoginMethod(
+            provider: 'google',
+            identifier: fu.email ?? fu.uid,
+            isPrimary: true,
+            token: idToken,
+          ),
+        ],
+        extra: {'email': fu.email},
+      );
 
-        print('Firebase idToken: $idToken');
-        print('user.uid: ${user.uid}');
-        print('user.email: ${user.email}');
-        print('user.displayName: ${user.displayName}');
-        print('user.photoURL: ${user.photoURL}');
+      final authRepo = ref.read(authRepositoryProvider);
+      final result = await authRepo.loginWithGoogle(tempModel);
+      log('backend login ok');
 
-        final authRepository = ref.read(authRepositoryProvider);
-        final resultModel = await authRepository.loginWithGoogle(tempModel);
+      await UserLocalStorage.saveUser(result);
+      ref.read(userProfileProvider.notifier).setUser(result);
 
-        // **立即更新本地與 provider → 確保攔截器用的是最新 token**
-        await UserLocalStorage.saveUser(resultModel);
-        ref.read(userProfileProvider.notifier).setUser(resultModel);
+      final userRepo = ref.read(userRepositoryProvider);
+      final updated = await userRepo.getMemberInfo(result);
+      log('fetch member ok');
 
-        // 再去獲取完整會員資料
-        final userRepo = ref.read(userRepositoryProvider);
-        final updatedUser = await userRepo.getMemberInfo(resultModel);
+      await UserLocalStorage.saveUser(updated);
+      ref.read(userProfileProvider.notifier).setUser(updated);
 
-        // 更新一次最終資料
-        await UserLocalStorage.saveUser(updatedUser);
-        ref.read(userProfileProvider.notifier).setUser(updatedUser);
-      }
-      return user;
-    } catch (e) {
-      AppErrorToast.show(e);   // 會員資訊補拉失敗，只做提示，不中斷
+      log('done ${sw.elapsedMilliseconds}ms');
+      return fu;
+    } on FirebaseAuthException catch (e, st) {
+      log('firebase error code=${e.code} msg=${e.message}');
+      debugPrint('$st');
+      AppErrorToast.show(e);
+      return null;
+    } on PlatformException catch (e, st) {
+      log('platform error code=${e.code} msg=${e.message}');
+      debugPrint('$st');
+      AppErrorToast.show(e);
+      return null;
+    } catch (e, st) {
+      log('error $e');
+      debugPrint('$st');
+      AppErrorToast.show(e);
       return null;
     }
   }

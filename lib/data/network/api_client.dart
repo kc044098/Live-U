@@ -4,7 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../config/app_config.dart';
+import '../../config/providers/app_config_provider.dart';
 import '../../core/error_handler.dart';
 import 'auth_interceptor.dart';
 
@@ -190,15 +190,15 @@ class ApiClient {
       final code = map['code'];
 
       if (code is int) {
-        if (code == 200 || alsoOkCodes.contains(code)) {
-          return map; // 成功或特例成功
+        // ✅ 把 0 也當作成功
+        if (code == 200 || code == 0 || alsoOkCodes.contains(code)) {
+          return map;
         }
         final serverMsg = map['message']?.toString();
         final msg = AppErrorCatalog.messageFor(code, serverMessage: serverMsg);
         throw ApiException(code, msg);
       }
     }
-    // 不符合慣例（例如空 body/純數字）→ 當作格式錯誤
     throw ApiException(-1, '資料格式錯誤');
   }
 }

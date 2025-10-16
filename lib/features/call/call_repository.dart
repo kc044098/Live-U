@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 
@@ -13,15 +14,18 @@ class CallRepository {
   CallRepository(this._api);
 
   Future<Map<String, dynamic>> liveCall({
-    required int flag, // 1=video, 2=audio
+    required int flag,        // 1=video, 2=audio
     required int toUid,
+    int? videoId,             // 👈 新增參數
   }) async {
-    // code != 200 會丟 ApiException（統一由上層 Toast）
-    final map = await _api.postOk(
-      ApiEndpoints.liveCall,
-      data: {'flag': flag, 'to_uid': toUid},
-    );
-    // 盡量維持原回傳：回 data（若不是 map 也包成 map）
+    final body = <String, dynamic>{
+      'flag': flag,
+      'to_uid': toUid,
+      if (videoId != null) 'video_id': videoId, // 👈 只有有值才帶
+    };
+
+    debugPrint('[API] liveCall body=$body');     //（可留可移除）方便檢查
+    final map = await _api.postOk(ApiEndpoints.liveCall, data: body);
     return _toMap(map['data']);
   }
 
