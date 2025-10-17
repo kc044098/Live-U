@@ -22,13 +22,14 @@ android {
 
     defaultConfig {
         minSdk = 24
-        targetSdk = 34
+        targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        // FaceUnity/CNama 常見只針對 arm 平台，避免包 x86 導致缺 so 閃退
+        // 只发 arm64-v8a
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            abiFilters.clear()
+            abiFilters += listOf("arm64-v8a")
         }
 
         manifestPlaceholders.putAll(
@@ -59,10 +60,6 @@ android {
         isCoreLibraryDesugaringEnabled = true
     }
     kotlinOptions { jvmTarget = "1.8" }
-    aaptOptions {
-        noCompress += setOf("bundle", "js", "csv")
-    }
-
     // 讓 app module 讀到我們自製/第三方 java 原始碼
     sourceSets["main"].java.srcDirs("src/main/kotlin", "libs")
 
@@ -102,21 +99,19 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging = false
-            // 如需保留符號（只在你想要可讀崩潰堆疊時開）
-            // keepDebugSymbols += listOf("**/*.so")
+            excludes += listOf(
+                "**/x86/**","**/x86_64/**","**/armeabi/**","**/armeabi-v7a/**"
+            )
         }
         resources {
             // 若遇到 META-INF 衝突，可保留
             excludes += listOf(
                 "META-INF/**",
-                "okhttp3/internal/publicsuffix/**"
+                "okhttp3/internal/publicsuffix/**",
+                "**/libagora_clear_vision_extension.so",
+                "**/libagora_face_capture_extension.so",
             )
-
         }
-
-    }
-    androidResources {
-        noCompress += setOf("bundle", "model", "dat", "js")
     }
 }
 

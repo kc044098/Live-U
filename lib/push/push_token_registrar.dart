@@ -10,7 +10,6 @@ import 'package:uuid/uuid.dart';
 
 import '../features/mine/user_repository_provider.dart';
 import '../features/profile/profile_controller.dart';
-import 'app_lifecycle.dart';
 import 'nav_helpers.dart';
 
 

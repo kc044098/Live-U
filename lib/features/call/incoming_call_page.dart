@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:djs_live_stream/features/call/rtc_engine_manager.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
@@ -54,6 +55,9 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
   final List<VoidCallback> _wsUnsubs = [];
   Timer? _timeoutTimer;
   bool _busy = false;
+
+  // ⬇️ 新增：用來判斷是否已有正在通話（加入房）的狀態
+  final _rtc = RtcEngineManager();
 
   BuildContext get _rootCtx => Navigator.of(context, rootNavigator: true).context;
 
@@ -188,8 +192,13 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
     unawaited(_audioPlayer.stop());
     unawaited(WakelockPlus.disable());
 
+    // ⬇️ 關鍵：若此時 app 有既存通話，就不要 disable wakelock
+    if (!_rtc.joined.value) {
+      unawaited(WakelockPlus.disable());
+    }
+
     await _closeMiniIfAny();
-    _backToHome();
+    _closeOnlyThisPage(); // ⬅️ 只關閉來電頁
   }
 
   Future<void> _reject({String? toast}) async {
@@ -202,17 +211,22 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
 
     if (toast?.isNotEmpty == true) Fluttertoast.showToast(msg: toast!);
 
+    // 通知後端這通來電被拒絕（只處理這一通）
     unawaited(ref.read(callRepositoryProvider)
         .respondCall(channelName: widget.channelName, callId: widget.callId, accept: false)
         .timeout(const Duration(seconds: 2)).catchError((e) {
-      AppErrorToast.show(e); // 非 alsoOk 的錯誤才會到這裡
+      AppErrorToast.show(e);
     }));
 
     unawaited(_audioPlayer.stop());
-    unawaited(WakelockPlus.disable());
+
+    // ⬇️ 同理：如果底下還有既存通話，就別關 Wakelock
+    if (!_rtc.joined.value) {
+      unawaited(WakelockPlus.disable());
+    }
 
     await _closeMiniIfAny();
-    _backToHome();
+    _closeOnlyThisPage(); // ⬅️ 只把來電頁關掉
   }
 
   Future<void> _accept() async {
@@ -409,5 +423,15 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
         ),
       ),
     );
+  }
+
+  void _closeOnlyThisPage() {
+    final nav = Navigator.of(_rootCtx);
+    if (nav.canPop()) {
+      nav.pop(); // 回到底下那頁（通常就是 BroadcasterPage）
+    } else {
+      // 沒有下層頁時才回首頁（保險）
+      nav.pushNamedAndRemoveUntil(AppRoutes.home, (_) => false);
+    }
   }
 }

@@ -342,6 +342,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
         .setDraft(_liveInputCtrl.text);
   }
 
+
   Future<void> _enterRoom() async {
     // 權限
     final perms = await [Permission.microphone, Permission.camera].request();
@@ -397,8 +398,8 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
   void _listenCallSignals() {
     final ws = ref.read(wsProvider);
 
-    // 對方拒絕/結束：call.accept(status=2)
-    _wsUnsubs.add(ws.on('call.accept', (p) {
+    // 對方拒絕/結束：call.reject(status=2)
+    _wsUnsubs.add(ws.on('call.reject', (p) {
       if (!_isThisChannel(p)) return;
       final st = _statusOf(p);
       if (st == 2) _endBecauseRemoteLeft();

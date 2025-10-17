@@ -19,6 +19,7 @@ import '../../routes/app_routes.dart' hide routeObserver;
 import '../live/data_model/call_overlay.dart';
 import '../live/mini_call_view.dart';
 import '../profile/profile_controller.dart';
+import '../widgets/tools/mic_cam_helper.dart';
 import 'call_repository.dart';
 
 import 'package:flutter_svg/flutter_svg.dart';
@@ -93,9 +94,9 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
   }
 
   Future<void> _startDialFlow() async {
-    final ok = await ensureMicCam(
-      needCam: widget.isVideoCall == true,
+    final ok = await ensureMicCamForCall(
       context: context,
+      isVideo: widget.isVideoCall == true,
     );
     if (!mounted) return;
     if (!ok) {
@@ -127,26 +128,6 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
 
     WakelockPlus.disable();
     super.dispose();
-  }
-
-  Future<bool> ensureMicCam({required bool needCam, BuildContext? context}) async {
-    final req = <Permission>[Permission.microphone, if (needCam) Permission.camera];
-    final before = await Future.wait(req.map((p) => p.status));
-    final res = await req.request();
-    final micOk = res[Permission.microphone] == PermissionStatus.granted;
-    final camOk = !needCam || res[Permission.camera] == PermissionStatus.granted;
-
-    if (micOk && camOk) return true;
-
-    final t = context != null ? S.of(context) : S.of(_rootCtx);
-
-    final perma = res.values.any((s) => s.isPermanentlyDenied);
-    if (perma) {
-      Fluttertoast.showToast(msg: t.micCamPermissionPermanentlyDenied);
-      unawaited(openAppSettings());
-    }
-    if (context != null && Navigator.of(context).canPop()) Navigator.of(context).pop();
-    return false;
   }
 
   void _goMini() {
