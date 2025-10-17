@@ -6,7 +6,6 @@ import 'package:djs_live_stream/features/mine/liked_users_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
-import 'package:fluttertoast/fluttertoast.dart';
 import '../../data/models/user_model.dart';
 import '../../data/network/avatar_cache.dart';
 import '../../l10n/l10n.dart';
@@ -47,7 +46,7 @@ class _MinePageState extends ConsumerState<MinePage> with WidgetsBindingObserver
 
   @override
   Widget build(BuildContext context) {
-    final t = S.of(context); // i18n
+    final t = S.of(context);
     final user = ref.watch(userProfileProvider);
 
     final coinLatest = user?.gold ?? 0;

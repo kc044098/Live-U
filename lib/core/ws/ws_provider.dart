@@ -42,6 +42,7 @@ final wsProvider = Provider<WsService>((ref) {
 
     final t = user?.primaryLogin?.token?.trim();
     final u = user?.uid;
+    debugPrint('[WS-PROVIDER] user uid=${user?.uid}, tokenLen=${user?.primaryLogin?.token?.length ?? 0}');
     final headers = <String, String>{
       if (t != null && t.isNotEmpty) 'Token': t,
       if (u != null && u.isNotEmpty) 'X-UID': u,

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:djs_live_stream/features/call/rtc_engine_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -47,6 +48,10 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
 
   OverlayEntry? _msgBanner;
   Timer? _msgTimer;
+
+  // ⬇️ 新增：記錄「我剛剛主動拒絕」的 channel，避免回來再導首頁
+  final _locallyRejectedChannels = <String>{};
+  final _rtc = RtcEngineManager();
 
   void _log(String msg) => debugPrint('📬[Banner] $msg');
 
@@ -235,11 +240,10 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
     final ch = _channel(p);
     if (ch.isEmpty) return;
 
-    // 通知其他頁面/狀態：此通話已被中止
+    // 所有頁都知道：這通已經被中止
     ref.read(callAbortProvider.notifier).abort(ch);
 
-    // 關掉可能存在的 UI：小窗、首頁 Banner
-    _hideIncomingBanner();                // ★ 只關 Banner，不導航
+    _hideIncomingBanner();                // 關掉來電 Banner
     if (CallOverlay.isShowing) CallOverlay.hide();
 
     final t = S.of(rootNavigatorKey.currentContext ?? context);
@@ -248,8 +252,17 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
 
     _stopRingtoneAndUnduck();
 
-    if (_incomingBanner != null) return;
+    // ✅ 1) 如果是「我剛剛自己拒掉的」那通，什麼都不要導
+    if (_locallyRejectedChannels.remove(ch)) {
+      return;
+    }
 
+    // ✅ 2) 如果此時 app 仍有「進行中的通話」（例如原本的直播間），也不要導
+    if (RtcEngineManager().joined.value) {
+      return;
+    }
+
+    // 只有真的完全沒在通話時，才回首頁
     final nav = Navigator.of(rootNavigatorKey.currentContext!, rootNavigator: true);
     nav.pushNamedAndRemoveUntil(AppRoutes.home, (_) => false);
   }
@@ -428,18 +441,61 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
         builder: (_) => IncomingCallBanner(
           callerName: name,
           avatarUrl : avatarUrl,
-          flag      : flag,
+          flag      : flag, // 1=video, 2=voice
           onReject  : () async {
             _hideIncomingBanner();
+            // 先標記，再送拒絕；避免 WS 回來把 APP 導走
+            _locallyRejectedChannels.add(ch);
+            // 25 秒後自動清掉（避免永遠卡在 set 裡）
+            Timer(const Duration(seconds: 25), () => _locallyRejectedChannels.remove(ch));
+
             unawaited(ref.read(callRepositoryProvider)
                 .respondCall(channelName: ch, callId: null, accept: false)
-                .timeout(const Duration(seconds: 2))
-                .catchError((e) {
-              // 只有真正的異常才會到這裡（124/126 已在 repo 當作 alsoOk）
-              AppErrorToast.show(e);
-            }));
+                .timeout(const Duration(seconds: 5))
+                .catchError((e) => AppErrorToast.show(e)));
           },
           onAccept  : () async {
+            // 1) 先請 mic 權限（兩種通話都需要）
+            final micStatus = await Permission.microphone.status;
+            if (!micStatus.isGranted) {
+              final micReq = await Permission.microphone.request();
+              if (!micReq.isGranted) {
+                if (micReq.isPermanentlyDenied) {
+                  Fluttertoast.showToast(msg: S.of(context).micCamPermissionPermanentlyDenied);
+                  unawaited(openAppSettings());
+                } else {
+                  Fluttertoast.showToast(msg: S.of(context).needMicCamPermission);
+                }
+                return; // 不能接通
+              }
+            }
+
+            // 2) 視訊才需要相機；若拒絕，詢問是否改為語音
+            int nextFlag = flag;
+            if (flag == 1) {
+              final camStatus = await Permission.camera.status;
+              if (!camStatus.isGranted) {
+                final camReq = await Permission.camera.request();
+                if (!camReq.isGranted) {
+                  final goVoice = await showDialog<bool>(
+                    context: context,
+                    builder: (_) => AlertDialog(
+                      title: Text(S.of(context).pleaseGrantMicCam),
+                      content: Text(S.of(context).pleaseGrantMicCam),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(context, false), child: Text(S.of(context).cancel)),
+                        TextButton(onPressed: () => Navigator.pop(context, true ), child: Text(S.of(context).confirm)),
+                      ],
+                    ),
+                  ) ?? false;
+
+                  if (!goVoice) return;
+                  nextFlag = 2;
+                }
+              }
+            }
+
+            // 3) 到這裡代表可以接通 -> 收起 banner、發 accept 並進房
             _hideIncomingBanner();
             await _acceptFromBanner(
               channel: ch,
@@ -447,7 +503,7 @@ class _CallSignalListenerState extends ConsumerState<CallSignalListener>
               name: name,
               avatarUrl: avatarUrl,
               rtcTokenMaybeEmpty: token,
-              flag: flag,
+              flag: nextFlag,
             );
           },
         ),

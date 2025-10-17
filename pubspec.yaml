@@ -3,7 +3,7 @@ name: djs_live_stream
 description: "LiveU Talk Flutter project."
 publish_to: 'none'
 
-version: 1.0.0+5
+version: 1.0.0+2
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -70,9 +70,6 @@ dependencies:
   uuid: ^4.5.1
   connectivity_plus: ^4.0.0
   pub_semver: ^2.1.4
-
-  fulive_plugin:
-    path: third_party/fulive_plugin
 
 dependency_overrides:
   http: ^1.2.2

@@ -26,6 +26,7 @@ import '../live/data_model/home_feed_state.dart';
 import '../live/member_video_feed_state.dart';
 import '../message/message_chat_page.dart';
 import '../mine/user_repository_provider.dart';
+import '../widgets/tools/image_resolver.dart';
 import '../widgets/view_other_image_page.dart';
 import '../widgets/view_other_video_page.dart';
 
@@ -335,18 +336,22 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
   }
 
   void _handleCallRequest(UserModel u) {
-    final user = ref.watch(userProfileProvider);
-    final broadcasterId = u.uid ?? '';
-    final broadcasterName = u.displayName ?? '主播';
-    final broadcasterImage = '${user?.cdnUrl}${u.photoURL.first}';
+    final myCdn = ref.read(userProfileProvider)?.cdnUrl ?? '';
+    final idStr = (u.uid ?? '').toString();
+
+    // 安全取第一張頭像（允許為空）
+    final photos = (u.photoURL).where((e) => e.trim().isNotEmpty).toList();
+    final firstRaw = photos.isNotEmpty ? photos.first : '';
+    final imgAbs = joinCdnIfNeeded(firstRaw, myCdn); // 你頁面裡已經有 _cdnJoin
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => CallRequestPage(
-          broadcasterId: broadcasterId,
-          broadcasterName: broadcasterName,
-          broadcasterImage: broadcasterImage,
+          broadcasterId: idStr,
+          broadcasterName: u.displayName ?? '主播',
+          broadcasterImage: imgAbs, // 可能是空字串（OK）
+          isVideoCall: true,
         ),
       ),
     );
@@ -647,7 +652,7 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
       final rounded = BorderRadius.circular(8);
 
       if (it.isVideo) {
-        final videoUrl = _cdnJoin(cdnBase, it.videoUrl);
+        final videoUrl = joinCdnIfNeeded(it.videoUrl, cdnBase);
         return ClipRRect(
           borderRadius: rounded,
           child: FutureBuilder<Uint8List?>(
@@ -668,7 +673,7 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
         );
       } else {
         final cover = (it.coverUrl ?? '').trim();
-        final coverAbs = _cdnJoin(cdnBase, cover);
+        final coverAbs = joinCdnIfNeeded( cover, cdnBase);
         return ClipRRect(
           borderRadius: rounded,
           child: (coverAbs.isEmpty)
@@ -686,14 +691,14 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
     void _open(MemberVideoModel it) {
       final avatarUrl = u!.avatarUrl.startsWith('http')
           ? u.avatarUrl
-          : _cdnJoin(cdnBase, u.avatarUrl);
+          : joinCdnIfNeeded( u.avatarUrl, cdnBase );
 
       if (it.isVideo) {
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (_) => ViewOtherVideoPage(
-              videoPath: _cdnJoin(cdnBase, it.videoUrl),
+              videoPath: joinCdnIfNeeded( it.videoUrl, cdnBase),
               displayName: u.displayName,
               avatarPath: avatarUrl,
               isVip: u.isVip,
@@ -706,7 +711,7 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
           ),
         );
       } else {
-        final imgPath = _cdnJoin(cdnBase, it.coverUrl ?? '');
+        final imgPath = joinCdnIfNeeded( it.coverUrl ?? '', cdnBase);
         if (imgPath.isEmpty) return;
         Navigator.push(
           context,
@@ -808,7 +813,7 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
             .where((p) => p.isNotEmpty)                                     // 先丟掉 ""、"   "
             .map((p) => p.startsWith('http') || p.startsWith('assets/')
             ? p
-            : _cdnJoin(myCdnBase, p))                                    // 相對路徑補上 cdn
+            : joinCdnIfNeeded( p, myCdnBase))                                    // 相對路徑補上 cdn
             .where((p) => p.trim().isNotEmpty)                               // _cdnJoin 遇到空的再丟一次
             .toList();
 
@@ -961,19 +966,6 @@ class _ViewProfilePageState extends ConsumerState<ViewProfilePage> {
     // 先用後端給的暱稱，沒有就 fallback
     if ((user.displayName ?? '').isNotEmpty) return user.displayName!;
     return '${t.userGeneric} ${user.uid}';
-  }
-
-  // ✅ 安全版：已是絕對網址就直接回傳，避免「重複加前綴」造成 403
-  String _cdnJoin(String? base, String path) {
-    if (path.isEmpty) return '';
-    if (path.startsWith('http://') ||
-        path.startsWith('https://') ||
-        path.startsWith('assets/')) {
-      return path; // ← 關鍵
-    }
-    final b = (base ?? '').replaceAll(RegExp(r'/+$'), '');
-    final p = path.replaceAll(RegExp(r'^/+'), '');
-    return '$b/$p';
   }
 
   @override
