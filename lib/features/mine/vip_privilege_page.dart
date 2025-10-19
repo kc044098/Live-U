@@ -6,6 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:in_app_purchase_android/billing_client_wrappers.dart'
+    show PricingPhaseWrapper;
+import 'package:in_app_purchase_android/in_app_purchase_android.dart';
+import 'package:intl/intl.dart';
 
 import '../../l10n/l10n.dart';
 import '../profile/profile_controller.dart';
@@ -20,7 +24,8 @@ class VipPrivilegePage extends ConsumerStatefulWidget {
   ConsumerState<VipPrivilegePage> createState() => _VipPrivilegePageState();
 }
 
-class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
+class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage>
+    with WidgetsBindingObserver {
   int selectedIndex = 0; // 由 API 回來後再決定預設
   List<VipPlan> _plans = const [];
   bool _loading = true;
@@ -33,80 +38,101 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
   Map<String, ProductDetails> _productMap = {}; // productId -> ProductDetails
   String? _iapWarn;
 
-  String kGetPid(VipPlan p) => p.productId;
+  static const String kAndroidVipParentProductId = 'vip__1m';
+
+// 2) 你頁面裡的這行改掉：
+  String kGetPid(VipPlan p) {
+    if (Platform.isAndroid) {
+      return kAndroidVipParentProductId;
+    }
+    return p.storeProductId; // iOS 照舊
+  }
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initIap().then((_) => _loadPlans());
   }
 
   Future<void> _initIap() async {
+    debugPrint('init()...');
     try {
       await IapService.instance.init();
       setState(() => _iapReady = IapService.instance.isAvailable);
-    } catch (_) {
+      debugPrint('isAvailable = $_iapReady');
+    } catch (e, st) {
+      debugPrint('init FAILED: $e\n$st');
       setState(() => _iapReady = false);
     }
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // 使用者可能剛關掉 Google Play 視窗或返回 App
+      if (mounted && _buying) {
+        debugPrint('[VIP] app resumed while buying -> reset button');
+        setState(() => _buying = false);   // 👈 讓按鈕立即可按
+        _refreshVipAndWallet();            // 👈 順便拉一次後端，避免漏單
+      }
+    }
+  }
+
   Future<void> _loadPlans() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    setState(() { _loading = true; _error = null; });
+    debugPrint('fetchVipPlans()...');
     try {
       final repo = ref.read(userRepositoryProvider);
       final plans = await repo.fetchVipPlans();
-      final t = S.of(context);
+
+      debugPrint('plans = ${plans.length}');
+      for (final p in plans) {
+        debugPrint(' - ${p.title} id=${p.id} pid=${p.storeProductId} price=${p.price} payPrice=${p.payPrice}');
+      }
 
       if (!mounted) return;
 
       if (plans.isEmpty) {
-        setState(() {
-          _plans = const [];
-          selectedIndex = 0;
-          _bestIndex = 0;
-          _loading = false;
-        });
+        debugPrint('No plans from backend');
+        setState(() { _plans = const []; selectedIndex = 0; _bestIndex = 0; _loading = false; });
         return;
       }
 
-      // 預設選擇：優先 3 個月，其次「每月單價最低」
+      // 預設與最佳索引（保留原邏輯）
       int defaultIdx = plans.indexWhere((p) => p.month == 3);
       if (defaultIdx < 0) {
         double best = double.infinity;
         for (var i = 0; i < plans.length; i++) {
           final pm = plans[i].perMonth;
-          if (pm < best) {
-            best = pm;
-            defaultIdx = i;
-          }
+          if (pm < best) { best = pm; defaultIdx = i; }
         }
         if (defaultIdx < 0) defaultIdx = 0;
       }
-
-      // 「最佳選擇」：每月單價最低
       int bestIdx = 0;
       double bestPer = plans.first.perMonth;
       for (var i = 1; i < plans.length; i++) {
-        if (plans[i].perMonth < bestPer) {
-          bestPer = plans[i].perMonth;
-          bestIdx = i;
-        }
+        if (plans[i].perMonth < bestPer) { bestPer = plans[i].perMonth; bestIdx = i; }
       }
+      debugPrint('defaultIdx=$defaultIdx bestIdx=$bestIdx');
 
-      // 原本只在 iOS 查 → 改成兩邊都查
+      // 查商店商品
       Map<String, ProductDetails> pMap = {};
       String? iapWarn;
       if (_iapReady) {
         final ids = plans.map((e) => kGetPid(e)).where((s) => s.isNotEmpty).toSet();
+        debugPrint('queryProducts with ids=$ids');
         if (ids.isNotEmpty) {
           pMap = await IapService.instance.queryProducts(ids);
-          if (pMap.isEmpty) iapWarn = S.of(context).iapWarnNoProducts;
+          debugPrint('queryProducts returned ${pMap.length} items');
+          if (pMap.isEmpty) iapWarn = 'Store returned no matching products';
         } else {
-          iapWarn = S.of(context).iapWarnNoProductId;
+          iapWarn = 'No productId from backend';
+          debugPrint('WARN: $iapWarn');
         }
+      } else {
+        iapWarn = 'IAP not available';
+        debugPrint('WARN: $iapWarn');
       }
 
       setState(() {
@@ -117,20 +143,68 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
         _productMap = pMap;
         _iapWarn = iapWarn;
       });
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('fetchVipPlans FAILED: $e\n$st');
       if (!mounted) return;
-      setState(() {
-        _error = '$e';
-        _loading = false;
-      });
+      setState(() { _error = '$e'; _loading = false; });
+    }
+  }
+
+  String? _storePriceForPlan(VipPlan p) {
+    final pd = _productMap[kGetPid(p)];
+    if (pd == null) return null;
+
+    // iOS 或一般（非 Android 訂閱）
+    if (!Platform.isAndroid) return pd.price;
+
+    if (pd is! GooglePlayProductDetails) return pd.price;
+
+    final offers = pd.productDetails.subscriptionOfferDetails;
+    if (offers == null || offers.isEmpty) return pd.price;
+
+    final offer = offers.firstWhere(
+          (o) => o.basePlanId == p.androidBasePlanId,   // <- 你的後端要提供這個欄位
+      orElse: () => offers.first,
+    );
+
+    final List<PricingPhaseWrapper>? phases = offer.pricingPhases;
+    if (phases == null || phases.isEmpty) return pd.price;
+
+    final phase = phases.first;
+
+    // 一些版本有 formattedPrice，就直接用
+    final fp = (tryGetFormattedPrice(phase));
+    if (fp != null && fp.isNotEmpty) return fp;
+
+    // 沒有 formattedPrice 就用 micros + 幣別自己排
+    final micros = phase.priceAmountMicros ?? 0;
+    final code   = phase.priceCurrencyCode ?? '';
+    if (micros <= 0 || code.isEmpty) return pd.price;
+
+    final value = micros / 1000000.0;
+    return NumberFormat.simpleCurrency(name: code).format(value);
+  }
+
+  String? tryGetFormattedPrice(PricingPhaseWrapper phase) {
+    try {
+      // 反射式取值，沒有此欄位時會丟例外 → 回 null
+      final v = (phase as dynamic).formattedPrice as String?;
+      return v;
+    } catch (_) {
+      return null;
     }
   }
 
   Future<ProductDetails?> _ensureProduct(String productId) async {
+    debugPrint('ensureProduct($productId)');
     if (productId.isEmpty) return null;
     final cached = _productMap[productId];
-    if (cached != null) return cached;
+    if (cached != null) {
+      debugPrint(' -> hit cache for $productId');
+      return cached;
+    }
     final map = await IapService.instance.queryProducts({productId});
+    debugPrint(' -> queryProducts($productId) => ${map.length}');
     if (map.isNotEmpty) {
       setState(() => _productMap.addAll(map));
       return map[productId];
@@ -138,19 +212,29 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
     return null;
   }
 
+
   Future<void> _buySelectedPlan() async {
     final sel = _plans[selectedIndex];
     final t = S.of(context);
+    debugPrint('buy plan id=${sel.id} pid=${sel.storeProductId} title=${sel.title}');
 
-    // 共用流程：檢查 IAP 可用、確保能拿到 ProductDetails
+// 3)（可選）提示字改成平台專屬，比較不會誤會
     Future<ProductDetails?> _preparePd() async {
       if (!_iapReady) { Fluttertoast.showToast(msg: t.iapUnavailable); return null; }
       final pid = kGetPid(sel);
-      if (pid.isEmpty) { Fluttertoast.showToast(msg: t.iapProductIdMissing); return null; }
+      if (pid.isEmpty) {
+        Fluttertoast.showToast(
+          msg: Platform.isAndroid
+              ? '此方案未配置 Google Play productId'
+              : '此方案未配置 iOS productId',
+        );
+        return null;
+      }
       final pd = await _ensureProduct(pid);
       if (pd == null) { Fluttertoast.showToast(msg: t.iapProductNotFound); }
       return pd;
     }
+
 
     if (Platform.isIOS) {
       final pd = await _preparePd();
@@ -170,32 +254,73 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
         await _refreshVipAndWallet();
         Fluttertoast.showToast(msg: t.vipOpenSuccess);
       } catch (e) {
-        Fluttertoast.showToast(msg: t.vipOpenFailed('$e'));
+        final isCanceled = e
+        is IapError &&
+            e.message == 'canceled';
+        if (isCanceled) {
+          Fluttertoast.showToast(
+            msg: t.commonCancel,
+          );
+        }
       } finally {
         if (mounted) setState(() => _buying = false);
       }
       return;
     }
-
     if (Platform.isAndroid) {
       final pd = await _preparePd();
       if (pd == null) return;
 
+      final gp = pd as GooglePlayProductDetails;
+      final offerList = gp.productDetails.subscriptionOfferDetails;
+      if (offerList == null || offerList.isEmpty) {
+        Fluttertoast.showToast(msg: '此商品沒有可用的 Google Play 方案');
+        return;
+      }
+
+      final basePlanId = sel.androidBasePlanId; // 後端對應的 base plan
+      final offer = offerList.firstWhere(
+            (o) => o.basePlanId == basePlanId,
+        orElse: () => offerList.first,
+      );
+
+      final offerToken = offer.offerIdToken;
+      if (offerToken == null || offerToken.isEmpty) {
+        Fluttertoast.showToast(msg: '找不到對應的 Google Play base plan（$basePlanId）');
+        return;
+      }
+
       setState(() => _buying = true);
       try {
-        final purchase = await IapService.instance.buyNonConsumable(pd);
-        final token = purchase.verificationData.serverVerificationData; // Android 的 purchaseToken
+        // ✅ 用 offerToken 進入購買流程，並等 purchaseStream 回傳
+        final purchase = await IapService.instance.buySubscription(
+          pd,
+          offerToken: offerToken,
+        );
+
+        // Android 的 token（給後端驗單）
+        final token = purchase.verificationData.serverVerificationData;
+
+        // ✅ 後端驗單 + 入帳（跟 iOS 一樣的 API）
         await ref.read(walletRepositoryProvider).verifyIapAndCredit(
           platform: 'android',
-          productId: pd.id,
-          packetId: sel.id,
+          productId: pd.id,   // 這是父商品 id：vip__1m
+          packetId: sel.id,   // 你的後台方案 id（方便統計）
           purchaseTokenOrReceipt: token,
         );
-        await IapService.instance.finish(purchase); // acknowledge/consume(若為可消耗)
+
+        // ✅ 一定要完成交易（acknowledge）
+        await IapService.instance.finish(purchase);
+
         await _refreshVipAndWallet();
         Fluttertoast.showToast(msg: t.vipOpenSuccess);
       } catch (e) {
-        Fluttertoast.showToast(msg: t.vipOpenFailed('$e'));
+        final isCanceled = e is IapError && e.message == 'canceled';
+        if (isCanceled) {
+          Fluttertoast.showToast(
+            msg: t.commonCancel,
+          );
+        }
       } finally {
         if (mounted) setState(() => _buying = false);
       }
@@ -211,7 +336,7 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
     final user = ref.read(userProfileProvider);
     if (user != null) {
       ref.read(userProfileProvider.notifier).state = user.copyWith(
-        isVip: true, vipExpire: w.vipExpire, gold: w.gold,
+        vipExpire: w.vipExpire, gold: w.gold,
       );
     }
   }
@@ -239,44 +364,11 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
       backgroundColor: Colors.white,
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(t.loadFailed(_error!)),
-                      const SizedBox(height: 12),
-                      OutlinedButton(
-                          onPressed: _loadPlans, child: Text(t.retry)),
-                    ],
-                  ),
-                )
-              : SingleChildScrollView(
+          : SingleChildScrollView(
                   child: Column(
                     children: [
                       SizedBox(height: MediaQuery.of(context).padding.top + 40),
 
-                      // 顯示 IAP 警語（若有）
-                      if (_iapWarn != null && _iapWarn!.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFFF3F3),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: const Color(0xFFFFD6D6)),
-                            ),
-                            child: Text(
-                              _iapWarn!,
-                              softWrap: true,
-                              maxLines: 3,                // 可依需要調整
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 12, color: Colors.red),
-                            ),
-                          ),
-                        ),
                       // 會員特權卡片（原樣）
                       Container(
                         width: double.infinity,
@@ -422,7 +514,7 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
                                                       fontWeight:
                                                           FontWeight.bold)),
                                               const SizedBox(height: 4),
-                                            Text(storePrice ?? _fmtMoney(p.payPrice),
+                                            Text(_storePriceForPlan(p) ?? _fmtMoney(p.payPrice),
                                                   style: const TextStyle(
                                                       fontSize: 16,
                                                       color: Colors.black)),
@@ -603,5 +695,11 @@ class _VipPrivilegePageState extends ConsumerState<VipPrivilegePage> {
     final mm = dt.minute.toString().padLeft(2, '0');
     final ss = dt.second.toString().padLeft(2, '0');
     return '$y-$m-$d $hh:$mm:$ss ${t.vipExpireSuffix}';
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);          // 👈 解除
+    super.dispose();
   }
 }

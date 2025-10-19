@@ -836,6 +836,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     ref.listen<Set<String>>(callAbortProvider, (prev, next) {
       if (next.contains(roomId)) {
         _endBecauseRemoteLeft();
+        ref.read(callAbortProvider.notifier).clear(roomId);
       }
     });
 

@@ -11,6 +11,10 @@
         android:maxSdkVersion="28"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
 
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"
+        tools:node="remove" />
+
     <!-- 拍照錄影 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
 

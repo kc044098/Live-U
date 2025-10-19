@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -6,12 +7,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../config/providers/app_config_provider.dart';
 import '../../core/error_handler.dart';
+import '../../features/auth/providers/auth_controller.dart';
 import 'auth_interceptor.dart';
 
 class ApiClient {
   late final Dio _dio;
+  final Ref ref;
 
-  ApiClient(AppConfig config, Ref ref) {
+  ApiClient(AppConfig config, Ref ref)
+      : ref = ref {
     _dio = Dio(BaseOptions(
       baseUrl: config.apiBaseUrl,
       connectTimeout: const Duration(seconds: 10),
@@ -194,6 +198,11 @@ class ApiClient {
         if (code == 200 || code == 0 || alsoOkCodes.contains(code)) {
           return map;
         }
+        if (code == 600 || code == 401) {
+          // 不阻塞目前流程，讓導頁與錯誤顯示各自進行
+          unawaited(AuthService(ref.read).forceLogout(tip: 'Login expired, please sign in again.'));
+        }
+
         final serverMsg = map['message']?.toString();
         final msg = AppErrorCatalog.messageFor(code, serverMessage: serverMsg);
         throw ApiException(code, msg);

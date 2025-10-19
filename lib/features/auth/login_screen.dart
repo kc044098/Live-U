@@ -354,9 +354,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _loadVersion() async {
-    final info = await PackageInfo.fromPlatform();
-    setState(() {
-      _appVersion = 'v ${info.version}';
-    });
+    try {
+      final info = await PackageInfo.fromPlatform();
+      setState(() {
+        _appVersion = 'v ${info.version} (${info.buildNumber})';   // 例：v 1.0.0 (15)
+      });
+    } catch (e) {
+      setState(() => _appVersion = 'v ?');
+    }
   }
 }

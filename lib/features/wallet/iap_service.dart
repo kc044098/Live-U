@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 
 class IapService {
   IapService._();
@@ -15,16 +16,6 @@ class IapService {
   /// 啟動 IAP（App 啟動時、或進充值頁前呼叫一次）
   Future<void> init() async {
     _available = await _iap.isAvailable();
-  }
-
-
-  Future<Map<String, ProductDetails>> queryProducts(Set<String> productIds) async {
-    if (!_available || productIds.isEmpty) return {};
-    final response = await _iap.queryProductDetails(productIds);
-    if (response.error != null) {
-      debugPrint('[IAP] query error: ${response.error}');
-    }
-    return { for (final p in response.productDetails) p.id : p };
   }
 
   /// 訂閱/非消耗性（內購解鎖、訂閱都走這條）
@@ -62,15 +53,90 @@ class IapService {
     }
   }
 
-  /// 購買（消耗型）
+// IapService.dart
+  Future<PurchaseDetails> buySubscription(
+      ProductDetails pd, {
+        required String offerToken,
+      }) async {
+    // Android 訂閱一定要用 GooglePlayPurchaseParam + offerToken
+    final purchaseParam = GooglePlayPurchaseParam(
+      productDetails: pd,
+      offerToken: offerToken,
+    );
+
+    final completer = Completer<PurchaseDetails>();
+
+    // ❶ 先掛監聽，再啟動購買流程，避免漏接 USER_CANCELED
+    final sub = _iap.purchaseStream.listen(
+          (events) {
+        for (final p in events) {
+          if (p.productID != pd.id) continue;
+
+          switch (p.status) {
+            case PurchaseStatus.purchased:
+            case PurchaseStatus.restored:
+              completer.safeComplete(p);
+              break;
+            case PurchaseStatus.canceled:
+              completer.safeCompleteError(IapError('canceled'));
+              break;
+            case PurchaseStatus.error:
+              completer.safeCompleteError(p.error ?? IapError('unknown'));
+              break;
+            default:
+            // pending 等狀態先不處理
+              break;
+          }
+        }
+      },
+      onError: (e, st) => completer.safeCompleteError(e, st),
+    );
+
+    try {
+      // ❷ 啟動購買流程
+      final started = await _iap.buyNonConsumable(purchaseParam: purchaseParam);
+      if (!started) {
+        throw IapError('buySubscription start failed');
+      }
+
+      // ❸ 等結果（包含 canceled / error）
+      return await completer.future.timeout(const Duration(minutes: 2));
+    } finally {
+      await sub.cancel(); // ❹ 清理監聽，避免重複
+    }
+  }
+
+
+  Future<Map<String, ProductDetails>> queryProducts(Set<String> productIds) async {
+    if (!_available || productIds.isEmpty) {
+      debugPrint('[IAP] skip query: available=$_available ids=$productIds');
+      return {};
+    }
+
+    debugPrint('[IAP] queryProductDetails ids=$productIds');
+    final response = await _iap.queryProductDetails(productIds);
+
+    if (response.error != null) {
+      debugPrint('[IAP] query error: ${response.error}');
+    }
+    if (response.notFoundIDs.isNotEmpty) {
+      debugPrint('[IAP] notFoundIDs: ${response.notFoundIDs}');
+    }
+    debugPrint('[IAP] found: ${response.productDetails.map((e) => e.id).toList()}');
+
+    return { for (final p in response.productDetails) p.id : p };
+  }
+
   Future<PurchaseDetails> buyConsumable(ProductDetails details) async {
     final purchaseParam = PurchaseParam(productDetails: details);
     final completer = Completer<PurchaseDetails>();
 
-    final sub = _iap.purchaseStream.listen((events) {
+    // 先取消舊監聽（避免重複）
+    StreamSubscription<List<PurchaseDetails>>? sub;
+    sub = _iap.purchaseStream.listen((events) {
       for (final p in events) {
         if (p.productID != details.id) continue;
-
+        debugPrint('[IAP] purchase update id=${p.productID} status=${p.status}');
         switch (p.status) {
           case PurchaseStatus.purchased:
           case PurchaseStatus.restored:
@@ -91,15 +157,13 @@ class IapService {
     try {
       final ok = await _iap.buyConsumable(
         purchaseParam: purchaseParam,
-        autoConsume: Platform.isAndroid,
+        autoConsume: Platform.isAndroid, // Android 要自動消耗
       );
-      if (!ok) {
-        throw IapError('buyConsumable start failed');
-      }
+      if (!ok) throw IapError('buyConsumable start failed');
       final res = await completer.future.timeout(const Duration(minutes: 2));
       return res;
     } finally {
-      await sub.cancel();
+      await sub?.cancel();
     }
   }
 
@@ -126,3 +190,4 @@ extension CompleterSafe<T> on Completer<T> {
     if (!isCompleted) completeError(error, st);
   }
 }
+

@@ -15,6 +15,8 @@ import 'package:provider/provider.dart' as legacy;
 import 'config/providers/app_config_provider.dart';
 import 'core/ws/ws_provider.dart';
 import 'data/models/user_model.dart';
+import 'features/auth/boot_gate.dart';
+import 'features/auth/providers/auth_controller.dart';
 import 'features/call/call_signal_listener.dart';
 import 'features/call/rtc_engine_manager.dart';
 import 'features/live/broadcaster_page.dart';
@@ -97,14 +99,15 @@ class MyApp extends ConsumerWidget {
     final locale = legacy.Provider.of<LocaleProvider>(context).locale;
     ref.watch(wsProvider);
 
-    // 啟動後收集 token（FCM / VoIP），不會打後端
+    // 只保留 push token 的初始化；不要在這裡做導頁
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      PushTokenRegistrar.I.initCollectors(ref);
-      // 若一打開就已登入，也上報一次
-      final u = ref.read(userProfileProvider);
-      if (u != null) {
-        PushTokenRegistrar.I.onLogin(ref);
-      }
+      Future.microtask(() async {
+        unawaited(PushTokenRegistrar.I.initCollectors(ref));
+        final u = ref.read(userProfileProvider);
+        if (u != null) {
+          unawaited(PushTokenRegistrar.I.onLogin(ref));
+        }
+      });
     });
 
     // 監聽登入狀態：登入後上報一次（之後 token 變更會自動上報）
@@ -140,11 +143,12 @@ class MyApp extends ConsumerWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: S.supportedLocales,
-      initialRoute: AppRoutes.login,
+      home: const BootGate(),
+
       routes: {
-        AppRoutes.login: (context) => const LoginScreen(),
-        AppRoutes.home: (context) => const HomeScreen(),
-        AppRoutes.videoRecorder: (context) => const VideoRecorderPage(),
+        AppRoutes.login: (_) => const LoginScreen(),
+        AppRoutes.home: (_) => const HomeScreen(),
+        AppRoutes.videoRecorder: (_) => const VideoRecorderPage(),
         AppRoutes.live_end: (_) => const LiveEndPage(),
       },
       onGenerateRoute: (settings) {

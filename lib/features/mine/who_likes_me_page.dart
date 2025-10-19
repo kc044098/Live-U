@@ -1,12 +1,17 @@
 // 喜歡我的 頁面
 
+import 'dart:async';
+import 'dart:io';
 import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:djs_live_stream/features/mine/user_repository_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 
+import '../wallet/iap_service.dart';
+import '../wallet/wallet_repository.dart';
 import '../widgets/tools/image_resolver.dart';
 import '../../l10n/l10n.dart';
 import '../call/call_request_page.dart';
@@ -17,6 +22,11 @@ import 'member_fans_provider.dart';
 import 'model/fan_user.dart';
 import 'model/vip_plan.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:in_app_purchase_android/in_app_purchase_android.dart';
+import 'package:in_app_purchase_android/billing_client_wrappers.dart';
+import 'package:intl/intl.dart';
+
 
 class WhoLikesMePage extends ConsumerStatefulWidget {
   const WhoLikesMePage({super.key});
@@ -35,6 +45,22 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
   bool _plansLoading = false;
   String? _plansError;
 
+  // IAP
+  bool _iapReady = false;
+  bool _buying = false;
+  Map<String, ProductDetails> _productMap = {};
+  String? _iapWarn;
+
+  late final _PageLifecycleObserver _lifecycleObserver;
+  Timer? _buyWatchdog; // 保險定時器，避免極端情況卡住
+
+  // Android 的父訂閱商品（所有 base plan 都在底下）
+  static const String kAndroidVipParentProductId = 'vip__1m';
+
+  // 依平台回傳查商店要用的 productId：Android 一律回父商品
+  String _pidForQuery(VipPlan p) =>
+      Platform.isAndroid ? kAndroidVipParentProductId : p.storeProductId;
+
   @override
   void initState() {
     super.initState();
@@ -52,62 +78,92 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
         ref.read(memberFansProvider.notifier).loadNextPage();
       }
     });
+
+    _lifecycleObserver = _PageLifecycleObserver(() {
+      if (_buying) {
+        debugPrint('[WhoLikesMe] app resumed -> reset _buying & refresh');
+        if (mounted) setState(() => _buying = false);  // 讓購買按鈕恢復可按
+        _refreshVipAndWallet();                        // 順手刷新，避免漏單
+      }
+    });
+    WidgetsBinding.instance.addObserver(_lifecycleObserver);
+
+    _initIap();
+  }
+
+  Future<void> _initIap() async {
+    try {
+      await IapService.instance.init();
+      if (!mounted) return;
+      setState(() => _iapReady = IapService.instance.isAvailable);
+    } catch (_) {
+      if (mounted) setState(() => _iapReady = false);
+    }
   }
 
   Future<void> _loadPlansIfNeeded() async {
-    // 僅當遮罩會顯示（非 VIP 且非主播）才需要抓方案，避免多餘的 API
     final u = ref.read(userProfileProvider);
     final shouldBlock = (u != null) && !(u.isVipEffective || u.isBroadcaster);
     if (!shouldBlock) return;
     if (_plansLoading || _plans.isNotEmpty) return;
 
-    setState(() {
-      _plansLoading = true;
-      _plansError = null;
-    });
+    setState(() { _plansLoading = true; _plansError = null; });
 
     try {
       final repo = ref.read(userRepositoryProvider);
       final plans = await repo.fetchVipPlans();
 
-      // 「最佳選擇」：每月單價最低
+      // 最佳/預設
       int bestIdx = 0;
       if (plans.isNotEmpty) {
         double bestPer = plans.first.perMonth;
         for (var i = 1; i < plans.length; i++) {
-          if (plans[i].perMonth < bestPer) {
-            bestPer = plans[i].perMonth;
-            bestIdx = i;
-          }
+          if (plans[i].perMonth < bestPer) { bestPer = plans[i].perMonth; bestIdx = i; }
         }
       }
-
-      // 預設選第二個；不足兩個就選第 0 個
       final defaultIdx = (plans.length >= 2) ? 1 : (plans.isNotEmpty ? 0 : 0);
 
+      // 查商店商品（拿價格 + 之後購買要用）
+      Map<String, ProductDetails> pMap = {};
+      if (_iapReady && plans.isNotEmpty) {
+        final Set<String> ids = Platform.isAndroid
+            ? { kAndroidVipParentProductId } // ← 只查父商品
+            : plans.map((e) => e.storeProductId).where((s) => s.isNotEmpty).toSet();
+
+        if (ids.isNotEmpty) {
+          pMap = await IapService.instance.queryProducts(ids);
+        } else {
+          _iapWarn = 'No productId from backend';
+        }
+      } else if (!_iapReady) {
+        _iapWarn = 'IAP not available';
+      }
+
+      if (!mounted) return;
       setState(() {
         _plans = plans;
         _bestIndex = bestIdx;
         _selectedPlanIndex = defaultIdx;
         _plansLoading = false;
+        _productMap = pMap;
       });
     } catch (e) {
-      setState(() {
-        _plansError = '$e';
-        _plansLoading = false;
-      });
+      if (!mounted) return;
+      setState(() { _plansError = '$e'; _plansLoading = false; });
     }
   }
 
   @override
   void dispose() {
     _scroll.dispose();
+    WidgetsBinding.instance.removeObserver(_lifecycleObserver);
+    _buyWatchdog?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final t = S.of(context); // ← 新增
+    final t = S.of(context);
     final fans = ref.watch(memberFansProvider);
     final me = ref.watch(userProfileProvider);
     final cdn = me?.cdnUrl ?? '';
@@ -115,12 +171,11 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
         (me != null) && !(me.isVipEffective || me.isBroadcaster);
 
     if (showBlockLayer && !_plansLoading && _plans.isEmpty) {
-         // iOS 上用 postFrame 會更穩，不會在第一幀看到「空白一層」
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-           if (mounted && !_plansLoading && _plans.isEmpty) {
-             _loadPlansIfNeeded();
-          }
-         });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_plansLoading && _plans.isEmpty) {
+          _loadPlansIfNeeded();
+        }
+      });
     }
 
     return Scaffold(
@@ -170,9 +225,8 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
   }
 
   Widget _buildLikedCardFromApi(MemberFanUser user, String cdnBase) {
-    // 封面：相對路徑才拼 CDN，取第一張非空
     final coverRaw =
-        user.avatars.firstWhere((e) => e.isNotEmpty, orElse: () => '');
+    user.avatars.firstWhere((e) => e.isNotEmpty, orElse: () => '');
     final coverUrl = joinCdnIfNeeded(coverRaw, cdnBase);
 
     final image = (coverUrl.isNotEmpty && coverUrl.startsWith('http'))
@@ -185,17 +239,13 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
         borderRadius: BorderRadius.circular(12),
         child: Stack(
           children: [
-            // 背景大圖
             Positioned.fill(child: image),
-
-            // 底部漸層 + 名字 + 通話圖示
             Positioned(
               left: 0,
               right: 0,
               bottom: 0,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.bottomCenter,
@@ -207,18 +257,14 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
                   children: [
                     Expanded(
                       child: Text(
-                        user.name.isNotEmpty
-                            ? user.name
-                            : S.of(context).userFallback,
+                        user.name.isNotEmpty ? user.name : S.of(context).userFallback,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          shadows: [
-                            Shadow(blurRadius: 2, color: Colors.black45)
-                          ],
+                          shadows: [Shadow(blurRadius: 2, color: Colors.black45)],
                         ),
                       ),
                     ),
@@ -242,12 +288,10 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
     );
   }
 
-  void _handleCallRequest(
-      BuildContext context, MemberFanUser user, String cdnBase) {
+  void _handleCallRequest(BuildContext context, MemberFanUser user, String cdnBase) {
     final broadcasterId = user.id.toString();
     final broadcasterName = user.name;
-    final firstAvatar =
-        user.avatars.firstWhere((e) => e.isNotEmpty, orElse: () => '');
+    final firstAvatar = user.avatars.firstWhere((e) => e.isNotEmpty, orElse: () => '');
     final broadcasterImage = firstAvatar.isNotEmpty
         ? joinCdnIfNeeded(firstAvatar, cdnBase)
         : 'assets/my_icon_defult.jpeg';
@@ -265,14 +309,21 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
   }
 
   Widget _buildOverlayLayer(S t) {
+    // 供按鈕文案顯示商店價
+    String _selectedDisplayPrice() {
+      if (_plans.isEmpty) return _fmtMoney(0);
+      final p = _plans[_selectedPlanIndex];
+      return _storePriceForPlan(p) ?? _fmtMoney(p.payPrice);
+    }
+
     return Stack(
-       children: [
-      // iOS/Metal 上，BackdropFilter 必須包在 ClipRect，並鋪滿畫面
-       Positioned.fill(
-         child: ClipRect(
-          child: BackdropFilter(
+      children: [
+        // iOS/Metal：BackdropFilter 必須包在 ClipRect，並鋪滿畫面
+        Positioned.fill(
+          child: ClipRect(
+            child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: Container(color: Colors.black.withOpacity(0.6)),
+              child: Container(color: Colors.black.withOpacity(0.6)),
             ),
           ),
         ),
@@ -290,54 +341,44 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
-                    color: Colors.black.withOpacity(0.15),
-                    blurRadius: 12,
-                    offset: Offset(0, 6))
+                  color: Colors.black.withOpacity(0.15),
+                  blurRadius: 12,
+                  offset: const Offset(0, 6),
+                )
               ],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(t.whoLikesMeTitle,
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold)), // ← 改
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
                 Text(
-                  t.whoLikesMeSubtitle, // ← 改
+                  t.whoLikesMeSubtitle,
                   textAlign: TextAlign.center,
-                  style:
-                      const TextStyle(fontSize: 14, color: Color(0xfffb5d5d)),
+                  style: const TextStyle(fontSize: 14, color: Color(0xfffb5d5d)),
                 ),
                 const SizedBox(height: 20),
 
-                _plansSection(t), // ← 傳入 t
+                _plansSection(t),
 
                 const SizedBox(height: 20),
                 SizedBox(
-                  width: 180,
+                  width: 200,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.pink,
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20)),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
                     ),
-                    onPressed: (_plansLoading || _plans.isEmpty)
+                    onPressed: (_plansLoading || _plans.isEmpty || _buying)
                         ? null
-                        : () async {
-                            final amt = _plans[_selectedPlanIndex].payPrice;
-                            await Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) =>
-                                        PaymentMethodPage(amount: amt)));
-                            Navigator.pop(context, true);
-                          },
+                        : _buySelectedPlan, // ← 改：走 IAP
                     child: Text(
                       _plansLoading || _plans.isEmpty
-                          ? t.loadingEllipsis // ← 改
-                          : t.buyVipWithPrice(
-                              _fmtMoney(_plans[_selectedPlanIndex].payPrice)),
-                      // ← 改
+                          ? t.loadingEllipsis
+                          : t.buyVipWithPrice(_selectedDisplayPrice()),
                       style: const TextStyle(color: Colors.white),
                     ),
                   ),
@@ -365,10 +406,8 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
         children: [
           Text(t.planLoadFailed,
               style: const TextStyle(fontSize: 13, color: Colors.white)),
-          // ← 改
           const SizedBox(height: 8),
           OutlinedButton(onPressed: _loadPlansIfNeeded, child: Text(t.retry)),
-          // ← 改
         ],
       );
     }
@@ -376,17 +415,16 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Text(t.noAvailablePlans,
-            style: const TextStyle(fontSize: 13, color: Colors.white)), // ← 改
+            style: const TextStyle(fontSize: 13, color: Colors.white)),
       );
     }
-    return _plansGrid(t); // ← 傳入 t
+    return _plansGrid(t);
   }
 
   Widget _plansGrid(S t) {
     return LayoutBuilder(
       builder: (context, cons) {
         const cols = 3;
-        const crossSpacing = 12.0;
         final ts = MediaQuery.textScaleFactorOf(context).clamp(1.0, 1.6);
 
         // 估算卡片高度，避免文字溢出
@@ -410,6 +448,8 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
             final p = _plans[index];
             final selected = _selectedPlanIndex == index;
 
+            final displayPrice = _storePriceForPlan(p) ?? _fmtMoney(p.payPrice);
+
             return GestureDetector(
               onTap: () => setState(() => _selectedPlanIndex = index),
               child: Stack(
@@ -426,12 +466,12 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
                       ),
                       boxShadow: selected
                           ? [
-                              BoxShadow(
-                                color: Colors.pink.withOpacity(0.15),
-                                blurRadius: 8,
-                                offset: const Offset(0, 4),
-                              )
-                            ]
+                        BoxShadow(
+                          color: Colors.pink.withOpacity(0.15),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        )
+                      ]
                           : null,
                     ),
                     child: Column(
@@ -445,7 +485,7 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
                                 fontWeight: FontWeight.bold,
                                 color: Colors.red)),
                         const SizedBox(height: 2),
-                        Text(_fmtMoney(p.payPrice),
+                        Text(displayPrice,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -486,7 +526,7 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
                         ),
                         child: Text(t.vipBestChoice,
                             textAlign: TextAlign.center,
-                            style: TextStyle(fontSize: 10, color: Colors.white)),
+                            style: const TextStyle(fontSize: 10, color: Colors.white)),
                       ),
                     ),
                 ],
@@ -496,5 +536,178 @@ class _WhoLikesMePageState extends ConsumerState<WhoLikesMePage> {
         );
       },
     );
+  }
+
+  // ====== 商店價（顯示用） ======
+  String? _storePriceForPlan(VipPlan p) {
+    final String key = Platform.isAndroid ? kAndroidVipParentProductId : p.storeProductId;
+    final pd = _productMap[key];
+    if (pd == null) return null;
+
+    // iOS：每個 plan 有獨立商品，直接用 pd.price
+    if (!Platform.isAndroid) return pd.price;
+
+    // Android：從父商品取出對應 base plan 的 offer
+    if (pd is! GooglePlayProductDetails) return pd.price;
+    final offers = pd.productDetails.subscriptionOfferDetails;
+    if (offers == null || offers.isEmpty) return pd.price;
+
+    final offer = offers.firstWhere(
+          (o) => o.basePlanId == p.androidBasePlanId, // 例如 vip3m
+      orElse: () => offers.first,
+    );
+
+    final List<PricingPhaseWrapper>? phases = offer.pricingPhases;
+    if (phases == null || phases.isEmpty) return pd.price;
+
+    final phase = phases.first;
+
+    // 有些 wrapper 帶 formattedPrice
+    final fp = tryGetFormattedPrice(phase);
+    if (fp != null && fp.isNotEmpty) return fp;
+
+    // fallback：micros + 幣別
+    final micros = phase.priceAmountMicros ?? 0;
+    final code   = phase.priceCurrencyCode ?? '';
+    if (micros <= 0 || code.isEmpty) return pd.price;
+
+    final value = micros / 1000000.0;
+    return NumberFormat.simpleCurrency(name: code).format(value);
+  }
+
+  String? tryGetFormattedPrice(PricingPhaseWrapper phase) {
+    try { return (phase as dynamic).formattedPrice as String?; } catch (_) { return null; }
+  }
+
+  Future<void> _buySelectedPlan() async {
+    final t = S.of(context);
+    if (_plans.isEmpty) return;
+    final sel = _plans[_selectedPlanIndex];
+
+    Future<ProductDetails?> _preparePd() async {
+      if (!_iapReady) { Fluttertoast.showToast(msg: t.iapUnavailable); return null; }
+      final pid = _pidForQuery(sel); // ← 這裡關鍵：Android 會變成 'vip__1m'
+      if (pid.isEmpty) {
+        Fluttertoast.showToast(
+          msg: Platform.isAndroid ? '此方案未配置 Google Play productId'
+              : '此方案未配置 iOS productId',
+        );
+        return null;
+      }
+      final cached = _productMap[pid];
+      if (cached != null) return cached;
+      final map = await IapService.instance.queryProducts({pid});
+      if (map.isNotEmpty) {
+        setState(() => _productMap.addAll(map));
+        return map[pid];
+      }
+      Fluttertoast.showToast(msg: t.iapProductNotFound);
+      return null;
+    }
+
+    // iOS（不變）...
+    if (Platform.isIOS) {
+      final pd = await _preparePd();
+      if (pd == null) return;
+      setState(() => _buying = true);
+      try {
+        final purchase = await IapService.instance.buyNonConsumable(pd);
+        final receipt = purchase.verificationData.serverVerificationData;
+        await ref.read(walletRepositoryProvider).verifyIapAndCredit(
+          platform: 'ios',
+          productId: pd.id,
+          packetId: sel.id,
+          purchaseTokenOrReceipt: receipt,
+        );
+        await IapService.instance.finish(purchase);
+        await _refreshVipAndWallet();
+        Fluttertoast.showToast(msg: t.vipOpenSuccess);
+      } catch (e) {
+        final isCanceled = e is IapError && e.message == 'canceled';
+        if (isCanceled) {
+          Fluttertoast.showToast(
+            msg: t.commonCancel,
+          );
+        }
+      } finally {
+        _buyWatchdog?.cancel();
+        if (mounted) setState(() => _buying = false);
+      }
+      return;
+    }
+
+    // Android（父商品 + base plan）
+    if (Platform.isAndroid) {
+      final pd = await _preparePd(); // ← 回來的是 'vip__1m' 的 ProductDetails
+      if (pd == null) return;
+
+      final gp = pd as GooglePlayProductDetails;
+      final offerList = gp.productDetails.subscriptionOfferDetails;
+      if (offerList == null || offerList.isEmpty) {
+        Fluttertoast.showToast(msg: '此商品沒有可用的 Google Play 方案');
+        return;
+      }
+
+      final offer = offerList.firstWhere(
+            (o) => o.basePlanId == sel.androidBasePlanId, // 例如 vip12months
+        orElse: () => offerList.first,
+      );
+
+      final offerToken = offer.offerIdToken;
+      if (offerToken == null || offerToken.isEmpty) {
+        Fluttertoast.showToast(msg: '找不到對應的 Google Play base plan（${sel.androidBasePlanId}）');
+        return;
+      }
+
+      setState(() => _buying = true);
+      try {
+        final purchase = await IapService.instance.buySubscription(pd, offerToken: offerToken);
+        final token = purchase.verificationData.serverVerificationData;
+
+        await ref.read(walletRepositoryProvider).verifyIapAndCredit(
+          platform: 'android',
+          productId: pd.id,   // 這裡會是 'vip__1m'
+          packetId: sel.id,   // 你的方案 id
+          purchaseTokenOrReceipt: token,
+        );
+
+        await IapService.instance.finish(purchase);
+        await _refreshVipAndWallet();
+        Fluttertoast.showToast(msg: t.vipOpenSuccess);
+      } catch (e) {
+        final isCanceled = e is IapError && e.message == 'canceled';
+        if (isCanceled) {
+          Fluttertoast.showToast(
+            msg: t.commonCancel,
+          );
+        }
+      } finally {
+        _buyWatchdog?.cancel();
+        if (mounted) setState(() => _buying = false);
+      }
+      return;
+    }
+
+    Fluttertoast.showToast(msg: 'Unsupported platform');
+  }
+
+  Future<void> _refreshVipAndWallet() async {
+    final walletRepo = ref.read(walletRepositoryProvider);
+    final w = await walletRepo.fetchMoneyCash();
+    final user = ref.read(userProfileProvider);
+    if (user != null) {
+      ref.read(userProfileProvider.notifier).state =
+          user.copyWith( vipExpire: w.vipExpire, gold: w.gold);
+    }
+  }
+}
+
+class _PageLifecycleObserver with WidgetsBindingObserver {
+  final VoidCallback onResumed;
+  _PageLifecycleObserver(this.onResumed);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) onResumed();
   }
 }

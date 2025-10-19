@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../data/models/user_model.dart';
 import '../../l10n/l10n.dart';
@@ -32,6 +33,8 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
   bool _iapReady = false;
   bool _buying = false;
   String? _iapWarn; // 目前未顯示，如要顯示可像 VIP 那樣放一個 banner
+
+  late final _PageLifecycleObserver _lifecycleObserver;
 
   @override
   void initState() {
@@ -63,8 +66,23 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
         if (mounted) setState(() => _iapReady = false);
       }
     }();
+
+    _lifecycleObserver = _PageLifecycleObserver(() {
+      if (_buying) {
+        debugPrint('[Wallet] app resumed -> reset _buying & refresh');
+        if (mounted) setState(() => _buying = false);
+        _refreshWallet();
+      }
+    });
+    WidgetsBinding.instance.addObserver(_lifecycleObserver);
   }
 
+  @override
+  void dispose() {
+    _customAmountController.dispose();
+    WidgetsBinding.instance.removeObserver(_lifecycleObserver); // NEW
+    super.dispose();
+  }
 
   Future<void> _loadStoreProducts(List<CoinPacket> packets) async {
     final ids = <String>{};
@@ -322,7 +340,7 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
           final storeId = Platform.isIOS ? p.iosProductId : p.androidProductId;
           final storePrice = (storeId != null) ? _storeProducts[storeId]?.price : null;
           // 若有商店價 → 直接顯示；否則用你後端價 + 美元符號
-          final displayPrice = storePrice ?? '\$${_displayPrice(p.price)}';
+          final displayPrice = storePrice ?? _displayPrice(p.price);
           final bonusText = p.bonus > 0 ? t.walletBonusGift(p.bonus) : null;
 
           return GestureDetector(
@@ -368,7 +386,7 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          '\$${displayPrice}',
+                          displayPrice,
                           style: const TextStyle(fontSize: 12, color: Colors.black54),
                         ),
                       ],
@@ -524,8 +542,14 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
         final map = await IapService.instance.queryProducts({productId});
         pd = map[productId];
       }
-      if (pd == null) { Fluttertoast.showToast(msg: t.iapProductNotFound); return; }
-
+      if (pd == null) {
+        final pkg = (await PackageInfo.fromPlatform()).packageName;
+        debugPrint('[IAP][ANDROID] productId "$productId" not found from Play, pkg=$pkg');
+        Fluttertoast.showToast(
+          msg: '此商品尚未在 Google Play 生效（或非測試帳號 / 非同一套件軌道）',
+        );
+        return;
+      }
       setState(() => _buying = true);
       try {
         // 金幣＝消耗型
@@ -568,4 +592,14 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
   }
 
 
+}
+
+class _PageLifecycleObserver with WidgetsBindingObserver {
+  final VoidCallback onResumed;
+  _PageLifecycleObserver(this.onResumed);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) onResumed();
+  }
 }

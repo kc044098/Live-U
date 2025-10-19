@@ -1,5 +1,5 @@
 // call_session_provider.dart
-import 'package:riverpod/riverpod.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../message/chat_message.dart';
 
