@@ -13,6 +13,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/error_handler.dart';
+import '../features/call/call_abort_provider.dart';
 import '../features/call/call_repository.dart';
 import 'app_lifecycle.dart';
 import 'banner_service.dart';
@@ -201,6 +202,8 @@ class PushService {
         case 'accepted':
           return 'accept';
         case '2':
+        case '3':
+        case '4':
         case 'reject':
           return 'reject';
         case 'cancel':
@@ -226,8 +229,20 @@ class PushService {
         try { final nid = data['__nid__'] as int?; if (nid != null) _fln.cancel(nid); } catch (_) {}
         BannerService.I.dismiss();
 
-        if (ev == 'accept') { goToLiveFromPayload(data); }
-        return;
+        if (ev == 'accept') {
+          goToLiveFromPayload(data);
+          return;
+        }
+
+        if (const {'reject','cancel','timeout','end','busy'}.contains(ev)) {
+          final ch = (data['channel_id'] ?? data['roomId'] ?? '').toString();
+          final c = provider_container;
+          if (ch.isNotEmpty && c != null) {
+            c.read(callAbortProvider.notifier).abort(ch); // 見下一段 Provider 實作
+            debugPrint('[[CALL][ABORT]] by FCM ev=$ev ch=$ch');
+          }
+          return;
+        }
       }
 
       // 邀請事件（來電）

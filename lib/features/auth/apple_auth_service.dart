@@ -94,6 +94,7 @@ class AppleAuthService {
         extra: {'email': user.email},
       );
 
+
       final authRepository = ref.read(authRepositoryProvider);
       final result = await authRepository.loginWithApple(model);
       await UserLocalStorage.saveUser(result);

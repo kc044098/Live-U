@@ -3,7 +3,7 @@ name: djs_live_stream
 description: "LiveU Talk Flutter project."
 publish_to: 'none'
 
-version: 1.0.0+2
+version: 1.0.0+13
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -26,6 +26,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   dio: ^5.4.3
   flutter_riverpod: ^2.5.1
+  flutter_secure_storage: ^8.0.0
   flutter_local_notifications: ^17.2.3
   image_picker: ^1.0.4
   agora_rtc_engine: ^6.2.3
@@ -65,6 +66,7 @@ dependencies:
   svgaplayer_flutter: ^2.2.0
   archive: ^3.4.10
   in_app_purchase: ^3.1.11
+  in_app_purchase_android:  ^0.4.0+6
   in_app_purchase_storekit: ^0.3.6
   webview_flutter: ^4.7.0
   uuid: ^4.5.1

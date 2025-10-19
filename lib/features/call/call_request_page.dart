@@ -72,6 +72,8 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
   bool _inMini = false;
 
   String _statusText = '';
+  bool _ringtoneStarted = false;
+  bool _busyStarted = false;
 
   // 改為 getter：依目前語系取字串
   String get _kToastTimeout => S.of(_rootCtx).callTimeoutNoResponse;
@@ -121,10 +123,10 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
     for (final u in _wsUnsubs) { try { u(); } catch (_) {} }
     _wsUnsubs.clear();
 
-    _audioPlayer.stop();
-    _audioPlayer.dispose();
-    _busyPlayer.stop();
-    _busyPlayer.dispose();
+    unawaited(_safeStop(_audioPlayer, started: _ringtoneStarted));
+    unawaited(_safeStop(_busyPlayer, started: _busyStarted));
+    unawaited(_safeDispose(_audioPlayer));
+    unawaited(_safeDispose(_busyPlayer));
 
     WakelockPlus.disable();
     super.dispose();
@@ -159,9 +161,23 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
 
 
   Future<void> _playRingtone() async {
-    await Future.delayed(const Duration(milliseconds: 200));
-    await _audioPlayer.setReleaseMode(ReleaseMode.loop);
-    await _audioPlayer.play(AssetSource('ringtone.wav'));
+    try {
+      await Future.delayed(const Duration(milliseconds: 50)); // 不要太久，縮短競態窗口
+      await _audioPlayer.setReleaseMode(ReleaseMode.loop);
+      await _audioPlayer.play(AssetSource('ringtone.wav'));  // 確認檔案在 assets/ 下
+      _ringtoneStarted = true;
+    } catch (_) {
+      _ringtoneStarted = false; // 建立失敗就別再 stop
+    }
+  }
+
+  Future<void> _safeStop(AudioPlayer p, {required bool started}) async {
+    if (!started) return;
+    try { await p.stop(); } catch (_) {}
+  }
+
+  Future<void> _safeDispose(AudioPlayer p) async {
+    try { await p.dispose(); } catch (_) {}
   }
 
   Future<void> _initiateCall() async {
@@ -209,11 +225,11 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
       } else {
         AppErrorToast.show(e);
       }
-      await _audioPlayer.stop();
+      unawaited(_safeStop(_audioPlayer, started: _ringtoneStarted));
       if (mounted) Navigator.pop(context);
     } catch (e) {
       Fluttertoast.showToast(msg: S.of(_rootCtx).callDialFailed);
-      await _audioPlayer.stop();
+      unawaited(_safeStop(_audioPlayer, started: _ringtoneStarted));
       if (mounted) Navigator.pop(context);
     }
   }
@@ -318,8 +334,8 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
       Fluttertoast.showToast(msg: msg);
     }
 
-    unawaited(_audioPlayer.stop());
-    unawaited(_busyPlayer.stop());
+    unawaited(_safeStop(_audioPlayer, started: _ringtoneStarted));
+    unawaited(_safeStop(_busyPlayer, started: _busyStarted));
     unawaited(_rtc.safeLeave().timeout(const Duration(seconds: 2), onTimeout: () {}));
 
     _closeMiniAndGoHome();
@@ -345,8 +361,8 @@ class _CallRequestPageState extends ConsumerState<CallRequestPage>
     _cancelled = true;
 
     _timeoutTimer?.cancel();
-    unawaited(_audioPlayer.stop());
-    unawaited(_busyPlayer.stop());
+    unawaited(_safeStop(_audioPlayer, started: _ringtoneStarted));
+    unawaited(_safeStop(_busyPlayer, started: _busyStarted));
     unawaited(_notifyCancelOnce().timeout(const Duration(seconds: 2), onTimeout: () {}));
     unawaited(_rtc.safeLeave().timeout(const Duration(seconds: 2), onTimeout: () {}));
 

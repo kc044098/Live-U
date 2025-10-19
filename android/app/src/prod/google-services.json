@@ -14,6 +14,22 @@
       },
       "oauth_client": [
         {
+          "client_id": "981830395471-1cd9fhunrp9qacjs4u0m51djl7rbt4cb.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "liveu.live",
+            "certificate_hash": "46715b2225cb178910bb06e03a2ca5d53c18d14a"
+          }
+        },
+        {
+          "client_id": "981830395471-fjn1uu7c801d4hf9rs6atqv49ik2ljdp.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "liveu.live",
+            "certificate_hash": "2c69630a4bbba3afad58081eeb0ed89aec99cc24"
+          }
+        },
+        {
           "client_id": "981830395471-u1a0kavkmgq9fs85tgavi56r35dto3m7.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

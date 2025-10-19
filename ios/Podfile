@@ -1,15 +1,16 @@
 platform :ios, '13.0'
 use_frameworks! :linkage => :static
 
-pod 'AgoraRtcEngine_iOS', '4.5.2'
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
 project 'Runner', {
   'Debug'        => :debug,
   'Release'      => :release,
   'Profile'      => :release,
-  'Prod-Debug'   => :debug,
-  # 'Prod-Release' => :release,   # 你如果也建了 Prod-Release 就打開這行
+
+  'Debug-prod'   => :debug,
+  'Release-prod' => :release,
+  'Profile-prod' => :release,
 }
 
 def flutter_root
@@ -29,8 +30,6 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 flutter_ios_podfile_setup
 
 target 'Runner' do
-  # 用 framework 方式整合（使用靜態 linkage，通常相容性最好）
-  use_frameworks! :linkage => :static
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 end
@@ -44,14 +43,12 @@ post_install do |installer|
       bs['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
       bs['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
 
-      # 你的現有 flags（保留）
       flags = bs['OTHER_LDFLAGS']
       flags = ['$(inherited)'] if flags.nil? || flags == ''
       flags = flags.split(' ')  if flags.is_a?(String)
       flags << '-Wl,-U,_Iris_InitDartApiDL' unless flags.include?('-Wl,-U,_Iris_InitDartApiDL')
       bs['OTHER_LDFLAGS'] = flags
 
-      # 👇 關鍵：打開 permission_handler 的 iOS 子模組
       defs = bs['GCC_PREPROCESSOR_DEFINITIONS'] || ['$(inherited)']
       defs = defs.is_a?(Array) ? defs : [defs]
       needed = %w[

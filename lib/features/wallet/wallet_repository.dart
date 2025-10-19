@@ -1,5 +1,5 @@
 import 'package:dio/dio.dart';
-import 'package:riverpod/riverpod.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/error_handler.dart';
 import '../../data/models/user_model.dart';
 import '../../data/network/api_client.dart';
@@ -223,7 +223,9 @@ class WalletRepository {
     }
 
     final payload = <String, dynamic>{
+      'platform': pf == 'android'? 'google':'apple',
       'product_id': productId,      // 商店商品 id
+      if (packetId != null) 'packet_id': packetId,
       if (isAndroid) 'transaction_id': purchaseTokenOrReceipt,
       if (isIos) 'transaction_id': purchaseTokenOrReceipt,
     };

@@ -21,8 +21,9 @@ android {
     ndkVersion = "27.0.12077973"
 
     defaultConfig {
+        applicationId = "liveu.live"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
@@ -66,6 +67,7 @@ android {
     sourceSets["main"].assets.srcDirs("src/main/assets")
 
     signingConfigs {
+
         create("release") {
             // 若 key.properties 缺少欄位會拋例外；請確認都填了
             storeFile = file(keystoreProps["storeFile"] as String)
@@ -125,6 +127,8 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     implementation("com.google.firebase:firebase-auth:23.2.1")
     implementation("com.google.firebase:firebase-core:21.1.1")
+    implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.activity:activity-ktx:1.11.0")
 
     implementation("androidx.media3:media3-exoplayer:1.8.0")
     implementation("androidx.media3:media3-exoplayer-hls:1.8.0")

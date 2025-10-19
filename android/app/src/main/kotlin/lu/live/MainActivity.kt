@@ -3,13 +3,16 @@ package lu.live
 import android.app.PictureInPictureParams
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.graphics.Color
 import android.graphics.Rect
 import android.os.Build
+import android.os.Bundle
 import android.util.Rational
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
-import io.flutter.plugins.GeneratedPluginRegistrant
 import lu.live.player.CachedVideoPlugin
 
 class MainActivity : FlutterActivity() {
@@ -37,6 +40,15 @@ class MainActivity : FlutterActivity() {
             }
         } catch (e: Exception) { android.util.Log.e("FB-KeyHash", "calc failed", e) }
 
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        WindowCompat.setDecorFitsSystemWindows(window, true) // ★ 改回 true
+        // 若只想透明狀態列可以保留：
+        window.statusBarColor = Color.TRANSPARENT
+        WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = true
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
