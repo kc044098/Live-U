@@ -3,7 +3,7 @@ name: djs_live_stream
 description: "LiveU Talk Flutter project."
 publish_to: 'none'
 
-version: 1.0.0+13
+version: 1.0.0+23
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
