@@ -62,6 +62,10 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
       try {
         await IapService.instance.init();
         if (mounted) setState(() => _iapReady = IapService.instance.isAvailable);
+
+        // 🔎 這行很重要：印出目前執行包的 bundle id
+        final info = await PackageInfo.fromPlatform();
+        debugPrint('[IAP] bundle=${info.packageName}');
       } catch (_) {
         if (mounted) setState(() => _iapReady = false);
       }
@@ -85,15 +89,21 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
   }
 
   Future<void> _loadStoreProducts(List<CoinPacket> packets) async {
-    final ids = <String>{};
-    for (final p in packets) {
-      if (Platform.isIOS && (p.iosProductId ?? '').isNotEmpty) ids.add(p.iosProductId!);
-      if (Platform.isAndroid && (p.androidProductId ?? '').isNotEmpty) ids.add(p.androidProductId!);
-    }
+    if (!_iapReady) { debugPrint('[IAP] not ready, skip query'); return; } // ← 加這
+    final ids = <String>{
+      for (final p in packets)
+        if (Platform.isIOS && (p.iosProductId ?? '').isNotEmpty) p.iosProductId!,
+      for (final p in packets)
+        if (Platform.isAndroid && (p.androidProductId ?? '').isNotEmpty) p.androidProductId!,
+    };
     if (ids.isEmpty) return;
-    final map = await IapService.instance.queryProducts(ids);
+
+    final res = await IapService.instance.queryProducts(ids); // 回傳 Map<String, ProductDetails>
+    // 建議你的 IapService.queryProducts 也回傳 notFoundIDs 或印 log：
+    debugPrint('[IAP] fetched=${res.keys} notFound=${ids.difference(res.keys.toSet())}');
+
     if (!mounted) return;
-    setState(() => _storeProducts = map);
+    setState(() => _storeProducts = res);
   }
 
 
@@ -497,10 +507,13 @@ class _MyWalletPageState extends ConsumerState<MyWalletPage> {
       // 取商品資訊（先看快取，沒有就補查）
       ProductDetails? pd = _storeProducts[productId];
       if (pd == null) {
+        debugPrint('[IAP][IOS] Product not in cache: $productId');
         final map = await IapService.instance.queryProducts({productId});
         pd = map[productId];
+        final notFound = {productId}.difference(map.keys.toSet());
+        debugPrint('[IAP][IOS] requery notFound=$notFound');
       }
-      if (pd == null) { Fluttertoast.showToast(msg: t.iapProductNotFound); return; }
+      if (pd == null) { Fluttertoast.showToast(msg: '[IAP][IOS] Product not found from App Store: $productId'); return; }
 
       setState(() => _buying = true);
       try {
