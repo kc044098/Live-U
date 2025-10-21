@@ -273,7 +273,7 @@ class _EditMinePageState extends ConsumerState<EditMinePage> {
                     const Icon(Icons.photo_library_outlined, size: 48, color: Colors.grey),
                     const SizedBox(height: 8),
                     Text(s.commonNoContentYet, style: TextStyle(color: Colors.grey[600])), // '還沒有內容'
-                    const SizedBox(height: 120),
+                    const SizedBox(height: 70),
                   ],
                 ),
               ),

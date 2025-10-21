@@ -115,6 +115,7 @@ class IapService {
 
     debugPrint('[IAP] queryProductDetails ids=$productIds');
     final response = await _iap.queryProductDetails(productIds);
+    debugPrint('[IAP][QUERY] found=${response.productDetails.map((e) => e.id).toList()}  notFound=${response.notFoundIDs}');
 
     if (response.error != null) {
       debugPrint('[IAP] query error: ${response.error}');
