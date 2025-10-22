@@ -136,7 +136,7 @@ abstract class S {
   /// No description provided for @loginWithAccount.
   ///
   /// In en, this message translates to:
-  /// **'Sign in with Live U'**
+  /// **'Sign in with Account'**
   String get loginWithAccount;
 
   /// No description provided for @consentLoginPrefix.
