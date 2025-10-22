@@ -27,7 +27,7 @@ class SEn extends S {
   String get loginWithEmail => 'Sign in with Email';
 
   @override
-  String get loginWithAccount => 'Sign in with Live U';
+  String get loginWithAccount => 'Sign in with Account';
 
   @override
   String get consentLoginPrefix =>
