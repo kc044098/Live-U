@@ -1,0 +1,84 @@
+{
+  "greenscreens": [
+    {
+      "name": "mt_618",
+      "dir": "mt_618",
+      "category": "default",
+      "thumb": "mt_618_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "mt_1111",
+      "dir": "mt_1111",
+      "category": "default",
+      "thumb": "mt_1111_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "mt_nianhuojie",
+      "dir": "mt_nianhuojie",
+      "category": "default",
+      "thumb": "mt_nianhuojie_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "mt_nvshenjie",
+      "dir": "mt_nvshenjie",
+      "category": "default",
+      "thumb": "mt_nvshenjie_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "mt_sales",
+      "dir": "mt_sales",
+      "category": "default",
+      "thumb": "mt_sales_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "mt_qianxun",
+      "dir": "mt_qianxun",
+      "category": "default",
+      "thumb": "mt_qianxun_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "mt_road",
+      "dir": "mt_road",
+      "category": "default",
+      "thumb": "mt_road_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "mt_sea",
+      "dir": "mt_sea",
+      "category": "default",
+      "thumb": "mt_sea_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "mt_xuexiang",
+      "dir": "mt_xuexiang",
+      "category": "default",
+      "thumb": "mt_xuexiang_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "mt_xunyicao",
+      "dir": "mt_xunyicao",
+      "category": "default",
+      "thumb": "mt_xunyicao_icon.png",
+      "voiced": false,
+      "downloaded": false
+    }
+  ]
+}

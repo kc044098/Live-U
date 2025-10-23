@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:mt_plugin/components/mt_beauty_panel/view.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -115,6 +116,13 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
   bool get _isVoiceLikeUI => _isVoice || (_hideRemoteByHost && asBroadcaster);
   bool get _canSendGift => !ref.read(userProfileProvider)!.isBroadcaster;
 
+  bool _showBeauty = false;
+  final useCustom = true;
+
+  void _toggleBeautyPanel() {
+    setState(() => _showBeauty = !_showBeauty);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -177,6 +185,8 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     // 立即用現有值暖啟動一次（如果 provider 已經有資料）
     final quick0 = ref.read(quickGiftListProvider);
     quick0.whenData(_maybeWarmQuickGifts);
+
+    _rtc.enableExternalBeautyCapture(true);
   }
 
   Future<void> _endBecauseRemoteLeft() async {
@@ -521,7 +531,11 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
         // 開啟本地攝像頭 + 允許上行 + 開始預覽
         await engine.enableLocalVideo(true);
         await engine.muteLocalVideoStream(false);
-        await engine.startPreview();
+        await engine.startPreview(
+          sourceType: useCustom
+              ? VideoSourceType.videoSourceCustom
+              : VideoSourceType.videoSourceCamera,
+        );
       } else {
         // 關閉本地攝像頭 + 停止上行 + 停止預覽
         await engine.muteLocalVideoStream(true);
@@ -865,6 +879,20 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
                 avatar: avatarProvider,
               ),
             ),
+            if (_showBeauty)
+              Positioned(
+                left: 0, right: 0, bottom: 0,
+                child: SafeArea(
+                  top: false,
+                  child: SizedBox(
+                    height: 310, // 视你UI而定
+                    child: Material(
+                      color: Colors.black.withOpacity(0.6),
+                      child: MtBeautyPanelContainer(), // 来自 mt_plugin
+                    ),
+                  ),
+                ),
+              ),
 
             // 左上：縮小（改成 App 內小窗）
             Positioned(
@@ -1037,7 +1065,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
                       show: _videoOn, // 你現有的狀態（true 顯示預覽）
                       // 如果你不想讓元件幫忙 start/stopPreview，就設 false，
                       // 並保持你原本 _toggleVideo 的 Agora 呼叫：
-                      manageLifecycle: true,
+                      manageLifecycle: false,
                     ),
                   ),
                 ),
@@ -1205,6 +1233,11 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
                             _assetBtn(
                               asset: 'assets/icon_switch.png',
                               onTap: _switchCamera,
+                            ),
+                          if (!_isVoice && _videoOn)
+                            _assetBtn(
+                              asset: 'assets/pic_my_info4.png',
+                              onTap: _toggleBeautyPanel,
                             ),
                         ],
                       ),

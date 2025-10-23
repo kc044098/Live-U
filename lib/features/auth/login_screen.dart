@@ -297,37 +297,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                         const SizedBox(height: 40),
 
-                        // 底部公司的三行信息（不拦截点击）
-                        IgnorePointer(
-                          child: SafeArea(
-                            child: Align(
-                              alignment: Alignment.bottomCenter,
-                              child: Padding(
-                                padding: const EdgeInsets.only(bottom: 16),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: const [
-                                    Text(
-                                      'Company Name: PUSH HALION. LTD',
-                                      style: TextStyle(fontSize: 10, color: Colors.grey),
-                                    ),
-                                    SizedBox(height: 2),
-                                    Text(
-                                      'Address: 7 Copperfield Road, Coventry, West Midlands, \n England, United Kingdom, CV2 4AQ',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(fontSize: 10, color: Colors.grey),
-                                    ),
-                                    SizedBox(height: 2),
-                                    Text(
-                                      'Email: info@lu.live',
-                                      style: TextStyle(fontSize: 10, color: Colors.grey),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                   ),

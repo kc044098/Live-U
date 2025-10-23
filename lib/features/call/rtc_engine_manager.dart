@@ -9,6 +9,8 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../../beauty/beauty_bridge.dart';
+
 
 class RtcEngineManager {
   static final RtcEngineManager _i = RtcEngineManager._();
@@ -41,6 +43,9 @@ class RtcEngineManager {
     return _engine;
   }
 
+  // RtcEngineManager 内部
+  late final BeautyBridge _beauty;   // 新增
+  bool _useExternalBeautyCapture = false; // 新增：是否走外部采集
 
   Future<void> init({
     required String appId,
@@ -65,7 +70,16 @@ class RtcEngineManager {
 
         // 只有 Broadcaster 且「非語音」才需要預覽（join 成功後開）
         if (_role == ClientRoleType.clientRoleBroadcaster && !_isVoice) {
-          try { await _engine.startPreview(); } catch (_) {}
+          if (_useExternalBeautyCapture) {
+            // 关键：使用自定义视频源的预览
+            try {
+              await _engine.startPreview(sourceType: VideoSourceType.videoSourceCustom);
+            } catch (_) {}
+            // 成功入房后，让原生开始把帧回推给 Flutter
+            try { await _beauty.startPush(); } catch (_) {}
+          } else {
+            try { await _engine.startPreview(); } catch (_) {}
+          }
         }
       },
       onLeaveChannel: (RtcConnection c, RtcStats s) {
@@ -90,6 +104,9 @@ class RtcEngineManager {
         errors.add((code, msg));
       },
     ));
+
+    _beauty = BeautyBridge(_engine);
+    await _beauty.bind();
 
     _inited = true;
   }
@@ -120,8 +137,15 @@ class RtcEngineManager {
     if (isVoice) {
       await _engine.disableVideo();
     } else {
+      // ⚠️ 若使用外部采集，先声明外部视频源，再启用视频
+      if (_useExternalBeautyCapture) {
+        await _engine.getMediaEngine().setExternalVideoSource(
+          enabled: true,
+          useTexture: false, // 和范例一致：走 Raw/BGRA
+        );
+      }
       await _engine.enableVideo();
-      // ⚠️ 不要在此 startPreview，等 join 成功後再開
+      // 这里不直接 startPreview；让 onJoinChannelSuccess 选 custom 或默认
     }
 
     _joining = true;
@@ -171,6 +195,7 @@ class RtcEngineManager {
     joined.value = false;
     _joining = false;
     remoteUids.value = <int>[];
+    try { await _beauty.stopPush(); } catch (_) {}
     try { await _engine.stopPreview(); } catch (_) {}
   }
 
@@ -191,5 +216,7 @@ class RtcEngineManager {
     return path;
   }
 
-
+  Future<void> enableExternalBeautyCapture(bool enable) async {
+    _useExternalBeautyCapture = enable;
+  }
 }

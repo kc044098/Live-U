@@ -73,6 +73,9 @@ dependencies:
   connectivity_plus: ^4.0.0
   pub_semver: ^2.1.4
 
+  mt_plugin:
+    path: third_party/mt_plugin
+
 dependency_overrides:
   http: ^1.2.2
 
