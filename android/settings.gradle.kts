@@ -22,6 +22,9 @@ dependencyResolutionManagement {
         maven { url = uri("https://storage.googleapis.com/download.flutter.io") }
         google()
         mavenCentral()
+        flatDir {
+            dirs(file("../third_party/mt_plugin/android/libs"))
+        }
     }
 }
 plugins {

@@ -1,0 +1,76 @@
+{
+  "masks": [
+    {
+      "name": "masquerade1",
+      "dir": "masquerade1",
+      "thumb": "mt_masquerade1_icon.png",
+      "downloaded": false
+    },
+    {
+      "name": "masquerade2",
+      "dir": "masquerade2",
+      "thumb": "mt_masquerade2_icon.png",
+      "downloaded": false
+    },
+    {
+      "name": "masquerade3",
+      "dir": "masquerade3",
+      "thumb": "mt_masquerade3_icon.png",
+      "downloaded": false
+    },
+    {
+      "name": "masquerade4",
+      "dir": "masquerade4",
+      "thumb": "mt_masquerade4_icon.png",
+      "downloaded": false
+    },
+    {
+      "name": "masquerade5",
+      "dir": "masquerade5",
+      "thumb": "mt_masquerade5_icon.png",
+      "downloaded": false
+    },
+    {
+      "name": "no_face_man",
+      "dir": "no_face_man",
+      "thumb": "mt_no_face_man_icon.png",
+      "downloaded": false
+    },
+    {
+      "name": "fox_mask",
+      "dir": "fox_mask",
+      "thumb": "mt_fox_mask_icon.png",
+      "downloaded": false
+    },
+    {
+      "name": "pattern_mask",
+      "dir": "pattern_mask",
+      "thumb": "mt_pattern_mask_icon.png",
+      "downloaded": false
+    },
+    {
+      "name": "half_pattern",
+      "dir": "half_pattern",
+      "thumb": "mt_half_pattern_icon.png",
+      "downloaded": false
+    },
+    {
+      "name": "pearl_mask",
+      "dir": "pearl_mask",
+      "thumb": "mt_pearl_mask_icon.png",
+      "downloaded": false
+    },
+    {
+      "name": "dog_mask",
+      "dir": "dog_mask",
+      "thumb": "mt_dog_mask_icon.png",
+      "downloaded": false
+    },
+    {
+      "name": "kitty_mask",
+      "dir": "kitty_mask",
+      "thumb": "mt_kitty_mask_icon.png",
+      "downloaded": false
+    }
+  ]
+}

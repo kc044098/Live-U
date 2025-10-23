@@ -1,64 +1,56 @@
 {
   "project_info": {
-    "project_number": "981830395471",
-    "project_id": "liveu-b966c",
-    "storage_bucket": "liveu-b966c.firebasestorage.app"
+    "project_number": "1028511300374",
+    "project_id": "lu-test-abff5",
+    "storage_bucket": "lu-test-abff5.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:981830395471:android:5c32d3d5b7a55ec45f2c3a",
+        "mobilesdk_app_id": "1:1028511300374:android:943410f58fb95962b52e37",
         "android_client_info": {
-          "package_name": "liveu.live"
+          "package_name": "lu.live"
         }
       },
       "oauth_client": [
         {
-          "client_id": "981830395471-1cd9fhunrp9qacjs4u0m51djl7rbt4cb.apps.googleusercontent.com",
+          "client_id": "1028511300374-cadj8g1erjltphrj3m3no2ce7co4qfcu.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "liveu.live",
-            "certificate_hash": "46715b2225cb178910bb06e03a2ca5d53c18d14a"
+            "package_name": "lu.live",
+            "certificate_hash": "8938786abdc375fcdf0733e4092acab93385b3fe"
           }
         },
         {
-          "client_id": "981830395471-fjn1uu7c801d4hf9rs6atqv49ik2ljdp.apps.googleusercontent.com",
+          "client_id": "1028511300374-ia7kffgq1sr9letd5hher06hslbru1la.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "liveu.live",
+            "package_name": "lu.live",
             "certificate_hash": "2c69630a4bbba3afad58081eeb0ed89aec99cc24"
           }
         },
         {
-          "client_id": "981830395471-u1a0kavkmgq9fs85tgavi56r35dto3m7.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "liveu.live",
-            "certificate_hash": "3d0c64d94008f60d00a7da5560531e8923906a36"
-          }
-        },
-        {
-          "client_id": "981830395471-2crgh926vkohr06l4qnp3m3e8rqr8ef0.apps.googleusercontent.com",
+          "client_id": "1028511300374-ded2i62ge70s6r8v1hce5genucpc67m2.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyDQM9IVO88blxCcXktRbu8DvHnd7x8EUbw"
+          "current_key": "AIzaSyBbX1iw2GNFz09tK1iRLe-JqZnOW8L9gkk"
         }
       ],
       "services": {
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "981830395471-2crgh926vkohr06l4qnp3m3e8rqr8ef0.apps.googleusercontent.com",
+              "client_id": "1028511300374-ded2i62ge70s6r8v1hce5genucpc67m2.apps.googleusercontent.com",
               "client_type": 3
             },
             {
-              "client_id": "981830395471-df5engt48glm46i0pou59qmpcpd3mmvh.apps.googleusercontent.com",
+              "client_id": "1028511300374-3j8kqp8gc7malhcuudv3lc93lctq1m58.apps.googleusercontent.com",
               "client_type": 2,
               "ios_info": {
-                "bundle_id": "liveu.live"
+                "bundle_id": "test.ios.lu.live"
               }
             }
           ]
