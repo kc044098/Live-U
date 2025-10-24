@@ -25,7 +25,8 @@ import 'features/live/pip_system_ui.dart';
 import 'features/profile/profile_controller.dart';
 import 'firebase_options.dart';
 import 'globals.dart';
-import 'l10n/l10n.dart';
+import 'l10n/l10n.dart' as app;
+import 'package:mt_plugin/generated/l10n.dart' as mt;
 import 'locale_provider.dart';
 import 'features/auth/login_screen.dart';
 import 'features/home/home_screen.dart';
@@ -137,12 +138,17 @@ class MyApp extends ConsumerWidget {
         return const Locale('en');
       },
       localizationsDelegates: const [
-        S.delegate,
+        // ★ 關鍵：把兩邊的 delegate 都掛上
+        app.S.delegate, // 你的 App 的字串
+        mt.S.delegate,  // mt_plugin 需要這個，否則 S.current 會是 null
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      supportedLocales: S.supportedLocales,
+      supportedLocales: {
+        ...app.S.supportedLocales,
+        ...mt.S.delegate.supportedLocales,
+      }.toList(),
       home: const BootGate(),
 
       routes: {
