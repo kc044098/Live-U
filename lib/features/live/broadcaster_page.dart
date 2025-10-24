@@ -5,7 +5,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:mt_plugin/components/meiyan_view/view.dart';
 import 'package:mt_plugin/components/mt_beauty_panel/view.dart';
+import 'package:mt_plugin/mt_plugin.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -15,6 +17,7 @@ import '../../data/models/gift_item.dart';
 import '../../globals.dart';
 import '../../l10n/l10n.dart';
 import '../../routes/app_routes.dart';
+import '../call/beauty_frame_bridge.dart';
 import '../call/call_abort_provider.dart';
 import '../call/call_repository.dart';
 import '../call/rtc_engine_manager.dart';
@@ -129,6 +132,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     WidgetsBinding.instance.addObserver(this);
 
     _rtc = RtcEngineManager(); // 已在 app 啟動 init 過
+    BeautyFrameBridge.attach(_rtc);
 
     // joined 後啟動共享計時
     _joinedListener = () async {
@@ -151,6 +155,23 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
           _startFreeCountdown();
         } else {
           ref.read(callTimerProvider).start();
+        }
+
+        if (!_isVoice) {
+          try {
+            final ok = await MtPlugin.initSDK('466c75f936c848458ffb3f598032042e');
+            debugPrint('[MTBeauty] init $ok');
+            await MtPlugin.initPath();
+            await MtPlugin.setRenderEnable(true);
+            await MtPlugin.setFaceBeautyEnable(true);
+            await MtPlugin.setWhitenessValue(30);
+            await MtPlugin.setBlurrinessValue(20);
+
+            // ✅ 一切就緒，叫原生開始回調 onFrame
+            await BeautyFrameBridge.startNativePush();
+          } catch (e, st) {
+            debugPrint('[MTBeauty] init error: $e\n$st');
+          }
         }
       }
     };
@@ -185,8 +206,6 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     // 立即用現有值暖啟動一次（如果 provider 已經有資料）
     final quick0 = ref.read(quickGiftListProvider);
     quick0.whenData(_maybeWarmQuickGifts);
-
-    _rtc.enableExternalBeautyCapture(true);
   }
 
   Future<void> _endBecauseRemoteLeft() async {
@@ -392,10 +411,12 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
       channelId: roomId,
       uid: int.parse(mUser.uid),
       token: rtcToken ?? '',
-      profile: profile,
-      role: role,
+      profile: ChannelProfileType.channelProfileCommunication,
+      role: ClientRoleType.clientRoleBroadcaster,
       isVoice: _isVoice,
+      useCustomSource: false, // ← 先還原，應該立刻能看到本地/遠端畫面
     );
+
   }
 
   void _goHome() {
@@ -683,7 +704,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
   Future<void> _close() async {
     if (_closing) return;
     _closing = true;
-
+    _showBeauty = false;
     _giftFx.stop(clearQueue: true);
 
     // 後端規定：離開也用 respondCall(flag=2)
@@ -776,12 +797,14 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
     _stopFreeCountdown();
     WakelockPlus.disable();
     _giftFx.dispose();
+    try { BeautyFrameBridge.stopNativePush(); } catch (_) {}
+
     super.dispose();
   }
 
   void _goMini() {
     _giftFx.stop(clearQueue: true);
-
+    _showBeauty = false;
     final rootCtx = Navigator.of(context, rootNavigator: true).context;
 
     final navArgs = {
@@ -1236,7 +1259,7 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
                             ),
                           if (!_isVoice && _videoOn)
                             _assetBtn(
-                              asset: 'assets/pic_my_info4.png',
+                              asset: 'assets/effect.png',
                               onTap: _toggleBeautyPanel,
                             ),
                         ],
@@ -1245,12 +1268,42 @@ class _BroadcasterPageState extends ConsumerState<BroadcasterPage>
                   },
                 ),
               ),
-            )
+            ),
+
+            if (_showBeauty) ...[
+              // 背景遮罩
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: _toggleBeautyPanel,
+                  child: Container(color: Colors.black.withOpacity(0.45)),
+                ),
+              ),
+
+              // 底部抽屜
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: SafeArea(
+                  top: false,
+                  child: Container(
+                    height: 360, // 自行調整
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                    ),
+                    child: MeiYanView(), // ← 直接放美顏頁
+                  ),
+                ),
+              ),
+            ]
+
           ],
         ),
       ),
     );
   }
+
 
   void _openRechargeSheetFromFreeBadge() async {
     await showInsufficientGoldSheet(
