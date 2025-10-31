@@ -1,0 +1,6 @@
+#include "Generated.xcconfig"
+#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"
+DART_DEFINES=RU5WPXByb2R1Y3Rpb24=,QVBJX0JBU0U9aHR0cHM6Ly9hcGkubGl2ZXUubGl2ZQ==,V1NfVVJMPXdzczovL2FwaS5saXZldS5saXZlL2FwaS9pbS9pbmRleA==
+
+DART_OBFUSCATION=true
+SPLIT_DEBUG_INFO=$(PROJECT_DIR)/build/symbols/ios

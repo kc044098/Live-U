@@ -1,0 +1,14 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Iconly/Curved/Logout">
+<mask id="mask0_0_10211" style="mask-type:luminance" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+<path id="&#232;&#183;&#175;&#229;&#190;&#132;" fill-rule="evenodd" clip-rule="evenodd" d="M0 0H24V24H0V0Z" fill="white"/>
+</mask>
+<g mask="url(#mask0_0_10211)">
+<g id="Logout">
+<path id="Stroke 1" d="M20.2589 12.4258H10.3955" stroke="#616161" stroke-width="1.5" stroke-linejoin="round"/>
+<path id="Stroke 3" d="M17.8615 10.0371L20.2599 12.4258L17.8615 14.8144" stroke="#616161" stroke-width="1.5" stroke-linejoin="round"/>
+<path id="Stroke 4" d="M4.25989 8.74746C4.53021 5.8149 5.62787 4.75 9.99395 4.75C15.8108 4.75 15.8108 6.64224 15.8108 12.3272C15.8108 18.0121 15.8108 19.9043 9.99395 19.9043C5.62787 19.9043 4.53021 18.8394 4.25989 15.9068" stroke="#616161" stroke-width="1.5" stroke-linejoin="round"/>
+</g>
+</g>
+</g>
+</svg>

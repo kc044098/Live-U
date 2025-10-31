@@ -1,0 +1,94 @@
+{
+  "expressions": [
+    {
+      "name": "carrot_rabbit",
+      "dir": "carrot_rabbit",
+      "category": "default",
+      "thumb": "mt_carrot_rabbit_icon.png",
+      "voiced": false,
+      "downloaded": false,
+      "hint": "试试挑挑眉"
+    },
+    {
+      "name": "twinkle_cat_ears",
+      "dir": "twinkle_cat_ears",
+      "category": "default",
+      "thumb": "mt_twinkle_cat_ears_icon.png",
+      "voiced": false,
+      "downloaded": false,
+      "hint": "试试张张嘴"
+    },
+    {
+      "name": "little_devil",
+      "dir": "little_devil",
+      "category": "default",
+      "thumb": "mt_little_devil_icon.png",
+      "voiced": false,
+      "downloaded": false,
+      "hint": "试试张张嘴"
+    },
+    {
+      "name": "orange_ears",
+      "dir": "orange_ears",
+      "category": "default",
+      "thumb": "mt_orange_ears_icon.png",
+      "voiced": false,
+      "downloaded": false,
+      "hint": "试试挑挑眉"
+    },
+    {
+      "name": "pearl_milk_tea",
+      "dir": "pearl_milk_tea",
+      "category": "default",
+      "thumb": "mt_pearl_milk_tea_icon.png",
+      "voiced": false,
+      "downloaded": false,
+      "hint": "试试张张嘴"
+    },
+    {
+      "name": "daji",
+      "dir": "daji",
+      "category": "default",
+      "thumb": "mt_daji_icon.png",
+      "voiced": false,
+      "downloaded": false,
+      "hint": "试试眨眨眼"
+    },
+    {
+      "name": "comic_face",
+      "dir": "comic_face",
+      "category": "default",
+      "thumb": "mt_comic_face_icon.png",
+      "voiced": false,
+      "downloaded": false,
+      "hint": "试试眨眨眼"
+    },
+    {
+      "name": "masque",
+      "dir": "masque",
+      "category": "default",
+      "thumb": "mt_masque_icon.png",
+      "voiced": false,
+      "downloaded": false,
+      "hint": "试试眨眨眼"
+    },
+    {
+      "name": "xiaoying",
+      "dir": "xiaoying",
+      "category": "default",
+      "thumb": "mt_xiaoying_icon.png",
+      "voiced": false,
+      "downloaded": false,
+      "hint": "试试眨眨眼"
+    },
+    {
+      "name": "dasheng",
+      "dir": "dasheng",
+      "category": "default",
+      "thumb": "mt_dasheng_icon.png",
+      "voiced": false,
+      "downloaded": false,
+      "hint": "试试挑挑眉"
+    }
+  ]
+}

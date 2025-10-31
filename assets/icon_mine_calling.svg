@@ -1,0 +1,14 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Iconly/Curved/Calling">
+<mask id="mask0_0_10111" style="mask-type:luminance" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+<path id="&#232;&#183;&#175;&#229;&#190;&#132;" fill-rule="evenodd" clip-rule="evenodd" d="M0 0H24V24H0V0Z" fill="white"/>
+</mask>
+<g mask="url(#mask0_0_10111)">
+<g id="Calling">
+<path id="Stroke 1" d="M14.2671 4C17.3432 4.34161 19.7736 6.76862 20.1193 9.84478" stroke="#616161" stroke-width="1.5" stroke-linejoin="round"/>
+<path id="Stroke 3" d="M14.2671 6.94531C15.7391 7.23123 16.8894 8.3824 17.1762 9.8544" stroke="#616161" stroke-width="1.5" stroke-linejoin="round"/>
+<path id="Stroke 5" fill-rule="evenodd" clip-rule="evenodd" d="M8.73807 15.2617C3.00468 9.52767 3.81995 6.90195 4.42435 6.05583C4.50199 5.91907 6.41577 3.05425 8.46719 4.73503C13.5591 8.92859 7.11281 8.33569 11.3886 12.6122C15.6652 16.8878 15.0714 10.4417 19.2652 15.5326C20.946 17.5848 18.0811 19.4985 17.9452 19.5753C17.099 20.1806 14.4723 20.9958 8.73807 15.2617V15.2617Z" stroke="#616161" stroke-width="1.5" stroke-linejoin="round"/>
+</g>
+</g>
+</g>
+</svg>

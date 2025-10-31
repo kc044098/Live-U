@@ -1,0 +1,15 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Iconly/Curved/2 User">
+<mask id="mask0_0_10165" style="mask-type:luminance" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+<path id="&#232;&#183;&#175;&#229;&#190;&#132;" fill-rule="evenodd" clip-rule="evenodd" d="M0 0H24V24H0V0Z" fill="white"/>
+</mask>
+<g mask="url(#mask0_0_10165)">
+<g id="2 User">
+<path id="Stroke 1" fill-rule="evenodd" clip-rule="evenodd" d="M9.51171 19.5499C6.40424 19.5499 3.74951 19.0802 3.74951 17.1981C3.74951 15.316 6.38731 13.6201 9.51171 13.6201C12.6192 13.6201 15.2731 15.2999 15.2731 17.1812C15.2731 19.0624 12.6361 19.5499 9.51171 19.5499V19.5499Z" stroke="#616161" stroke-width="1.5" stroke-linejoin="round"/>
+<path id="Stroke 3" fill-rule="evenodd" clip-rule="evenodd" d="M9.51184 10.936C11.5513 10.936 13.2049 9.28239 13.2049 7.24289C13.2049 5.2034 11.5513 3.5498 9.51184 3.5498C7.47235 3.5498 5.81875 5.2034 5.81875 7.24289C5.81114 9.27562 7.45373 10.9292 9.48561 10.936H9.51184V10.936Z" stroke="#616161" stroke-width="1.5" stroke-linejoin="round"/>
+<path id="Stroke 5" d="M15.641 9.92135C16.8283 9.60401 17.7034 8.52164 17.7034 7.23362C17.7042 5.88976 16.7505 4.76762 15.4828 4.50781" stroke="#616161" stroke-width="1.5" stroke-linejoin="round"/>
+<path id="Stroke 7" d="M16.1991 12.9463C17.8815 12.9463 19.3184 14.0871 19.3184 15.1051C19.3184 15.7051 18.8234 16.3212 18.0702 16.4981" stroke="#616161" stroke-width="1.5" stroke-linejoin="round"/>
+</g>
+</g>
+</g>
+</svg>

@@ -1,0 +1,6 @@
+framework module FaceBeauty {
+  umbrella header "FaceBeauty.h"
+  export *
+
+  module * { export * }
+}

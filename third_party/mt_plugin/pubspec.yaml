@@ -1,0 +1,264 @@
+name: mt_plugin
+description: FaceBeauty SDK flutter端 示例项目.
+version: 0.0.1
+author:
+homepage:
+
+environment:
+  sdk: ">=2.12.0 <3.0.0"
+
+dependencies:
+  archive: ^3.1.2
+  dio: ^5.4.1
+  shared_preferences: ^2.0.6
+  get: ^4.6.5
+  cached_network_image: ^3.0.0
+  flutter:
+    sdk: flutter
+  path_provider: ^2.0.2
+#  intl_utils: ^2.4.0
+#  json_serializable: ^4.1.4
+  intl_utils: any
+  json_serializable: any
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.toivan.mtcamera.mt_plugin
+        pluginClass: MtPlugin
+      ios:
+        package: com.toivan.mtcamera.mt_plugin
+        pluginClass: MtPlugin
+
+  assets:
+    - mt_icon/icon_mode_beauty.png #美颜 icon
+    - mt_icon/icon_mode_cute.png #AR图标 icon
+    - mt_icon/icon_mode_face_trim.png #美型 icon
+    - mt_icon/icon_mode_filter.png #滤镜 icon
+    - mt_icon/icon_mode_quick_beauty.png #一键美颜 icon
+    - mt_icon/icon_render.png #渲染对比-白色图标
+    - mt_icon/icon_render_black.png #渲染对比-黑色图标
+    - mt_icon/icon_enable_selected.png #开
+    - mt_icon/icon_enable_unselected.png #关
+    - mt_icon/icon_blemish_removal_selected.png #磨皮 选中
+    - mt_icon/icon_blemish_removal_unselected.png #磨皮 未选中
+    - mt_icon/icon_whitening_selected.png #美白 选中
+    - mt_icon/icon_whitening_unselected.png #美白 未选中
+    - mt_icon/icon_tenderness_selected.png #红润 选中
+    - mt_icon/icon_tenderness_unselected.png #红润 未选中
+    - mt_icon/icon_skin_sharpness_selected.png #鲜明 选中
+    - mt_icon/icon_skin_sharpness_unselected.png #鲜明 未选中
+    - mt_icon/icon_brightness_selected.png #亮度 选中
+    - mt_icon/icon_brightness_unselected.png #亮度 未选中
+    - mt_icon/icon_nasolabial_lessening_selected.png #去法令纹 选中
+    - mt_icon/icon_nasolabial_lessening_unselected.png #去法令纹 未选中
+    - mt_icon/icon_dark_circle_lessening_selected.png #去黑眼圈 选中
+    - mt_icon/icon_dark_circle_lessening_unselected.png #去黑眼圈 未选中
+    - mt_icon/banner1.png #Banner 图 1
+    - mt_icon/banner2.png #Banner 图 2
+    - mt_icon/banner3.png #Banner 图 3
+#    - mt_icon/banner4.png #Banner 图 4
+    - mt_icon/bg_main_home.png # 主页背景
+    - mt_icon/icon_home_cute.png # 主页贴纸按钮
+    - mt_icon/bg_main.png
+    - mt_icon/icon_home_face_trim.png #主页美型按钮
+    - mt_icon/icon_home_filter.png # 主页滤镜按钮
+    - mt_icon/icon_home_quick_beauty.png # 主页一键美美颜按钮
+    - mt_icon/icon_btn_take_photo.png # 主页拍照按钮
+    - mt_icon/icon_eye_magnifying_selected.png # 大眼 选中
+    - mt_icon/icon_eye_magnifying_unselected.png # 大眼 未选中
+    - mt_icon/icon_eye_round_selected.png # 圆眼 选中
+    - mt_icon/icon_eye_round_unselected.png # 圆眼 未选中
+    - mt_icon/icon_chin_slimming_unselected.png # 瘦脸 未选中
+    - mt_icon/icon_chin_slimming_selected.png # 瘦脸 选中
+    - mt_icon/icon_cheek_v_shaping_selected.png # V脸 选中
+    - mt_icon/icon_cheek_v_shaping_unselected.png # V脸 未选中
+    - mt_icon/icon_face_narrowing_unselected.png # 窄脸 未选中
+    - mt_icon/icon_face_narrowing_selected.png # 窄脸 选中
+    - mt_icon/icon_jaw_transforming_unselected.png # 下巴 未选中
+    - mt_icon/icon_jaw_transforming_selected.png # 下巴 选中
+    - mt_icon/icon_forehead_transforming_unselected.png # 额头 未选中
+    - mt_icon/icon_forehead_transforming_selected.png # 额头 选中
+    - mt_icon/icon_cheek_bone_thinning_unselected.png # 瘦颧骨 未选中
+    - mt_icon/icon_cheek_bone_thinning_selected.png # 瘦颧骨 选中
+    - mt_icon/icon_jaw_bone_thinning_selected.png #瘦下颌骨 选中
+    - mt_icon/icon_jaw_bone_thinning_unselected.png # 瘦下颌骨 未选中
+    - mt_icon/icon_temple_enlarging_unselected.png # 丰太阳穴 未选中
+    - mt_icon/icon_temple_enlarging_selected.png # 丰太阳穴 未选中
+    - mt_icon/icon_head_lessening_selected.png # 小头 选中
+    - mt_icon/icon_head_lessening_unselected.png # 小头 未选中
+    - mt_icon/icon_philtrum_trimming_selected.png #缩人中 选中
+    - mt_icon/icon_philtrum_trimming_unselected.png #缩人中 未选中
+    - mt_icon/icon_eye_spacing_unselected.png #眼间距 未选中
+    - mt_icon/icon_eye_spacing_selected.png #眼间距 选中
+    - mt_icon/icon_eye_corner_enlarging_unselected.png #开眼角 未选中
+    - mt_icon/icon_eye_corner_enlarging_selected.png # 开眼角 选中
+    - mt_icon/icon_eye_corners_selected.png # 倾斜 选中
+    - mt_icon/icon_eye_corners_unselected.png # 倾斜 未选中
+    - mt_icon/icon_nose_elongating_unselected.png # 长鼻 未选中
+    - mt_icon/icon_nose_elongating_selected.png # 长鼻 选中
+    - mt_icon/icon_nose_minifying_unselected.png #瘦鼻 未选中
+    - mt_icon/icon_nose_minifying_selected.png #瘦鼻 选中
+    - mt_icon/icon_nose_apex_lessening_unselected.png #鼻头 未选中
+    - mt_icon/icon_nose_apex_lessening_selected.png # 鼻头 选中
+    - mt_icon/icon_nose_root_enlarging_unselected.png # 山根 未选中
+    - mt_icon/icon_nose_root_enlarging_selected.png # 山根 选中
+    - mt_icon/icon_mouth_trimming_unselected.png # 嘴型 未选中
+    - mt_icon/icon_mouth_trimming_selected.png # 嘴型 选中
+    - mt_icon/icon_mouth_smiling_unselected.png # 微笑嘴角 未选中
+    - mt_icon/icon_mouth_smiling_selected.png  #微笑嘴角 选中
+    - mt_icon/icon_face_lessening_unselected.png #小脸 未选中
+    - mt_icon/icon_face_lessening_selected.png #小脸 选中
+    - mt_icon/icon_cheek_shortening_selected.png #短脸 选中
+    - mt_icon/icon_cheek_shortening_unselected.png #短脸 未选中
+    - mt_icon/icon_class_sticker.png #贴纸
+    - mt_icon/icon_class_mask.png #面具
+    - mt_icon/icon_class_watermark.png # 水印
+    - mt_icon/icon_class_gift.png # 礼物
+    - mt_icon/icon_filter_item_selected.png # 滤镜选中
+    - mt_icon/icon_beauty_filter/ic_filter_yuantu.png # 风格滤镜 原画
+    - mt_icon/icon_beauty_filter/ic_filter_ziran1.png # 风格滤镜 自然1
+    - mt_icon/icon_beauty_filter/ic_filter_ziran2.png # 风格滤镜 自然2
+    - mt_icon/icon_beauty_filter/ic_filter_ziran3.png # 风格滤镜 自然3
+    - mt_icon/icon_beauty_filter/ic_filter_ziran4.png # 风格滤镜 自然4
+    - mt_icon/icon_beauty_filter/ic_filter_ziran5.png # 风格滤镜 自然5
+    - mt_icon/icon_beauty_filter/ic_filter_ziran6.png # 风格滤镜 自然6
+    - mt_icon/icon_beauty_filter/ic_filter_yuese.png # 风格滤镜 月色
+    - mt_icon/icon_beauty_filter/ic_filter_yuehui.png # 风格滤镜 月辉
+    - mt_icon/icon_beauty_filter/ic_filter_riguang.png # 风格滤镜 日光
+    - mt_icon/icon_beauty_filter/ic_filter_luoxia.png # 风格滤镜 落霞
+    - mt_icon/icon_beauty_filter/ic_filter_zhigan1.png # 风格滤镜 质感1
+    - mt_icon/icon_beauty_filter/ic_filter_zhigan2.png # 风格滤镜 质感2
+    - mt_icon/icon_beauty_filter/ic_filter_zhigan3.png # 风格滤镜 质感3
+    - mt_icon/icon_beauty_filter/ic_filter_zhigan4.png # 风格滤镜 质感4
+    - mt_icon/icon_beauty_filter/ic_filter_zhigan5.png # 风格滤镜 质感5
+    - mt_icon/icon_beauty_filter/ic_filter_shadow1.png # 风格滤镜 shadow1
+    - mt_icon/icon_beauty_filter/ic_filter_shadow2.png # 风格滤镜 shadow2
+    - mt_icon/icon_beauty_filter/ic_filter_shadow3.png # 风格滤镜 shadow3
+    - mt_icon/icon_beauty_filter/ic_filter_shadow4.png # 风格滤镜 shadow4
+    - mt_icon/icon_beauty_filter/ic_filter_yueye.png # 风格滤镜 月夜
+    - mt_icon/icon_beauty_filter/ic_filter_micha.png # 风格滤镜 米茶
+    - mt_icon/icon_beauty_filter/ic_filter_jingmi.png # 风格滤镜 静谧
+    - mt_icon/icon_beauty_filter/ic_filter_rouguang.png # 风格滤镜 柔光
+    - mt_icon/icon_beauty_filter/ic_filter_naixing.png # 风格滤镜 奶杏
+    - mt_icon/icon_beauty_filter/ic_filter_yanse.png # 风格滤镜 烟色
+    - mt_icon/icon_beauty_filter/ic_filter_qingwu.png # 风格滤镜 青雾
+    - mt_icon/icon_beauty_filter/ic_filter_qingbao.png # 风格滤镜 青曝
+    - mt_icon/icon_beauty_filter/ic_filter_huanzi.png # 风格滤镜 幻紫
+    - mt_icon/icon_beauty_filter/ic_filter_huanse.png # 风格滤镜 幻色
+    - mt_icon/icon_beauty_filter/ic_filter_jiuzhao.png # 风格滤镜 旧照
+    - mt_icon/icon_beauty_filter/ic_filter_mihuan.png # 风格滤镜 迷幻
+    - mt_icon/icon_beauty_filter/ic_filter_yicai.png # 风格滤镜 异彩
+    - mt_icon/icon_beauty_filter/ic_filter_chunhui.png # 风格滤镜 春晖
+    - mt_icon/icon_beauty_filter/ic_filter_guangyun.png # 风格滤镜 光晕
+    - mt_icon/icon_beauty_filter/ic_filter_rouwu.png # 风格滤镜 柔雾
+    - mt_icon/icon_beauty_filter/ic_filter_zhishedeng.png # 风格滤镜 直射灯
+    - mt_icon/icon_beauty_filter/ic_filter_chuchun.png # 风格滤镜 初春
+    - mt_icon/icon_beauty_filter/ic_filter_chulian.png # 风格滤镜 初恋
+    - mt_icon/icon_beauty_filter/ic_filter_chuxue.png # 风格滤镜 初雪
+    - mt_icon/icon_beauty_filter/ic_filter_fenci.png # 风格滤镜 粉瓷
+    - mt_icon/icon_beauty_filter/ic_filter_lengdong.png # 风格滤镜 冷冬
+    - mt_icon/icon_beauty_filter/ic_filter_mengjing.png # 风格滤镜 梦境
+    - mt_icon/icon_beauty_filter/ic_filter_qingtou.png # 风格滤镜 清透
+    - mt_icon/icon_beauty_filter/ic_filter_xinye.png # 风格滤镜 新叶
+    - mt_icon/icon_beauty_filter/ic_filter_bingcha.png # 风格滤镜 冰茶
+    - mt_icon/icon_beauty_filter/ic_filter_langman.png # 风格滤镜 浪漫
+    - mt_icon/icon_beauty_filter/ic_filter_miwu.png # 风格滤镜 迷雾
+    - mt_icon/icon_beauty_filter/ic_filter_qingmu.png # 风格滤镜 青木
+    - mt_icon/icon_beauty_filter/ic_filter_qingsha.png # 风格滤镜 轻沙
+    - mt_icon/icon_beauty_filter/ic_filter_qingxu.png # 风格滤镜 情绪
+    - mt_icon/icon_beauty_filter/ic_filter_senwu.png # 风格滤镜 森雾
+    - mt_icon/icon_beauty_filter/ic_filter_shaman.png # 风格滤镜 沙漫
+    - mt_icon/icon_beauty_filter/ic_filter_wenrou.png # 风格滤镜 温柔
+    - mt_icon/icon_beauty_filter/ic_filter_miaohui.png # 风格滤镜 庙会
+    - mt_icon/icon_beauty_filter/ic_filter_qingkong.png # 风格滤镜 晴空
+    - mt_icon/icon_beauty_filter/ic_filter_shanjian.png # 风格滤镜 山间
+    - mt_icon/icon_beauty_filter/ic_filter_xiangsong.png # 风格滤镜 香松
+    - mt_icon/icon_beauty_filter/ic_filter_biaozhun.png # 风格滤镜 标准
+    - mt_icon/icon_beauty_filter/ic_filter_shuiguang.png # 风格滤镜 水光
+    - mt_icon/icon_beauty_filter/ic_filter_shuiwu.png # 风格滤镜 水雾
+    - mt_icon/icon_beauty_filter/ic_filter_lengdan.png # 风格滤镜 冷淡
+    - mt_icon/icon_beauty_filter/ic_filter_bailan.png # 风格滤镜 白兰
+    - mt_icon/icon_beauty_filter/ic_filter_chunzhen.png # 风格滤镜 纯真
+    - mt_icon/icon_beauty_filter/ic_filter_chaotuo.png # 风格滤镜 超脱
+    - mt_icon/icon_beauty_filter/ic_filter_senxi.png # 风格滤镜 森系
+    - mt_icon/icon_beauty_filter/ic_filter_nuanyang.png # 风格滤镜 暖阳
+    - mt_icon/icon_beauty_filter/ic_filter_xiari.png # 风格滤镜 夏日
+    - mt_icon/icon_beauty_filter/ic_filter_mitaowulong.png # 风格滤镜 蜜桃乌龙
+    - mt_icon/icon_beauty_filter/ic_filter_shaonv.png # 风格滤镜 少女
+    - mt_icon/icon_beauty_filter/ic_filter_yuanqi.png # 风格滤镜 元气
+    - mt_icon/icon_beauty_filter/ic_filter_feiying.png # 风格滤镜 绯樱
+    - mt_icon/icon_beauty_filter/ic_filter_qingxin.png # 风格滤镜 清新
+    - mt_icon/icon_beauty_filter/ic_filter_rixi.png # 风格滤镜 日系
+    - mt_icon/icon_beauty_filter/ic_filter_fanchase.png # 风格滤镜 反差色
+    - mt_icon/icon_beauty_filter/ic_filter_fugu.png # 风格滤镜 复古
+    - mt_icon/icon_beauty_filter/ic_filter_huiyi.png # 风格滤镜 回忆
+    - mt_icon/icon_beauty_filter/ic_filter_huaijiu.png # 风格滤镜 怀旧
+    - mt_icon/icon_funny_filter/icon_funny_none.webp # 趣味滤镜 原图
+    - mt_icon/icon_funny_filter/icon_funny_alien.webp #趣味滤镜 外星人
+    - mt_icon/icon_funny_filter/icon_funny_bignose.webp # 趣味滤镜 大鼻子
+    - mt_icon/icon_funny_filter/icon_funny_bigmouth.webp # 趣味滤镜 大嘴巴
+    - mt_icon/icon_funny_filter/icon_funny_squareface.webp # 趣味滤镜 方形脸
+    - mt_icon/icon_funny_filter/icon_funny_bighead.webp # 趣味滤镜 大头
+    - mt_icon/icon_funny_filter/icon_funny_pearface.webp # 趣味滤镜 嘟嘟脸
+    - mt_icon/icon_funny_filter/icon_funny_smalleye.webp # 趣味滤镜 豆豆眼
+    - mt_icon/icon_funny_filter/icon_funny_thinface.webp # 趣味滤镜 蛇精脸
+    - mt_icon/icon_effect_filter/ht_yuantu_icon.webp # 特效滤镜 原图
+    - mt_icon/icon_effect_filter/ht_lhcq_icon.webp # 特效滤镜 灵魂出窍
+    - mt_icon/icon_effect_filter/ht_hbdy_icon.webp # 特效滤镜 黑白电影
+    - mt_icon/icon_effect_filter/ht_mfjm_icon.webp # 特效滤镜 魔法镜面
+    - mt_icon/icon_effect_filter/ht_xcdd_icon.webp # 特效滤镜 炫彩抖动
+    - mt_icon/icon_effect_filter/ht_tymx_icon.webp # 特效滤镜 头晕目眩
+    - mt_icon/icon_effect_filter/ht_dgfp_icon.webp # 特效滤镜 动感分屏
+    - mt_icon/icon_effect_filter/ht_sfp_icon.webp # 特效滤镜 四宫格
+    - mt_icon/icon_effect_filter/ht_spjx_icon.webp # 特效滤镜 四屏镜像
+    - mt_icon/icon_effect_filter/ht_maoboli_icon.webp # 特效滤镜 毛玻璃
+    - mt_icon/icon_effect_filter/ht_bkmh_icon.webp # 特效滤镜 边界模糊
+    - mt_icon/icon_effect_filter/ht_mhfp_icon.webp # 特效滤镜 模糊分屏
+    - mt_icon/icon_effect_filter/ht_sjsh_icon.webp # 特效滤镜 瞬间石化
+    - mt_icon/icon_effect_filter/ht_qcdd_icon.webp # 特效滤镜 轻彩抖动
+    - mt_icon/icon_effect_filter/ht_yjlg_icon.png # 特效滤镜 一键乐高
+    - mt_icon/icon_effect_filter/ht_jgg_icon.webp # 特效滤镜 九宫格
+    - mt_icon/icon_effect_filter/ht_fgj_icon.webp # 特效滤镜 反光镜
+    - mt_icon/icon_effect_filter/ht_xnjx_icon.webp # 特效滤镜 虚拟镜像
+    - mt_icon/icon_effect_filter/ht_hjcy_icon.webp # 特效滤镜 幻觉残影
+    - mt_icon/icon_effect_filter/ht_sanfp_icon.png # 特效滤镜 三分屏
+    - mt_icon/icon_effect_filter/ht_sbl_icon.png # 特效滤镜 碎玻璃
+    - mt_icon/icon_quick_makeup/ic_makeup_none.png # 一键美颜 原图
+    - mt_icon/icon_quick_makeup/ic_makeup_01.png # 一键美颜 清纯白花
+    - mt_icon/icon_quick_makeup/ic_makeup_02.png # 一键美颜 狐系美人
+    - mt_icon/icon_quick_makeup/ic_makeup_03.png # 一键美颜 清甜妆
+    - mt_icon/icon_quick_makeup/ic_makeup_04.png # 一键美颜 白露
+    - mt_icon/icon_quick_makeup/ic_makeup_05.png # 一键美颜 冷调
+    - mt_icon/icon_quick_makeup/ic_makeup_06.png # 一键美颜 元气少女
+    - mt_icon/icon_quick_makeup/ic_makeup_07.png # 一键美颜 女团
+    - mt_icon/icon_quick_makeup/ic_makeup_08.png # 一键美颜 纯欲妆
+    - mt_icon/ht_watermark_effect_diary_icon.png # 水印 日常
+    - mt_icon/ht_watermark_effect_hongtu_icon.png # 水印
+    - mt_icon/ht_watermark_effect_life_icon.png # 水印
+    - mt_icon/ht_watermark_effect_manchang_icon.png # 水印
+    - mt_icon/icon_beauty_white.png # 悬浮图标
+    - mt_icon/icon_download.png # 需要下载的图标
+    - mt_icon/icon_reset_selected.png #重置图标 选择的样子
+    - mt_icon/icon_reset_unselected.png #重置图标 未选择的样子
+    - mt_icon/icon_loading.png # 加载图标
+    - mt_icon/icon_bubble.png # 滑动条指示器
+    - mt_icon/icon_none_unselected.png # 关闭按钮 未选中
+    - mt_icon/icon_none_selected.png # 关闭按钮 选中
+    - mt_icon/icon_class_portrait.png
+    - assets/atmospheres.json
+    - assets/expressions.json
+    - assets/masks.json
+    - assets/stickers.json
+    - assets/portraits.json
+    - assets/greenscreens.json
+
+flutter_intl:
+  enabled: true
+

@@ -1,0 +1,356 @@
+{
+  "stickers": [
+    {
+      "name": "fb_sticker_effect_none",
+      "dir": "mengqu4",
+      "category": "default",
+      "thumb": "mt_mengqu4_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "fb_sticker_effect_lu",
+      "dir": "fb_sticker_effect_lu",
+      "category": "default",
+      "thumb": "mt_mengqu3_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "mengqu1",
+      "dir": "mengqu1",
+      "category": "default",
+      "thumb": "mt_mengqu1_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "chuangyi2",
+      "dir": "chuangyi2",
+      "category": "default",
+      "thumb": "mt_chuangyi2_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "chuangyi3",
+      "dir": "chuangyi3",
+      "category": "default",
+      "thumb": "mt_chuangyi3_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "chuangyi4",
+      "dir": "chuangyi4",
+      "category": "default",
+      "thumb": "mt_chuangyi4_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "chuangyi5",
+      "dir": "chuangyi5",
+      "category": "default",
+      "thumb": "mt_chuangyi5_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "mengqu2",
+      "dir": "mengqu2",
+      "category": "default",
+      "thumb": "mt_mengqu2_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "mengqu5",
+      "dir": "mengqu5",
+      "category": "default",
+      "thumb": "mt_mengqu5_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "remen2",
+      "dir": "remen2",
+      "category": "default",
+      "thumb": "mt_remen2_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "remen3",
+      "dir": "remen3",
+      "category": "default",
+      "thumb": "mt_remen3_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "remen4",
+      "dir": "remen4",
+      "category": "default",
+      "thumb": "mt_remen4_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "remen5",
+      "dir": "remen5",
+      "category": "default",
+      "thumb": "mt_remen5_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "tiezhi01",
+      "dir": "tiezhi01",
+      "category": "default",
+      "thumb": "mt_tiezhi01_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "tiezhi02",
+      "dir": "tiezhi02",
+      "category": "default",
+      "thumb": "mt_tiezhi02_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "tiezhi03",
+      "dir": "tiezhi03",
+      "category": "default",
+      "thumb": "mt_tiezhi03_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "tiezhi04",
+      "dir": "tiezhi04",
+      "category": "default",
+      "thumb": "mt_tiezhi04_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "zuixin1",
+      "dir": "zuixin1",
+      "category": "default",
+      "thumb": "mt_zuixin1_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "zuixin2",
+      "dir": "zuixin2",
+      "category": "default",
+      "thumb": "mt_zuixin2_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "zuixin3",
+      "dir": "zuixin3",
+      "category": "default",
+      "thumb": "mt_zuixin3_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "zuixin4",
+      "dir": "zuixin4",
+      "category": "default",
+      "thumb": "mt_zuixin4_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "zuixin5",
+      "dir": "zuixin5",
+      "category": "default",
+      "thumb": "mt_zuixin5_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "gear",
+      "dir": "gear",
+      "category": "default",
+      "thumb": "mt_gear_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "chuangyi1",
+      "dir": "chuangyi1",
+      "category": "default",
+      "thumb": "mt_chuangyi1_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "angle",
+      "dir": "angle",
+      "category": "mengxi",
+      "thumb": "mt_angle_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "beauty_kitty",
+      "dir": "beauty_kitty",
+      "category": "mengxi",
+      "thumb": "mt_beauty_kitty_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "berries_goddess",
+      "dir": "berries_goddess",
+      "category": "mengxi",
+      "thumb": "mt_berries_goddess_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "birthday_gift",
+      "dir": "birthday_gift",
+      "category": "mengxi",
+      "thumb": "mt_birthday_gift_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "cotton_candy",
+      "dir": "cotton_candy",
+      "category": "mengxi",
+      "thumb": "mt_cotton_candy_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "ear2020",
+      "dir": "ear2020",
+      "category": "mengxi",
+      "thumb": "mt_ear2020_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "leopard_ear",
+      "dir": "leopard_ear",
+      "category": "mengxi",
+      "thumb": "mt_leopard_ear_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "love_bowknot",
+      "dir": "love_bowknot",
+      "category": "mengxi",
+      "thumb": "mt_love_bowknot_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "smiling_face",
+      "dir": "smiling_face",
+      "category": "mengxi",
+      "thumb": "mt_smiling_face_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "star_glow",
+      "dir": "star_glow",
+      "category": "mengxi",
+      "thumb": "mt_star_glow_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "caishen",
+      "dir": "caishen",
+      "category": "jieri",
+      "thumb": "mt_caishen_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "duanwu",
+      "dir": "duanwu",
+      "category": "jieri",
+      "thumb": "mt_duanwu_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "ertong",
+      "dir": "ertong",
+      "category": "jieri",
+      "thumb": "mt_ertong_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "guoqing",
+      "dir": "guoqing",
+      "category": "jieri",
+      "thumb": "mt_guoqing_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "jiaoshi",
+      "dir": "jiaoshi",
+      "category": "jieri",
+      "thumb": "mt_jiaoshi_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "qingren",
+      "dir": "qingren",
+      "category": "jieri",
+      "thumb": "mt_qingren_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "shengdan",
+      "dir": "shengdan",
+      "category": "jieri",
+      "thumb": "mt_shengdan_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "wansheng1",
+      "dir": "wansheng1",
+      "category": "jieri",
+      "thumb": "mt_wansheng1_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "wansheng2",
+      "dir": "wansheng2",
+      "category": "jieri",
+      "thumb": "mt_wansheng2_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "zhongqiu",
+      "dir": "zhongqiu",
+      "category": "jieri",
+      "thumb": "mt_zhongqiu_icon.png",
+      "voiced": false,
+      "downloaded": false
+    }
+  ]
+}

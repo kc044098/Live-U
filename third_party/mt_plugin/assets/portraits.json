@@ -1,0 +1,44 @@
+{
+  "portraits": [
+    {
+      "name": "mt_monster",
+      "dir": "mt_monster",
+      "category": "default",
+      "thumb": "mt_monster_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "mt_cloud",
+      "dir": "mt_cloud",
+      "category": "default",
+      "thumb": "mt_cloud_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "mt_adoreu",
+      "dir": "mt_adoreu",
+      "category": "default",
+      "thumb": "mt_adoreu_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "mt_snack",
+      "dir": "mt_snack",
+      "category": "default",
+      "thumb": "mt_snack_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "mt_star",
+      "dir": "mt_star",
+      "category": "default",
+      "thumb": "mt_star_icon.png",
+      "voiced": false,
+      "downloaded": false
+    }
+  ]
+}

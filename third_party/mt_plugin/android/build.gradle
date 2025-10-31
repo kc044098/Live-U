@@ -1,0 +1,66 @@
+group 'com.toivan.mtcamera.mt_plugin'
+version '1.0-SNAPSHOT'
+
+buildscript {
+    ext.kotlin_version = '2.1.0'
+    repositories {
+        google()
+        jcenter()
+        maven { url "https://storage.googleapis.com/download.flutter.io" }
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.10.1'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+rootProject.allprojects {
+    repositories {
+        google()
+        jcenter()
+        maven { url "https://storage.googleapis.com/download.flutter.io" }
+    }
+}
+
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+android {
+    compileSdkVersion 30
+
+    namespace "com.toivan.mtcamera.mt_plugin"
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+    }
+    defaultConfig {
+        minSdkVersion 24
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+}
+
+repositories {
+    flatDir {
+        dirs 'libs'
+    }
+}
+
+dependencies {
+    api(name: 'fb_sdk-release', ext: 'aar')
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+    def batchImportAar = {
+        fileTree(dir: 'libs', include: '*.aar').each { File file ->
+            def name = file.name.lastIndexOf('.').with { it != -1 ? file.name[0..<it] : file.name };
+            api(name: name, ext: 'aar')
+        }
+    }
+    batchImportAar()
+
+    api 'com.google.code.gson:gson:2.8.6'
+}

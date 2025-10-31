@@ -1,0 +1,84 @@
+{
+  "atmospheres": [
+    {
+      "name": "cheer",
+      "dir": "cheer",
+      "category": "default",
+      "thumb": "mt_cheer_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "gift_box",
+      "dir": "gift_box",
+      "category": "default",
+      "thumb": "mt_gift_box_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "magic_stick",
+      "dir": "magic_stick",
+      "category": "default",
+      "thumb": "mt_magic_stick_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "cake",
+      "dir": "cake",
+      "category": "default",
+      "thumb": "mt_cake_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "lollipop",
+      "dir": "lollipop",
+      "category": "default",
+      "thumb": "mt_lollipop_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "rocket",
+      "dir": "rocket",
+      "category": "default",
+      "thumb": "mt_rocket_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "car",
+      "dir": "car",
+      "category": "default",
+      "thumb": "mt_car_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "balloon",
+      "dir": "balloon",
+      "category": "default",
+      "thumb": "mt_balloon_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "bixin",
+      "dir": "bixin",
+      "category": "default",
+      "thumb": "mt_bixin_icon.png",
+      "voiced": false,
+      "downloaded": false
+    },
+    {
+      "name": "six",
+      "dir": "six",
+      "category": "default",
+      "thumb": "mt_six_icon.png",
+      "voiced": false,
+      "downloaded": false
+    }
+  ]
+}

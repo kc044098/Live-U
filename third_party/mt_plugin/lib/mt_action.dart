@@ -1,0 +1,160 @@
+enum MTAction {
+  SET_RENDER_ENABLE, //设置美颜的开关
+  INIT_SDK, //初始化SDK
+  SET_FACE_BEAUTY_ENABLE, //设置面部美颜的开关
+  INIT_PATH, //获取下载位置参数
+  SET_WHITENESS_VALUE, //设置美白参数
+  SET_BLURRINESS_VALUE, //设置磨皮`
+  SET_ROSINESS_VALUE, //设置红润
+  SET_CLEAR_NESS_VALUE, //设置鲜明
+  SET_BRIGHTNESS_VALUE, //设置亮度
+  SET_UNDEREYE_CIRCLES_VALUE,//设置去黑眼圈
+  SET_NASOLABIAL_FOLD_VALUE,//设置去法令纹
+  SET_FACE_SHAPE_ENABLE, //设置美型
+  SET_EYE_ENLARGING_VALUE, //大眼
+  SET_EYE_ROUNDING_VALUE,//圆眼
+  SET_CHEEK_THINNING_VALUE, //瘦脸
+  SET_CHEEK_V_VALUE,//V脸
+  SET_CHEEK_NARROWING_VALUE, //窄脸
+  SET_PHILTRUM_TRIMMING_VALUE, //人中
+  SET_CHEEK_BONE_THINNING, //瘦颧骨
+  SET_CHIN_TRIMMING_VALUE, //下巴
+  SET_TEMPLE_ENLARG_ING_VALUE, //丰太阳穴
+  SET_FOREHEAD_TRIMMING_VALUE, //额头
+  SET_MOUTH_TRIMMING_VALUE, //嘴型
+  SET_NOSE_THINNING_VALUE, //瘦鼻
+  SET_NOSE_ENLARGING_VALUE, //长鼻
+  SET_EYE_SPACING_TRIMMING_VALUE, //眼间距
+  SET_EYE_CORNER_TRIMMING_VALUE, //眼角倾斜
+  SET_EYE_CORNER_ENLARGING_VALYE,
+  SET_DYNAMIC_STICKER_NAME, //设置贴纸
+  SET_EXPRESSION_RECREATION_NAME, //设置表情
+  SET_MASK_NAME, //道具
+  SET_GIFT_NAME, //道具
+  SET_WATERMARK_NAME,//水印
+  SET_GREEN_SCREEN, //设置绿幕
+  SET_ATMOSPHERE_ITEM_NAME, //气氛
+  SET_WATER_NAME, //水印
+  SET_BEAUTY_FILTER_NAME, //美颜滤镜
+  SET_EFFECT_FILTER_TYPE, //特效滤镜
+  SET_FUNNY_FILTER_TYPE, //趣味滤镜
+  SET_MAGIC_FILTER_TYPE, //魔法滤镜
+  SET_TONE_FILTER_TYPE, //调色滤镜
+  SET_NOSE_APEX_LESSENING_VALUE, //鼻头
+  SET_NOSE_ROOT_RNLARING, //山根
+  SET_MOUTH_SMILING_ENLARGING_VALUE, //微笑嘴角
+  SET_JAW_BONE_THINNING_VALUE, //下颌骨
+  SET_FACE_LESSENING_VALUE, //小脸
+  SET_FACE_SHORTENING_VALUE,//短脸
+  SET_HEAD_LESSENING_VALUE, //小头
+  SET_BEAUTY_STYLE, //设置一键美颜
+  SET_PORTRAIT_NAME, //设置人像抠图
+}
+
+///用于返回枚举名称的拓展函数
+extension MTActionExtension on MTAction {
+  String get methodName {
+    switch (this) {
+      case MTAction.INIT_PATH:
+        return "INIT_PATH";
+      case MTAction.INIT_SDK:
+        return "INIT_SDK";
+      case MTAction.SET_RENDER_ENABLE:
+        return "SET_RENDER_ENABLE";
+      case MTAction.SET_WHITENESS_VALUE:
+        return "SET_WHITENESS_VALUE";
+      case MTAction.SET_BLURRINESS_VALUE:
+        return "SET_BLURRINESS_VALUE";
+      case MTAction.SET_ROSINESS_VALUE:
+        return "SET_ROSINESS_VALUE";
+      case MTAction.SET_CLEAR_NESS_VALUE:
+        return "SET_ROSINESS_VALUE";
+      case MTAction.SET_BRIGHTNESS_VALUE:
+        return "SET_BRIGHTNESS_VALUE";
+      case MTAction.SET_UNDEREYE_CIRCLES_VALUE:
+        return "SET_UNDEREYE_CIRCLES_VALUE";
+      case MTAction.SET_NASOLABIAL_FOLD_VALUE:
+        return "SET_NASOLABIAL_FOLD_VALUE";
+      case MTAction.SET_FACE_SHAPE_ENABLE:
+        return "SET_FACE_SHAPE_ENABLE";
+      case MTAction.SET_EYE_ENLARGING_VALUE:
+        return "SET_EYE_ENLARGING_VALUE";
+      case MTAction.SET_EYE_ROUNDING_VALUE:
+      return "SET_EYE_ROUNDING_VALUE";
+      case MTAction.SET_CHEEK_THINNING_VALUE:
+        return "SET_CHEEK_THINNING_VALUE";
+      case MTAction.SET_CHEEK_V_VALUE:
+      return "SET_CHEEK_V_VALUE";
+      case MTAction.SET_CHEEK_NARROWING_VALUE:
+        return "SET_CHEEK_NARROWING_VALUE";
+      case MTAction.SET_CHIN_TRIMMING_VALUE:
+        return "SET_CHIN_TRIMMING_VALUE";
+      case MTAction.SET_FOREHEAD_TRIMMING_VALUE:
+        return "SET_FOREHEAD_TRIMMING_VALUE";
+      case MTAction.SET_MOUTH_TRIMMING_VALUE:
+        return "SET_MOUTH_TRIMMING_VALUE";
+      case MTAction.SET_NOSE_THINNING_VALUE:
+        return "SET_NOSE_THINNING_VALUE";
+      case MTAction.SET_NOSE_ENLARGING_VALUE:
+        return "SET_NOSE_ENLARGING_VALUE";
+      case MTAction.SET_EYE_SPACING_TRIMMING_VALUE:
+        return "SET_EYE_SPACING_TRIMMING_VALUE";
+      case MTAction.SET_EYE_CORNER_TRIMMING_VALUE:
+        return "SET_EYE_CORNER_TRIMMING_VALUE";
+      case MTAction.SET_DYNAMIC_STICKER_NAME:
+        return "SET_DYNAMIC_STICKER_NAME";
+      case MTAction.SET_EXPRESSION_RECREATION_NAME:
+        return "SET_EXPRESSION_RECREATION_NAME";
+      case MTAction.SET_MASK_NAME:
+        return "SET_MASK_NAME";
+      case MTAction.SET_GIFT_NAME:
+        return "SET_GIFT_NAME";
+      case MTAction.SET_WATERMARK_NAME:
+        return "SET_WATERMARK_NAME";
+      case MTAction.SET_ATMOSPHERE_ITEM_NAME:
+        return "SET_ATMOSPHERE_ITEM_NAME";
+      case MTAction.SET_WATER_NAME:
+        return "SET_WATER_NAME";
+      case MTAction.SET_BEAUTY_FILTER_NAME:
+        return "SET_BEAUTY_FILTER_NAME";
+      case MTAction.SET_EFFECT_FILTER_TYPE:
+        return "SET_EFFECT_FILTER_TYPE";
+      case MTAction.SET_CHEEK_BONE_THINNING:
+        return "SET_CHEEK_BONE_THINNING";
+      case MTAction.SET_PHILTRUM_TRIMMING_VALUE:
+        return " SET_PHILTRUM_TRIMMING_VALUE";
+      case MTAction.SET_NOSE_APEX_LESSENING_VALUE:
+        return "SET_NOSE_APEX_LESSENING_VALUE";
+      case MTAction.SET_NOSE_ROOT_RNLARING:
+        return "SET_NOSE_ROOT_RNLARING";
+      case MTAction.SET_MOUTH_SMILING_ENLARGING_VALUE:
+        return "SET_MOUTH_SMILING_ENLARGING_VALUE";
+      case MTAction.SET_JAW_BONE_THINNING_VALUE:
+        return "SET_JAW_BONE_THINNING_VALUE";
+      case MTAction.SET_TEMPLE_ENLARG_ING_VALUE:
+        return "SET_TEMPLE_ENLARG_ING_VALUE";
+      case MTAction.SET_FACE_LESSENING_VALUE:
+        return "SET_FACE_LESSENING_VALUE";
+      case MTAction.SET_FACE_SHORTENING_VALUE:
+      return "SET_FACE_SHORTENING_VALUE";
+      case MTAction.SET_HEAD_LESSENING_VALUE:
+        return "SET_HEAD_LESSENING_VALUE";
+      case MTAction.SET_BEAUTY_STYLE:
+        return "SET_BEAUTY_STYLE";
+      case MTAction.SET_MAGIC_FILTER_TYPE:
+        return "SET_MAGIC_FILTER_TYPE";
+      case MTAction.SET_TONE_FILTER_TYPE:
+        return "SET_TONE_FILTER_TYPE";
+      case MTAction.SET_FUNNY_FILTER_TYPE:
+        return "SET_FUNNY_FILTER_TYPE";
+      case MTAction.SET_FACE_BEAUTY_ENABLE:
+        return "SET_FACE_BEAUTY_ENABLE";
+      case MTAction.SET_EYE_CORNER_ENLARGING_VALYE:
+        return "SET_EYE_CORNER_ENLARGING_VALYE";
+      case MTAction.SET_PORTRAIT_NAME:
+        return "SET_PORTRAIT_NAME";
+      case MTAction.SET_GREEN_SCREEN:
+        return "SET_GREEN_SCREEN";
+    }
+  }
+}

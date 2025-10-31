@@ -1,0 +1,6 @@
+#include "Pods/Target Support Files/Pods-Runner/Pods-Runner.release-prod.xcconfig"
+#include "Generated.xcconfig"
+FLUTTER_BUILD_MODE=release
+
+DART_DEFINES=RU5WPXByb2R1Y3Rpb24sQVBJX0JBU0U9aHR0cHM6Ly9hcGkubGl2ZXUubGl2ZSxXU19VUkw9d3NzOi8vYXBpLmxpdmV1LmxpdmUvYXBpL2ltL2luZGV4
+

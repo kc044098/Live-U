@@ -1,0 +1,65 @@
+platform :ios, '13.0'
+use_frameworks! :linkage => :static
+
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug'        => :debug,
+  'Release'      => :release,
+  'Profile'      => :release,
+
+  'Debug-prod'   => :debug,
+  'Release-prod' => :release,
+  'Profile-prod' => :release,
+}
+
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'))
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
+  end
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in Generated.xcconfig. Run flutter pub get first."
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_ios_podfile_setup
+
+target 'Runner' do
+
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |t|
+    flutter_additional_ios_build_settings(t)
+
+    t.build_configurations.each do |config|
+      bs = config.build_settings
+      bs['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+      bs['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+
+      flags = bs['OTHER_LDFLAGS']
+      flags = ['$(inherited)'] if flags.nil? || flags == ''
+      flags = flags.split(' ')  if flags.is_a?(String)
+      flags << '-Wl,-U,_Iris_InitDartApiDL' unless flags.include?('-Wl,-U,_Iris_InitDartApiDL')
+      bs['OTHER_LDFLAGS'] = flags
+
+      defs = bs['GCC_PREPROCESSOR_DEFINITIONS'] || ['$(inherited)']
+      defs = defs.is_a?(Array) ? defs : [defs]
+      needed = %w[
+        PERMISSION_CAMERA=1
+        PERMISSION_MICROPHONE=1
+        PERMISSION_PHOTOS=1
+        PERMISSION_SPEECH_RECOGNIZER=1
+        PERMISSION_BLUETOOTH=1
+      ]
+      needed.each { |d| defs << d unless defs.include?(d) }
+      bs['GCC_PREPROCESSOR_DEFINITIONS'] = defs
+    end
+  end
+end
