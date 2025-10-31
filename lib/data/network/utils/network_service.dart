@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 
-/***REMOVED***REMOVED***REMOVED***REMOVED***REMOVED***REMOVED***REMOVED*****
+/***REMOVED***REMOVED***REMOVED*****
  * final networkService = NetworkService(
     rtcEngine,
     restoreConfig: const VideoEncoderConfiguration(
@@ -17,7 +17,7 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 
     // 關
     await networkService.stop();
- ***REMOVED***REMOVED***REMOVED***REMOVED***REMOVED***REMOVED***REMOVED*****/
+ ***REMOVED***REMOVED***REMOVED*****/
 
 enum _NetStage { normal, Stage1, Stage2, Stage3 }
 

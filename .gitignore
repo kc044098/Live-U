@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 /android/app/src/**/google-services.json
 /ios/Runner/Firebase/**/GoogleService-Info.plist
 /macos/Runner/GoogleService-Info.plist
@@ -12,3 +13,62 @@
 /ios/Runner/Firebase/**/GoogleService-Info.plist
 /macos/Runner/GoogleService-Info.plist
 /lib/firebase_options.dart
+=======
+# Flutter/Dart/Pub related
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+generated_plugin_registrant.dart
+
+# Visual Studio Code
+.vscode/
+
+# IntelliJ
+.idea/
+
+# Android
+android/.gradle/
+android/.idea/
+android/local.properties
+android/app/debug
+android/app/release
+android/key.properties
+
+# iOS
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Runner.xcworkspace/
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Generated.xcconfig
+ios/.generated/
+
+# macOS
+macos/Flutter/ephemeral/
+macos/Flutter/GeneratedPluginRegistrant.swift
+
+# Linux
+linux/flutter/ephemeral/
+
+# Windows
+windows/flutter/ephemeral/
+
+# Web
+web/.dart_tool/
+
+# Others
+*.iml
+*.lock
+*.log
+*.tmp
+*.swp
+*.DS_Store
+.idea/
+
+# FVM Version Cache
+.fvm/
+>>>>>>> gitlab-dev

@@ -63,7 +63,7 @@ static void my_application_activate(GApplication* application) {
 }
 
 // Implements GApplication::local_command_line.
-static gboolean my_application_local_command_line(GApplication* application, gchar***REMOVED***REMOVED***REMOVED***REMOVED***REMOVED***REMOVED***REMOVED*** arguments, int* exit_status) {
+static gboolean my_application_local_command_line(GApplication* application, gchar***REMOVED***REMOVED***REMOVED*** arguments, int* exit_status) {
   MyApplication* self = MY_APPLICATION(application);
   // Strip out the first argument as it is the binary name.
   self->dart_entrypoint_arguments = g_strdupv(*arguments + 1);

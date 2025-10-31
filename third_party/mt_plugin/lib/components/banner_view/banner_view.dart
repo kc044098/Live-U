@@ -180,7 +180,7 @@ class _BannerViewState extends State<BannerView> {
       itemCount: this._banners.length,
       onPageChanged: (index) {
         _Logger.d(
-            TAG, '***REMOVED***REMOVED***REMOVED***REMOVED***REMOVED***REMOVED***REMOVED******REMOVED***REMOVED***REMOVED***REMOVED***REMOVED***REMOVED***REMOVED******REMOVED***REMOVED***REMOVED***REMOVED***REMOVED***REMOVED***REMOVED****   changed  index: $index  cu: $_currentIndex');
+            TAG, '***REMOVED***REMOVED***REMOVED******REMOVED***REMOVED***REMOVED******REMOVED***REMOVED***REMOVED****   changed  index: $index  cu: $_currentIndex');
         this._currentIndex = index;
         this._nextBannerTask();
         setState(() {});

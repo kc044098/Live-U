@@ -2,3 +2,7 @@ android/app/src/**/google-services.json merge=ours
 ios/Runner/Firebase/**/GoogleService-Info.plist merge=ours
 macos/Runner/GoogleService-Info.plist merge=ours
 /lib/firebase_options.dart merge=ours
+android/app/src/**/google-services.json merge=ours
+ios/Runner/Firebase/**/GoogleService-Info.plist merge=ours
+macos/Runner/GoogleService-Info.plist merge=ours
+/lib/firebase_options.dart merge=ours
