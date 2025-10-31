@@ -1,4 +1,44 @@
-# LuLive
+# LiveU — Flutter Realtime Live Streaming App
+
+即時影音直播 App（Flutter）。支援 Broadcaster/觀眾雙向視訊、聊天室、禮物動畫、內購/訂閱、多語系與多環境打包。
+
+<p align="center">
+  <img src="/docs/screenshots/screenshot0.png" width="40%" alt="App 預覽"/>
+</p>
+
+<p align="center">
+  <a href="#"><img alt="Flutter" src="https://img.shields.io/badge/Flutter-3.x-blue"></a>
+  <a href="#"><img alt="Platform" src="https://img.shields.io/badge/iOS-16%2B-lightgrey"></a>
+  <a href="#"><img alt="Platform" src="https://img.shields.io/badge/Android-8%2B-lightgrey"></a>
+  <a href="#"><img alt="License" src="https://img.shields.io/badge/License-MIT-green"></a>
+</p>
+
+## ✨ Features
+- 🔴 **雙向視訊**（Broadcaster / Audience），弱網自動降級（解析度/幀率/碼率）
+- 💬 **聊天室**：本地先上屏、送達/已讀回執、歷史分頁、弱網重試
+- 🎁 **禮物動畫**：SVGA 佇列與節流、渲染分層避免全頁重繪
+- 💳 **內購/訂閱**：Google Play Billing / Apple StoreKit（伺服器收據驗證、權益快取）
+- 🌍 **多語系**與 **多環境 `--dart-define`**（dev/stage/prod）
+- 📉 **效能優化**：資源池化與預載（只保留鄰近頁）、RepaintBoundary、Isolate
+
+## 🖼️ Screenshots
+<p align="center">
+  <img src="/docs/screenshots/screenshot1.png" width="30%" />
+  <img src="/docs/screenshots/screenshot2.png" width="30%" />
+  <img src="/docs/screenshots/screenshot3.png" width="30%" />
+  <img src="/docs/screenshots/screenshot4.png" width="30%" />
+  <img src="/docs/screenshots/screenshot5.png" width="30%" />
+  <img src="/docs/screenshots/screenshot6.png" width="30%" />
+  <img src="/docs/screenshots/screenshot7.png" width="30%" />
+</p>
+
+## 🏗️ Tech Stack
+- Flutter / Dart、Riverpod、Dio、WebSocket
+- （可選）Agora RTC/RTM 或 WebRTC
+- SVGA / Lottie、Firebase Crashlytics
+- Google Play Billing、Apple StoreKit
+
+## 📦 Project Structure
 
 
 
