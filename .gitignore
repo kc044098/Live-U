@@ -5,3 +5,10 @@
 /android/app/src/**/google-services.json
 /ios/Runner/Firebase/**/GoogleService-Info.plist
 /macos/Runner/GoogleService-Info.plist
+/android/app/src/**/google-services.json
+/ios/Runner/Firebase/**/GoogleService-Info.plist
+/macos/Runner/GoogleService-Info.plist
+/android/app/src/**/google-services.json
+/ios/Runner/Firebase/**/GoogleService-Info.plist
+/macos/Runner/GoogleService-Info.plist
+/lib/firebase_options.dart
