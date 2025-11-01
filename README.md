@@ -39,10 +39,21 @@
 - Google Play Billing、Apple StoreKit
 
 ## 📦 Project Structure
+lib/
+config/ # 環境參數（apiBaseUrl、AppId）
+core/ # Dio、攔截器、錯誤處理、日誌
+data/ # models / network
+features/
+live/ # 直播（Broadcaster/Audience）
+chat/ # 聊天室
+wallet/ # 內購/錢包
+profile/
+l10n/ # 國際化
+routes/ # 路由
 
 
 
-## Getting started
+## 🚀 Getting started
 
 To make it easy for you to get started with GitLab, here's a list of recommended next steps.
 
